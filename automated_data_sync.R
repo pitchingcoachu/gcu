@@ -10,8 +10,8 @@ library(stringr)
 
 # FTP credentials
 FTP_HOST <- "ftp.trackmanbaseball.com"
-FTP_USER <- "CalBaptist"
-FTP_PASS <- "5tz7saLl5Z"
+FTP_USER <- "GrandCanyon"
+FTP_PASS <- "F42Y6LiLGS"
 
 # Local data directories
 LOCAL_DATA_DIR      <- "data/"
