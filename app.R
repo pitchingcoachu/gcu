@@ -1647,8 +1647,8 @@ pitch_data <- pitch_data %>%
     KorBB           = as.character(KorBB),
     Balls           = as.numeric(Balls),
     Strikes         = as.numeric(Strikes),
-    # Convert FourSeamFastball to Fastball
-    TaggedPitchType = ifelse(TaggedPitchType == "FourSeamFastball", "Fastball", TaggedPitchType)
+    # Convert FourSeamFastBall to Fastball
+    TaggedPitchType = ifelse(TaggedPitchType == "FourSeamFastBall", "Fastball", TaggedPitchType)
   ) %>%
   dplyr::filter(!is.na(TaggedPitchType) & tolower(TaggedPitchType) != "undefined") %>%
   force_pitch_levels()
