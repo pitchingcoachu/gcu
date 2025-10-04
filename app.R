@@ -455,10 +455,10 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
 }
 
 # Default column sets for the table-mode toggle
-stuff_cols    <- c("Pitch","#","Velo","Max","IVB","HB","rTilt","bTilt", "SpinEff","Spin","Height","Side","Ext","VAA","HAA","")
+stuff_cols    <- c("Pitch","#","Velo","Max","IVB","HB","rTilt","bTilt", "SpinEff","Spin","Height","Side","Ext","VAA","HAA")
 process_cols  <- c("Pitch","#","BF","Usage","InZone%","Comp%","Strike%","FPS%","E+A%","Whiff%","CSW%","EV","LA","Ctrl+","QP+")
 results_cols  <- c("Pitch","#","BF","IP","K%","BB%","BABIP","GB%","Barrel%","AVG","SLG","xWOBA","xISO","FIP","WHIP","Pitching+")
-banny_cols    <- c("Pitch","Usage","Strike%","InZone%","Comp%","Velo","Max","IVB","HB","","QP+","Pitching+")
+banny_cols    <- c("Pitch","Usage","Strike%","InZone%","Comp%","Velo","Max","IVB","HB","QP+","Pitching+")
 perf_cols     <- c("Pitch","#","BF","Usage","InZone%","Comp%","Strike%","FPS%","E+A%","K%","BB%","Whiff%","CSW%","EV","LA","Ctrl+","QP+","Pitching+")
 # all_table_cols will auto-include QP+ via the union
 
