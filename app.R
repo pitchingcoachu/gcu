@@ -455,10 +455,10 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
 }
 
 # Default column sets for the table-mode toggle
-stuff_cols    <- c("Pitch","#","Velo","Max","IVB","HB","rTilt","bTilt", "SpinEff","Spin","Height","Side","Ext","VAA","HAA","Stuff+")
+stuff_cols    <- c("Pitch","#","Velo","Max","IVB","HB","rTilt","bTilt", "SpinEff","Spin","Height","Side","Ext","VAA","HAA","")
 process_cols  <- c("Pitch","#","BF","Usage","InZone%","Comp%","Strike%","FPS%","E+A%","Whiff%","CSW%","EV","LA","Ctrl+","QP+")
 results_cols  <- c("Pitch","#","BF","IP","K%","BB%","BABIP","GB%","Barrel%","AVG","SLG","xWOBA","xISO","FIP","WHIP","Pitching+")
-banny_cols    <- c("Pitch","Usage","Strike%","InZone%","Comp%","Velo","IVB","HB","Stuff+","QP+","Pitching+")
+banny_cols    <- c("Pitch","Usage","Strike%","InZone%","Comp%","Velo","IVB","HB","","QP+","Pitching+")
 perf_cols     <- c("Pitch","#","BF","Usage","InZone%","Comp%","Strike%","FPS%","E+A%","K%","BB%","Whiff%","CSW%","EV","LA","Ctrl+","QP+","Pitching+")
 # all_table_cols will auto-include QP+ via the union
 
@@ -631,7 +631,7 @@ make_session_logs_table <- function(df) {
         )
       )
       ctrl_all  <- round(mean(scores, na.rm = TRUE) * 100, 1)
-      stuff_all <- round(.s_nz_mean(d$`Stuff+`), 1)
+      stuff_all <- round(.s_nz_mean(d$``), 1)
       
       # QP+ scalar — use your real one if available; else NA
       qp_all <- if (!is.null(get0("safe_qp_scalar"))) get0("safe_qp_scalar")(d) else NA_real_
@@ -698,7 +698,7 @@ make_session_logs_table <- function(df) {
         ),
         EV       = ev_all,
         LA       = la_all,
-        `Stuff+` = stuff_all,
+        `` = stuff_all,
         `Ctrl+`  = ctrl_all,
         `QP+`    = qp_all,
         `Pitching+` = pitc_all
@@ -818,7 +818,7 @@ heat_pal <- function(bins = 10) {
   colorRampPalette(c("white","blue","lightblue","turquoise","yellow","orange","red"))(bins)
 }
 
-# ---- Per-base weight scales for Stuff+ ----
+# ---- Per-base weight scales for  ----
 pitch_weights_fb <- tibble(
   TaggedPitchType = c("Fastball","Sinker",
                       "Cutter","Slider","Sweeper","Curveball",
@@ -832,9 +832,9 @@ pitch_weights_si <- tibble(
   TaggedPitchType = c("Fastball","Sinker",
                       "Cutter","Slider","Sweeper","Curveball",
                       "ChangeUp","Splitter"),
-  w_vel = c(0.6, 0.5, 0.5, 0.4, 0.3, 0.5, 0.2, 0.1),
-  w_ivb = c(0.3, 0.3, 0.2, 0.4, 0.1, 0.5, 0.6, 0.85),
-  w_hb  = c(0.1, 0.2, 0.3, 0.2, 0.6, 0.0, 0.2, 0.05)
+  w_vel = c(0.6, 0.5, 0.5, 0.4, 0.3, 0.5, 0.25, 0.1),
+  w_ivb = c(0.3, 0.3, 0.2, 0.4, 0.1, 0.5, 0.7, 0.85),
+  w_hb  = c(0.1, 0.2, 0.3, 0.2, 0.6, 0.0, 0.05, 0.05)
 )
 
 # ---- Simplified Stuff+ Helper (vectorized, RelHeight-based FB/SI) ----
