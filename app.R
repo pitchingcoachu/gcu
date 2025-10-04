@@ -2,8 +2,7 @@
 # Shiny pitching report with per-player privacy + admin view + customized Stuff+ metric per pitch type
 
 library(shiny)
-library(dplyr)
-library(purrr)
+library(tidyverse)
 library(DT)
 library(gridExtra)
 library(ggplot2)
@@ -455,10 +454,10 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
 }
 
 # Default column sets for the table-mode toggle
-stuff_cols    <- c("Pitch","#","Velo","Max","IVB","HB","rTilt","bTilt", "SpinEff","Spin","Height","Side","Ext","VAA","HAA")
+stuff_cols    <- c("Pitch","#","Velo","Max","IVB","HB","rTilt","bTilt", "SpinEff","Spin","Height","Side","Ext","VAA","HAA","Stuff+")
 process_cols  <- c("Pitch","#","BF","Usage","InZone%","Comp%","Strike%","FPS%","E+A%","Whiff%","CSW%","EV","LA","Ctrl+","QP+")
 results_cols  <- c("Pitch","#","BF","IP","K%","BB%","BABIP","GB%","Barrel%","AVG","SLG","xWOBA","xISO","FIP","WHIP","Pitching+")
-banny_cols    <- c("Pitch","Usage","Strike%","InZone%","Comp%","Velo","Max","IVB","HB","QP+","Pitching+")
+banny_cols    <- c("Pitch","Usage","Strike%","InZone%","Comp%","Velo","Max","IVB","HB","Stuff+","QP+","Pitching+")
 perf_cols     <- c("Pitch","#","BF","Usage","InZone%","Comp%","Strike%","FPS%","E+A%","K%","BB%","Whiff%","CSW%","EV","LA","Ctrl+","QP+","Pitching+")
 # all_table_cols will auto-include QP+ via the union
 
@@ -631,7 +630,7 @@ make_session_logs_table <- function(df) {
         )
       )
       ctrl_all  <- round(mean(scores, na.rm = TRUE) * 100, 1)
-      stuff_all <- round(.s_nz_mean(d$``), 1)
+      stuff_all <- round(.s_nz_mean(d$`Stuff+`), 1)
       
       # QP+ scalar — use your real one if available; else NA
       qp_all <- if (!is.null(get0("safe_qp_scalar"))) get0("safe_qp_scalar")(d) else NA_real_
@@ -698,7 +697,7 @@ make_session_logs_table <- function(df) {
         ),
         EV       = ev_all,
         LA       = la_all,
-        `` = stuff_all,
+        `Stuff+` = stuff_all,
         `Ctrl+`  = ctrl_all,
         `QP+`    = qp_all,
         `Pitching+` = pitc_all
@@ -746,6 +745,7 @@ make_hover_tt <- function(df) {
     "<br>Velo: ", ifelse(is.na(df$RelSpeed), "", sprintf("%.1f mph", df$RelSpeed)),
     "<br>IVB: " , ifelse(is.na(df$InducedVertBreak), "", sprintf("%.1f in", df$InducedVertBreak)),
     "<br>HB: "  , ifelse(is.na(df$HorzBreak), "", sprintf("%.1f in", df$HorzBreak)),
+    "<br>Stuff+: ", ifelse(is.na(df$`Stuff+`), "", sprintf("%.1f", df$`Stuff+`)),
     "<br>In Zone: ", inzone_label(df$PlateLocSide, df$PlateLocHeight)
   )
 }
@@ -818,7 +818,7 @@ heat_pal <- function(bins = 10) {
   colorRampPalette(c("white","blue","lightblue","turquoise","yellow","orange","red"))(bins)
 }
 
-# ---- Per-base weight scales for  ----
+# ---- Per-base weight scales for Stuff+ ----
 pitch_weights_fb <- tibble(
   TaggedPitchType = c("Fastball","Sinker",
                       "Cutter","Slider","Sweeper","Curveball",
@@ -832,9 +832,9 @@ pitch_weights_si <- tibble(
   TaggedPitchType = c("Fastball","Sinker",
                       "Cutter","Slider","Sweeper","Curveball",
                       "ChangeUp","Splitter"),
-  w_vel = c(0.6, 0.5, 0.5, 0.4, 0.3, 0.5, 0.25, 0.1),
+  w_vel = c(0.6, 0.5, 0.5, 0.4, 0.3, 0.5, 0.2, 0.1),
   w_ivb = c(0.3, 0.3, 0.2, 0.4, 0.1, 0.5, 0.7, 0.85),
-  w_hb  = c(0.1, 0.2, 0.3, 0.2, 0.6, 0.0, 0.05, 0.05)
+  w_hb  = c(0.1, 0.2, 0.3, 0.2, 0.6, 0.0, 0.1, 0.05)
 )
 
 # ---- Simplified Stuff+ Helper (vectorized, RelHeight-based FB/SI) ----
