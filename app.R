@@ -2,7 +2,8 @@
 # Shiny pitching report with per-player privacy + admin view + customized Stuff+ metric per pitch type
 
 library(shiny)
-library(tidyverse)
+library(dplyr)
+library(purrr)
 library(DT)
 library(gridExtra)
 library(ggplot2)
