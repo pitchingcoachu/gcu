@@ -4,8 +4,6 @@ on:
   schedule:
     - cron: '0 14 * * *'   # 10:00 AM ET
     - cron: '0 19 * * *'   # 3:00 PM ET
-    - cron: '0 0 * * *'    # 8:00 PM ET (midnight UTC)
-    - cron: '30 1 * * *'   # 9:30 PM ET (1:30 AM UTC next day)
   workflow_dispatch:  # Allow manual triggering
 
 jobs:
