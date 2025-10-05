@@ -81,6 +81,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
 
 
 library(curl)  # for curl::form_file
+library(DBI)   # for database operations
+library(RSQLite)  # for SQLite database
 
 # Configure Cloudinary (recommended simple host for images/videos)
 # Create a free account, make an *unsigned upload preset*, then set these:
@@ -120,6 +122,135 @@ upload_media_cloudinary <- function(path) {
     url  = j$secure_url %||% j$url,
     type = j$resource_type %||% "auto"  # "image" | "video" | "raw"
   )
+}
+
+# ---- Database functions for persistent pitch modifications ----
+
+# Initialize modifications database
+init_modifications_db <- function() {
+  db_path <- "pitch_modifications.db"
+  con <- dbConnect(SQLite(), db_path)
+  
+  # Create table if it doesn't exist
+  if (!dbExistsTable(con, "modifications")) {
+    dbExecute(con, "
+      CREATE TABLE modifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pitcher TEXT NOT NULL,
+        date TEXT NOT NULL,
+        rel_speed REAL,
+        horz_break REAL,
+        induced_vert_break REAL,
+        original_pitch_type TEXT,
+        new_pitch_type TEXT NOT NULL,
+        modified_at TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    ")
+    
+    # Create index for faster lookups
+    dbExecute(con, "
+      CREATE INDEX idx_pitch_lookup ON modifications 
+      (pitcher, date, rel_speed, horz_break, induced_vert_break)
+    ")
+  }
+  
+  dbDisconnect(con)
+  return(db_path)
+}
+
+# Save pitch modifications to database
+save_pitch_modifications_db <- function(selected_pitches, new_type) {
+  db_path <- "pitch_modifications.db"
+  con <- dbConnect(SQLite(), db_path)
+  
+  tryCatch({
+    # Prepare new modifications
+    new_mods <- data.frame(
+      pitcher = selected_pitches$Pitcher,
+      date = as.character(selected_pitches$Date),
+      rel_speed = selected_pitches$RelSpeed %||% 0,
+      horz_break = selected_pitches$HorzBreak %||% 0,
+      induced_vert_break = selected_pitches$InducedVertBreak %||% 0,
+      original_pitch_type = selected_pitches$TaggedPitchType,
+      new_pitch_type = new_type,
+      modified_at = as.character(Sys.time()),
+      stringsAsFactors = FALSE
+    )
+    
+    # Remove existing modifications for the same pitches
+    for (i in 1:nrow(new_mods)) {
+      dbExecute(con, "
+        DELETE FROM modifications 
+        WHERE pitcher = ? AND date = ? 
+        AND ABS(rel_speed - ?) < 0.1 
+        AND ABS(horz_break - ?) < 0.1 
+        AND ABS(induced_vert_break - ?) < 0.1
+      ", list(
+        new_mods$pitcher[i],
+        new_mods$date[i], 
+        new_mods$rel_speed[i],
+        new_mods$horz_break[i],
+        new_mods$induced_vert_break[i]
+      ))
+    }
+    
+    # Insert new modifications
+    dbWriteTable(con, "modifications", new_mods, append = TRUE)
+    
+    message(sprintf("Saved %d pitch type modifications to database", nrow(new_mods)))
+    
+  }, finally = {
+    dbDisconnect(con)
+  })
+}
+
+# Load and apply modifications from database
+load_pitch_modifications_db <- function(pitch_data) {
+  db_path <- "pitch_modifications.db"
+  
+  if (!file.exists(db_path)) {
+    return(pitch_data %>% mutate(original_row_id = row_number()))
+  }
+  
+  con <- dbConnect(SQLite(), db_path)
+  
+  tryCatch({
+    # Get all modifications
+    mods <- dbGetQuery(con, "SELECT * FROM modifications ORDER BY created_at")
+    
+    if (nrow(mods) == 0) {
+      return(pitch_data %>% mutate(original_row_id = row_number()))
+    }
+    
+    temp_data <- pitch_data %>% mutate(original_row_id = row_number())
+    
+    # Apply modifications
+    modifications_applied <- 0
+    for (i in 1:nrow(mods)) {
+      mod <- mods[i, ]
+      match_idx <- which(
+        temp_data$Pitcher == mod$pitcher &
+        temp_data$Date == mod$date &
+        abs(temp_data$RelSpeed - mod$rel_speed) < 0.1 &
+        abs(temp_data$HorzBreak - mod$horz_break) < 0.1 &
+        abs(temp_data$InducedVertBreak - mod$induced_vert_break) < 0.1
+      )
+      if (length(match_idx) > 0) {
+        temp_data$TaggedPitchType[match_idx[1]] <- mod$new_pitch_type
+        modifications_applied <- modifications_applied + 1
+      }
+    }
+    
+    if (modifications_applied > 0) {
+      message(sprintf("Applied %d stored pitch type modifications", modifications_applied))
+    }
+    
+    return(temp_data)
+    
+  }, finally = {
+    dbDisconnect(con)
+  })
 }
 
 
@@ -7802,35 +7933,14 @@ ui <- tagList(
 # Server logic
 server <- function(input, output, session) {
   
+  # Initialize database on startup
+  init_modifications_db()
+  
   # Reactive value to store modified pitch data with edits persisted
   modified_pitch_data <- reactiveVal()
   
-  # Load existing modifications if they exist
-  modifications_file <- "pitch_modifications.rds"
-  if (file.exists(modifications_file)) {
-    stored_mods <- readRDS(modifications_file)
-    temp_data <- pitch_data_pitching %>%
-      mutate(original_row_id = row_number())  # Add unique identifier
-    # Apply stored modifications
-    for (i in seq_len(nrow(stored_mods))) {
-      mod <- stored_mods[i, ]
-      # Find matching rows using multiple fields for robustness
-      match_idx <- which(
-        temp_data$Pitcher == mod$Pitcher &
-        temp_data$Date == mod$Date &
-        abs(temp_data$RelSpeed - (mod$RelSpeed %||% 0)) < 0.1 &
-        abs(temp_data$HorzBreak - (mod$HorzBreak %||% 0)) < 0.1 &
-        abs(temp_data$InducedVertBreak - (mod$InducedVertBreak %||% 0)) < 0.1
-      )
-      if (length(match_idx) > 0) {
-        # If multiple matches, take the first one
-        temp_data$TaggedPitchType[match_idx[1]] <- mod$new_pitch_type
-      }
-    }
-    modified_pitch_data(temp_data)
-  } else {
-    modified_pitch_data(pitch_data_pitching %>% mutate(original_row_id = row_number()))
-  }
+  # Load and apply existing modifications from database
+  modified_pitch_data(load_pitch_modifications_db(pitch_data_pitching))
   
   session_label_from <- function(df) {
     s <- unique(na.omit(as.character(df$SessionType)))
@@ -10809,8 +10919,8 @@ server <- function(input, output, session) {
     # Update reactive value
     modified_pitch_data(current_data)
     
-    # Save modifications to file
-    save_pitch_modifications(selected_pitches, new_type)
+    # Save modifications to database
+    save_pitch_modifications_db(selected_pitches, new_type)
     
     removeModal()
     session$userData$selected_for_edit <- NULL
@@ -10845,64 +10955,12 @@ server <- function(input, output, session) {
     # Update reactive value
     modified_pitch_data(current_data)
     
-    # Save modifications to file
-    save_pitch_modifications(selected_pitches, new_type)
+    # Save modifications to database
+    save_pitch_modifications_db(selected_pitches, new_type)
     
     removeModal()
     session$userData$selected_for_edit_summary <- NULL
   })
-  
-  # Helper function to save modifications
-  save_pitch_modifications <- function(selected_pitches, new_type) {
-    modifications_file <- "pitch_modifications.rds"
-    
-    # Load existing modifications
-    if (file.exists(modifications_file)) {
-      stored_mods <- readRDS(modifications_file)
-    } else {
-      stored_mods <- data.frame(
-        Pitcher = character(0),
-        Date = as.Date(character(0)),
-        RelSpeed = numeric(0),
-        HorzBreak = numeric(0),
-        InducedVertBreak = numeric(0),
-        original_pitch_type = character(0),
-        new_pitch_type = character(0),
-        modified_at = as.POSIXct(character(0)),
-        stringsAsFactors = FALSE
-      )
-    }
-    
-    # Add new modifications
-    new_mods <- data.frame(
-      Pitcher = selected_pitches$Pitcher,
-      Date = selected_pitches$Date,
-      RelSpeed = selected_pitches$RelSpeed %||% 0,
-      HorzBreak = selected_pitches$HorzBreak %||% 0,
-      InducedVertBreak = selected_pitches$InducedVertBreak %||% 0,
-      original_pitch_type = selected_pitches$TaggedPitchType,
-      new_pitch_type = new_type,
-      modified_at = Sys.time(),
-      stringsAsFactors = FALSE
-    )
-    
-    # Remove any existing modifications for the same pitches (using multiple field matching)
-    for (i in 1:nrow(new_mods)) {
-      stored_mods <- stored_mods[!(
-        stored_mods$Pitcher == new_mods$Pitcher[i] &
-        stored_mods$Date == new_mods$Date[i] &
-        abs(stored_mods$RelSpeed - new_mods$RelSpeed[i]) < 0.1 &
-        abs(stored_mods$HorzBreak - new_mods$HorzBreak[i]) < 0.1 &
-        abs(stored_mods$InducedVertBreak - new_mods$InducedVertBreak[i]) < 0.1
-      ), ]
-    }
-    
-    # Combine and save
-    all_mods <- rbind(stored_mods, new_mods)
-    saveRDS(all_mods, modifications_file)
-    
-    message(sprintf("Saved %d pitch type modifications", nrow(new_mods)))
-  }
   
   # Velocity Plot
   # Helper: pick the first existing column name from a preference list
