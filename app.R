@@ -2,7 +2,7 @@
 # Shiny pitching report with per-player privacy + admin view + customized Stuff+ metric per pitch type
 
 library(shiny)
-library(tidyverse)
+library(dplyr)
 library(DT)
 library(gridExtra)
 library(ggplot2)
@@ -844,11 +844,11 @@ compute_stuff_simple <- function(df, base_type, level) {
   
   # prepare data and join weights
   df2 <- df %>%
-    mutate(
+    dplyr::mutate(
       TaggedPitchType = as.character(TaggedPitchType),
       HB_adj = ifelse(PitcherThrows == "Left", HorzBreak, -HorzBreak)
     ) %>%
-    left_join(weight_tbl, by = "TaggedPitchType")
+    dplyr::left_join(weight_tbl, by = "TaggedPitchType")
   
   # velocity baselines
   base_vel <- mean(df2$RelSpeed[df2$TaggedPitchType == base_type], na.rm = TRUE)
