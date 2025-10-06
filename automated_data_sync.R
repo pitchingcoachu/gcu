@@ -1,14 +1,14 @@
-# automated_data_sync.R
-# VMI Baseball Data Automation Script
-# Syncs data from TrackMan FTP, filters for VMI only
+# Enhanced automated_data_sync.R
+# This version creates a flag file when new data is synced, 
+# which helps the app detect when to reapply pitch type modifications
+
+# Copy this content to your automated_data_sync.R file
 
 library(RCurl)
 library(readr)
 library(dplyr)
 library(lubridate)
 library(stringr)
-library(DBI)
-library(RSQLite)
 
 # FTP credentials
 FTP_HOST <- "ftp.trackmanbaseball.com"
@@ -303,90 +303,6 @@ deduplicate_files <- function() {
   return(duplicates_removed > 0)
 }
 
-# Function to apply stored pitch modifications after data sync
-apply_stored_modifications <- function() {
-  cat("Applying stored pitch modifications...\n")
-  
-  # Check if modifications database exists
-  modifications_db <- "pitch_modifications.db"
-  if (!file.exists(modifications_db)) {
-    cat("No modifications database found - skipping\n")
-    return(FALSE)
-  }
-  
-  # Connect to database and get modifications
-  con <- dbConnect(SQLite(), modifications_db)
-  
-  tryCatch({
-    # Get all modifications
-    stored_mods <- dbGetQuery(con, "SELECT * FROM modifications ORDER BY created_at")
-    
-    if (nrow(stored_mods) == 0) {
-      cat("No modifications to apply\n")
-      return(FALSE)
-    }
-    
-    cat("Found", nrow(stored_mods), "stored modifications to apply\n")
-    
-    # Get all CSV files in the data directory
-    csv_files <- list.files(LOCAL_DATA_DIR, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE)
-    modifications_applied <- 0
-    
-    for (file in csv_files) {
-      tryCatch({
-        data <- read_csv(file, show_col_types = FALSE)
-        original_data <- data
-        
-        # Apply modifications to this file
-        for (i in 1:nrow(stored_mods)) {
-          mod <- stored_mods[i, ]
-          
-          # Strategy 1: Try exact pitch number match first (most reliable)
-          if (!is.na(mod$pitch_no) && mod$pitch_no > 0 && "PitchNo" %in% names(data)) {
-            match_idx <- which(
-              data$Pitcher == mod$pitcher &
-              data$Date == mod$date &
-              abs(as.numeric(data$PitchNo) - mod$pitch_no) < 0.1
-            )
-          } else {
-            # Strategy 2: Movement + velocity matching with wider tolerance
-            match_idx <- which(
-              data$Pitcher == mod$pitcher &
-              data$Date == mod$date &
-              abs(as.numeric(data$RelSpeed) - mod$rel_speed) < 0.5 &
-              abs(as.numeric(data$HorzBreak) - mod$horz_break) < 0.5 &
-              abs(as.numeric(data$InducedVertBreak) - mod$induced_vert_break) < 0.5
-            )
-          }
-          
-          if (length(match_idx) > 0) {
-            # Apply the modification
-            data$TaggedPitchType[match_idx[1]] <- mod$new_pitch_type
-            modifications_applied <- modifications_applied + 1
-            cat("Applied modification:", mod$pitcher, "on", mod$date, 
-                "from", mod$original_pitch_type, "to", mod$new_pitch_type, "\n")
-          }
-        }
-        
-        # Only rewrite file if changes were made
-        if (!identical(data, original_data)) {
-          write_csv(data, file)
-          cat("Updated file:", basename(file), "\n")
-        }
-        
-      }, error = function(e) {
-        cat("Error processing", file, "for modifications:", e$message, "\n")
-      })
-    }
-    
-    cat("Applied", modifications_applied, "total modifications\n")
-    return(modifications_applied > 0)
-    
-  }, finally = {
-    dbDisconnect(con)
-  })
-}
-
 # Main sync function
 main_sync <- function() {
   cat("Starting VMI data sync at", as.character(Sys.time()), "\n")
@@ -419,13 +335,15 @@ main_sync <- function() {
   # Deduplicate downloaded files if any data was updated
   if (practice_updated || v3_updated) {
     deduplicate_files()
-    
-    # Apply stored modifications after deduplication
-    apply_stored_modifications()
   }
   
-  # Update last sync timestamp
+  # Update last sync timestamp and modification notification
   writeLines(as.character(Sys.time()), file.path(LOCAL_DATA_DIR, "last_sync.txt"))
+  
+  # Create a flag file to indicate new data is available
+  if (practice_updated || v3_updated) {
+    writeLines(as.character(Sys.time()), file.path(LOCAL_DATA_DIR, "new_data_flag.txt"))
+  }
   
   # Return TRUE if any data was updated
   return(practice_updated || v3_updated)
