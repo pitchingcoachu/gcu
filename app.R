@@ -289,7 +289,11 @@ upload_media_cloudinary <- function(path) {
 # Initialize modifications database
 init_modifications_db <- function() {
   db_path <- get_modifications_db_path()
-  con <- dbConnect(SQLite(), db_path)
+  con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
+  if (inherits(con, "error")) {
+    warning(sprintf("Could not open modifications DB (%s). Pitch edits will only persist in-memory.", conditionMessage(con)))
+    return(db_path)
+  }
   on.exit(dbDisconnect(con), add = TRUE)
   dbExecute(con, "
     CREATE TABLE IF NOT EXISTS modifications (
@@ -326,7 +330,10 @@ init_modifications_db <- function() {
 # Save pitch modifications to database
 save_pitch_modifications_db <- function(selected_pitches, new_type) {
   db_path <- init_modifications_db()
-  con <- dbConnect(SQLite(), db_path)
+  con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
+  if (inherits(con, "error")) {
+    return(list(success = FALSE, error = paste("Could not open pitch modifications database:", conditionMessage(con))))
+  }
   on.exit(dbDisconnect(con), add = TRUE)
   selected_pitches <- ensure_pitch_keys(selected_pitches)
   new_mods <- data.frame(
@@ -374,7 +381,16 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     ))
   }
   
-  con <- dbConnect(SQLite(), db_path)
+  con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
+  if (inherits(con, "error")) {
+    warning(sprintf("Could not open modifications DB while loading (%s)", conditionMessage(con)))
+    return(list(
+      data = ensure_pitch_keys(pitch_data) %>% mutate(original_row_id = row_number()),
+      applied_count = 0,
+      total_modifications = 0
+    ))
+  }
+  on.exit(dbDisconnect(con), add = TRUE)
   
   tryCatch({
     # Get all modifications
