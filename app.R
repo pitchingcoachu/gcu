@@ -8298,7 +8298,7 @@ server <- function(input, output, session) {
         showNotification(
           sprintf("Applied %d of %d stored pitch type modifications", 
                  result$applied_count, result$total_modifications),
-          type = "success", duration = 5
+          type = "message", duration = 5
         )
       } else if (verbose && result$total_modifications > 0) {
         showNotification(
@@ -11347,7 +11347,7 @@ server <- function(input, output, session) {
     saved_count <- save_result$count %||% nrow(selected_pitches)
     showNotification(
       sprintf("Saved %d pitch type modifications", saved_count),
-      type = "success", duration = 3
+      type = "message", duration = 3
     )
     
     removeModal()
@@ -11404,7 +11404,7 @@ server <- function(input, output, session) {
     saved_count <- save_result$count %||% nrow(selected_pitches)
     showNotification(
       sprintf("Saved %d pitch type modifications", saved_count),
-      type = "success", duration = 3
+      type = "message", duration = 3
     )
     
     removeModal()
