@@ -178,24 +178,27 @@ init_modifications_db <- function() {
 # Save pitch modifications to database
 save_pitch_modifications_db <- function(selected_pitches, new_type) {
   db_path <- "pitch_modifications.db"
-  con <- dbConnect(SQLite(), db_path)
   
   tryCatch({
-    # Prepare new modifications with additional identifying fields
+    con <- dbConnect(SQLite(), db_path)
+    
+    # Prepare new modifications with safe column access
     new_mods <- data.frame(
-      pitcher = selected_pitches$Pitcher,
+      pitcher = as.character(selected_pitches$Pitcher),
       date = as.character(selected_pitches$Date),
-      rel_speed = as.numeric(selected_pitches$RelSpeed %||% 0),
-      horz_break = as.numeric(selected_pitches$HorzBreak %||% 0),
-      induced_vert_break = as.numeric(selected_pitches$InducedVertBreak %||% 0),
-      plate_loc_side = as.numeric(selected_pitches$PlateLocSide %||% 0),
-      plate_loc_height = as.numeric(selected_pitches$PlateLocHeight %||% 0),
-      pitch_no = as.numeric(selected_pitches$PitchNo %||% 0),
-      original_pitch_type = selected_pitches$TaggedPitchType,
-      new_pitch_type = new_type,
+      rel_speed = as.numeric(ifelse(is.null(selected_pitches$RelSpeed) || is.na(selected_pitches$RelSpeed), 0, selected_pitches$RelSpeed)),
+      horz_break = as.numeric(ifelse(is.null(selected_pitches$HorzBreak) || is.na(selected_pitches$HorzBreak), 0, selected_pitches$HorzBreak)),
+      induced_vert_break = as.numeric(ifelse(is.null(selected_pitches$InducedVertBreak) || is.na(selected_pitches$InducedVertBreak), 0, selected_pitches$InducedVertBreak)),
+      plate_loc_side = as.numeric(ifelse(is.null(selected_pitches$PlateLocSide) || is.na(selected_pitches$PlateLocSide), 0, selected_pitches$PlateLocSide)),
+      plate_loc_height = as.numeric(ifelse(is.null(selected_pitches$PlateLocHeight) || is.na(selected_pitches$PlateLocHeight), 0, selected_pitches$PlateLocHeight)),
+      pitch_no = as.numeric(ifelse(is.null(selected_pitches$PitchNo) || is.na(selected_pitches$PitchNo), 0, selected_pitches$PitchNo)),
+      original_pitch_type = as.character(selected_pitches$TaggedPitchType),
+      new_pitch_type = as.character(new_type),
       modified_at = as.character(Sys.time()),
       stringsAsFactors = FALSE
     )
+    
+    cat("DEBUG: Attempting to save", nrow(new_mods), "modifications\n")
     
     # Remove existing modifications for the same pitches using robust matching
     for (i in 1:nrow(new_mods)) {
@@ -210,6 +213,7 @@ save_pitch_modifications_db <- function(selected_pitches, new_type) {
           new_mods$date[i], 
           new_mods$pitch_no[i]
         ))
+        cat("DEBUG: Deleted existing modification using pitch number for", new_mods$pitcher[i], "\n")
       } else {
         # Strategy 2: Movement + velocity matching with wider tolerance
         dbExecute(con, "
@@ -225,16 +229,23 @@ save_pitch_modifications_db <- function(selected_pitches, new_type) {
           new_mods$horz_break[i],
           new_mods$induced_vert_break[i]
         ))
+        cat("DEBUG: Deleted existing modification using movement match for", new_mods$pitcher[i], "\n")
       }
     }
     
     # Insert new modifications
     dbWriteTable(con, "modifications", new_mods, append = TRUE)
     
-    message(sprintf("Saved %d pitch type modifications to database", nrow(new_mods)))
-    
-  }, finally = {
+    cat("SUCCESS: Saved", nrow(new_mods), "pitch type modifications to database\n")
     dbDisconnect(con)
+    
+  }, error = function(e) {
+    cat("ERROR in save_pitch_modifications_db:", as.character(e), "\n")
+    # Try to close connection if it exists
+    if (exists("con")) {
+      tryCatch(dbDisconnect(con), error = function(e2) {})
+    }
+    stop(e)  # Re-throw the error
   })
 }
 
@@ -243,18 +254,23 @@ load_pitch_modifications_db <- function(pitch_data) {
   db_path <- "pitch_modifications.db"
   
   if (!file.exists(db_path)) {
+    cat("No modifications database found - returning original data\n")
     return(pitch_data %>% mutate(original_row_id = row_number()))
   }
   
-  con <- dbConnect(SQLite(), db_path)
-  
   tryCatch({
+    con <- dbConnect(SQLite(), db_path)
+    
     # Get all modifications
     mods <- dbGetQuery(con, "SELECT * FROM modifications ORDER BY created_at")
     
     if (nrow(mods) == 0) {
+      cat("No modifications found in database\n")
+      dbDisconnect(con)
       return(pitch_data %>% mutate(original_row_id = row_number()))
     }
+    
+    cat("Found", nrow(mods), "modifications in database\n")
     
     temp_data <- pitch_data %>% mutate(original_row_id = row_number())
     
@@ -270,6 +286,9 @@ load_pitch_modifications_db <- function(pitch_data) {
           temp_data$Date == mod$date &
           abs(as.numeric(temp_data$PitchNo) - mod$pitch_no) < 0.1
         )
+        if (length(match_idx) > 0) {
+          cat("DEBUG: Matched using pitch number for", mod$pitcher, "on", mod$date, "\n")
+        }
       } else {
         # Strategy 2: Movement + velocity matching with wider tolerance
         match_idx <- which(
@@ -279,22 +298,30 @@ load_pitch_modifications_db <- function(pitch_data) {
           abs(as.numeric(temp_data$HorzBreak) - mod$horz_break) < 0.5 &
           abs(as.numeric(temp_data$InducedVertBreak) - mod$induced_vert_break) < 0.5
         )
+        if (length(match_idx) > 0) {
+          cat("DEBUG: Matched using movement for", mod$pitcher, "on", mod$date, "\n")
+        }
       }
       
       if (length(match_idx) > 0) {
         temp_data$TaggedPitchType[match_idx[1]] <- mod$new_pitch_type
         modifications_applied <- modifications_applied + 1
+        cat("Applied modification:", mod$pitcher, "on", mod$date, "from", mod$original_pitch_type, "to", mod$new_pitch_type, "\n")
+      } else {
+        cat("WARNING: Could not find match for", mod$pitcher, "on", mod$date, "\n")
       }
     }
     
     if (modifications_applied > 0) {
-      message(sprintf("Applied %d stored pitch type modifications", modifications_applied))
+      cat("SUCCESS: Applied", modifications_applied, "stored pitch type modifications\n")
     }
     
+    dbDisconnect(con)
     return(temp_data)
     
-  }, finally = {
-    dbDisconnect(con)
+  }, error = function(e) {
+    cat("ERROR in load_pitch_modifications_db:", as.character(e), "\n")
+    return(pitch_data %>% mutate(original_row_id = row_number()))
   })
 }
 
@@ -10937,102 +10964,142 @@ server <- function(input, output, session) {
   
   # Confirm pitch type changes (main movement plot)
   observeEvent(input$confirm_pitch_edit, {
-    req(session$userData$selected_for_edit, input$new_pitch_type)
-    
-    selected_pitches <- session$userData$selected_for_edit
-    new_type <- input$new_pitch_type
-    
-    # Update the modified pitch data
-    current_data <- modified_pitch_data()
-    
-    # Update each selected pitch using robust matching criteria
-    for (i in 1:nrow(selected_pitches)) {
-      p <- selected_pitches[i, ]
+    tryCatch({
+      cat("Starting pitch edit confirmation...\n")
+      req(session$userData$selected_for_edit, input$new_pitch_type)
       
-      # Strategy 1: Try exact pitch number match first (most reliable)
-      if (!is.na(p$PitchNo) && p$PitchNo > 0) {
-        match_idx <- which(
-          current_data$Pitcher == p$Pitcher &
-          current_data$Date == p$Date &
-          abs(as.numeric(current_data$PitchNo) - (p$PitchNo %||% 0)) < 0.1
-        )
-      } else {
-        # Strategy 2: Movement + velocity matching with wider tolerance
-        match_idx <- which(
-          current_data$Pitcher == p$Pitcher &
-          current_data$Date == p$Date &
-          abs(as.numeric(current_data$RelSpeed) - (p$RelSpeed %||% 0)) < 0.5 &
-          abs(as.numeric(current_data$HorzBreak) - (p$HorzBreak %||% 0)) < 0.5 &
-          abs(as.numeric(current_data$InducedVertBreak) - (p$InducedVertBreak %||% 0)) < 0.5
-        )
+      selected_pitches <- session$userData$selected_for_edit
+      new_type <- input$new_pitch_type
+      
+      cat("Selected pitches:", nrow(selected_pitches), "rows, new type:", new_type, "\n")
+      
+      # Update the modified pitch data
+      current_data <- modified_pitch_data()
+      
+      if (is.null(current_data)) {
+        cat("Error: current_data is NULL\n")
+        showNotification("Error: No data available for editing", type = "error")
+        return()
       }
       
-      if (length(match_idx) > 0) {
-        current_data$TaggedPitchType[match_idx[1]] <- new_type
-        cat("Updated pitch for", p$Pitcher, "on", p$Date, "to", new_type, "\n")
-      } else {
-        cat("Warning: Could not find matching pitch for", p$Pitcher, "on", p$Date, "\n")
+      # Update each selected pitch using robust matching criteria
+      for (i in 1:nrow(selected_pitches)) {
+        p <- selected_pitches[i, ]
+        
+        # Strategy 1: Try exact pitch number match first (most reliable)
+        if (!is.na(p$PitchNo) && p$PitchNo > 0) {
+          match_idx <- which(
+            current_data$Pitcher == p$Pitcher &
+            current_data$Date == p$Date &
+            abs(as.numeric(current_data$PitchNo) - (p$PitchNo %||% 0)) < 0.1
+          )
+        } else {
+          # Strategy 2: Movement + velocity matching with wider tolerance
+          match_idx <- which(
+            current_data$Pitcher == p$Pitcher &
+            current_data$Date == p$Date &
+            abs(as.numeric(current_data$RelSpeed) - (p$RelSpeed %||% 0)) < 0.5 &
+            abs(as.numeric(current_data$HorzBreak) - (p$HorzBreak %||% 0)) < 0.5 &
+            abs(as.numeric(current_data$InducedVertBreak) - (p$InducedVertBreak %||% 0)) < 0.5
+          )
+        }
+        
+        if (length(match_idx) > 0) {
+          current_data$TaggedPitchType[match_idx[1]] <- new_type
+          cat("Updated pitch for", p$Pitcher, "on", p$Date, "to", new_type, "\n")
+        } else {
+          cat("Warning: Could not find matching pitch for", p$Pitcher, "on", p$Date, "\n")
+        }
       }
-    }
-    
-    # Update reactive value
-    modified_pitch_data(current_data)
-    
-    # Save modifications to database
-    save_pitch_modifications_db(selected_pitches, new_type)
-    
-    removeModal()
-    session$userData$selected_for_edit <- NULL
+      
+      # Update reactive value
+      modified_pitch_data(current_data)
+      
+      # Save modifications to database
+      cat("Attempting to save to database...\n")
+      save_pitch_modifications_db(selected_pitches, new_type)
+      cat("Database save completed\n")
+      
+      removeModal()
+      session$userData$selected_for_edit <- NULL
+      
+      showNotification("Pitch modifications saved successfully!", type = "message")
+      
+    }, error = function(e) {
+      cat("Error in confirm_pitch_edit:", e$message, "\n")
+      showNotification(paste("Error saving changes:", e$message), type = "error")
+      removeModal()
+    })
   })
   
   # Confirm pitch type changes (summary movement plot)
   observeEvent(input$confirm_pitch_edit_summary, {
-    req(session$userData$selected_for_edit_summary, input$new_pitch_type_summary)
-    
-    selected_pitches <- session$userData$selected_for_edit_summary
-    new_type <- input$new_pitch_type_summary
-    
-    # Update the modified pitch data
-    current_data <- modified_pitch_data()
-    
-    # Update each selected pitch using robust matching criteria
-    for (i in 1:nrow(selected_pitches)) {
-      p <- selected_pitches[i, ]
+    tryCatch({
+      cat("Starting summary pitch edit confirmation...\n")
+      req(session$userData$selected_for_edit_summary, input$new_pitch_type_summary)
       
-      # Strategy 1: Try exact pitch number match first (most reliable)
-      if (!is.na(p$PitchNo) && p$PitchNo > 0) {
-        match_idx <- which(
-          current_data$Pitcher == p$Pitcher &
-          current_data$Date == p$Date &
-          abs(as.numeric(current_data$PitchNo) - (p$PitchNo %||% 0)) < 0.1
-        )
-      } else {
-        # Strategy 2: Movement + velocity matching with wider tolerance
-        match_idx <- which(
-          current_data$Pitcher == p$Pitcher &
-          current_data$Date == p$Date &
-          abs(as.numeric(current_data$RelSpeed) - (p$RelSpeed %||% 0)) < 0.5 &
-          abs(as.numeric(current_data$HorzBreak) - (p$HorzBreak %||% 0)) < 0.5 &
-          abs(as.numeric(current_data$InducedVertBreak) - (p$InducedVertBreak %||% 0)) < 0.5
-        )
+      selected_pitches <- session$userData$selected_for_edit_summary
+      new_type <- input$new_pitch_type_summary
+      
+      cat("Selected pitches:", nrow(selected_pitches), "rows, new type:", new_type, "\n")
+      
+      # Update the modified pitch data
+      current_data <- modified_pitch_data()
+      
+      if (is.null(current_data)) {
+        cat("Error: current_data is NULL\n")
+        showNotification("Error: No data available for editing", type = "error")
+        return()
       }
       
-      if (length(match_idx) > 0) {
-        current_data$TaggedPitchType[match_idx[1]] <- new_type
-        cat("Updated pitch for", p$Pitcher, "on", p$Date, "to", new_type, "\n")
-      } else {
-        cat("Warning: Could not find matching pitch for", p$Pitcher, "on", p$Date, "\n")
+      # Update each selected pitch using robust matching criteria
+      for (i in 1:nrow(selected_pitches)) {
+        p <- selected_pitches[i, ]
+        
+        # Strategy 1: Try exact pitch number match first (most reliable)
+        if (!is.na(p$PitchNo) && p$PitchNo > 0) {
+          match_idx <- which(
+            current_data$Pitcher == p$Pitcher &
+            current_data$Date == p$Date &
+            abs(as.numeric(current_data$PitchNo) - (p$PitchNo %||% 0)) < 0.1
+          )
+        } else {
+          # Strategy 2: Movement + velocity matching with wider tolerance
+          match_idx <- which(
+            current_data$Pitcher == p$Pitcher &
+            current_data$Date == p$Date &
+            abs(as.numeric(current_data$RelSpeed) - (p$RelSpeed %||% 0)) < 0.5 &
+            abs(as.numeric(current_data$HorzBreak) - (p$HorzBreak %||% 0)) < 0.5 &
+            abs(as.numeric(current_data$InducedVertBreak) - (p$InducedVertBreak %||% 0)) < 0.5
+          )
+        }
+        
+        if (length(match_idx) > 0) {
+          current_data$TaggedPitchType[match_idx[1]] <- new_type
+          cat("Updated pitch for", p$Pitcher, "on", p$Date, "to", new_type, "\n")
+        } else {
+          cat("Warning: Could not find matching pitch for", p$Pitcher, "on", p$Date, "\n")
+        }
       }
-    }
-    
-    # Update reactive value
-    modified_pitch_data(current_data)
-    
-    # Save modifications to database
-    save_pitch_modifications_db(selected_pitches, new_type)
-    
-    removeModal()
-    session$userData$selected_for_edit_summary <- NULL
+      
+      # Update reactive value
+      modified_pitch_data(current_data)
+      
+      # Save modifications to database
+      cat("Attempting to save to database...\n")
+      save_pitch_modifications_db(selected_pitches, new_type)
+      cat("Database save completed\n")
+      
+      removeModal()
+      session$userData$selected_for_edit_summary <- NULL
+      
+      showNotification("Pitch modifications saved successfully!", type = "message")
+      
+    }, error = function(e) {
+      cat("Error in confirm_pitch_edit_summary:", e$message, "\n")
+      showNotification(paste("Error saving changes:", e$message), type = "error")
+      removeModal()
+    })
   })
   
   # Velocity Plot
