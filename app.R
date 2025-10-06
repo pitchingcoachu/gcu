@@ -183,15 +183,22 @@ save_pitch_modifications_db <- function(selected_pitches, new_type) {
     con <- dbConnect(SQLite(), db_path)
     
     # Prepare new modifications with safe column access
+    # Helper function to safely convert to numeric
+    safe_numeric <- function(x, default = 0) {
+      if (is.null(x) || length(x) == 0) return(default)
+      result <- suppressWarnings(as.numeric(x))
+      ifelse(is.na(result), default, result)
+    }
+    
     new_mods <- data.frame(
       pitcher = as.character(selected_pitches$Pitcher),
       date = as.character(selected_pitches$Date),
-      rel_speed = as.numeric(ifelse(is.null(selected_pitches$RelSpeed) || is.na(selected_pitches$RelSpeed), 0, selected_pitches$RelSpeed)),
-      horz_break = as.numeric(ifelse(is.null(selected_pitches$HorzBreak) || is.na(selected_pitches$HorzBreak), 0, selected_pitches$HorzBreak)),
-      induced_vert_break = as.numeric(ifelse(is.null(selected_pitches$InducedVertBreak) || is.na(selected_pitches$InducedVertBreak), 0, selected_pitches$InducedVertBreak)),
-      plate_loc_side = as.numeric(ifelse(is.null(selected_pitches$PlateLocSide) || is.na(selected_pitches$PlateLocSide), 0, selected_pitches$PlateLocSide)),
-      plate_loc_height = as.numeric(ifelse(is.null(selected_pitches$PlateLocHeight) || is.na(selected_pitches$PlateLocHeight), 0, selected_pitches$PlateLocHeight)),
-      pitch_no = as.numeric(ifelse(is.null(selected_pitches$PitchNo) || is.na(selected_pitches$PitchNo), 0, selected_pitches$PitchNo)),
+      rel_speed = safe_numeric(selected_pitches$RelSpeed),
+      horz_break = safe_numeric(selected_pitches$HorzBreak),
+      induced_vert_break = safe_numeric(selected_pitches$InducedVertBreak),
+      plate_loc_side = safe_numeric(selected_pitches$PlateLocSide),
+      plate_loc_height = safe_numeric(selected_pitches$PlateLocHeight),
+      pitch_no = safe_numeric(selected_pitches$PitchNo),
       original_pitch_type = as.character(selected_pitches$TaggedPitchType),
       new_pitch_type = as.character(new_type),
       modified_at = as.character(Sys.time()),
@@ -10982,25 +10989,35 @@ server <- function(input, output, session) {
         return()
       }
       
+      # Helper function for safe numeric operations
+      safe_abs_diff <- function(x, y, default_x = 0, default_y = 0) {
+        x_num <- suppressWarnings(as.numeric(x))
+        y_num <- suppressWarnings(as.numeric(y))
+        if (is.na(x_num)) x_num <- default_x
+        if (is.na(y_num)) y_num <- default_y
+        abs(x_num - y_num)
+      }
+      
       # Update each selected pitch using robust matching criteria
       for (i in 1:nrow(selected_pitches)) {
         p <- selected_pitches[i, ]
         
         # Strategy 1: Try exact pitch number match first (most reliable)
-        if (!is.na(p$PitchNo) && p$PitchNo > 0) {
+        p_pitch_no <- suppressWarnings(as.numeric(p$PitchNo))
+        if (!is.na(p_pitch_no) && p_pitch_no > 0) {
           match_idx <- which(
             current_data$Pitcher == p$Pitcher &
             current_data$Date == p$Date &
-            abs(as.numeric(current_data$PitchNo) - (p$PitchNo %||% 0)) < 0.1
+            safe_abs_diff(current_data$PitchNo, p_pitch_no) < 0.1
           )
         } else {
           # Strategy 2: Movement + velocity matching with wider tolerance
           match_idx <- which(
             current_data$Pitcher == p$Pitcher &
             current_data$Date == p$Date &
-            abs(as.numeric(current_data$RelSpeed) - (p$RelSpeed %||% 0)) < 0.5 &
-            abs(as.numeric(current_data$HorzBreak) - (p$HorzBreak %||% 0)) < 0.5 &
-            abs(as.numeric(current_data$InducedVertBreak) - (p$InducedVertBreak %||% 0)) < 0.5
+            safe_abs_diff(current_data$RelSpeed, p$RelSpeed) < 0.5 &
+            safe_abs_diff(current_data$HorzBreak, p$HorzBreak) < 0.5 &
+            safe_abs_diff(current_data$InducedVertBreak, p$InducedVertBreak) < 0.5
           )
         }
         
@@ -11052,25 +11069,35 @@ server <- function(input, output, session) {
         return()
       }
       
+      # Helper function for safe numeric operations  
+      safe_abs_diff <- function(x, y, default_x = 0, default_y = 0) {
+        x_num <- suppressWarnings(as.numeric(x))
+        y_num <- suppressWarnings(as.numeric(y))
+        if (is.na(x_num)) x_num <- default_x
+        if (is.na(y_num)) y_num <- default_y
+        abs(x_num - y_num)
+      }
+      
       # Update each selected pitch using robust matching criteria
       for (i in 1:nrow(selected_pitches)) {
         p <- selected_pitches[i, ]
         
         # Strategy 1: Try exact pitch number match first (most reliable)
-        if (!is.na(p$PitchNo) && p$PitchNo > 0) {
+        p_pitch_no <- suppressWarnings(as.numeric(p$PitchNo))
+        if (!is.na(p_pitch_no) && p_pitch_no > 0) {
           match_idx <- which(
             current_data$Pitcher == p$Pitcher &
             current_data$Date == p$Date &
-            abs(as.numeric(current_data$PitchNo) - (p$PitchNo %||% 0)) < 0.1
+            safe_abs_diff(current_data$PitchNo, p_pitch_no) < 0.1
           )
         } else {
           # Strategy 2: Movement + velocity matching with wider tolerance
           match_idx <- which(
             current_data$Pitcher == p$Pitcher &
             current_data$Date == p$Date &
-            abs(as.numeric(current_data$RelSpeed) - (p$RelSpeed %||% 0)) < 0.5 &
-            abs(as.numeric(current_data$HorzBreak) - (p$HorzBreak %||% 0)) < 0.5 &
-            abs(as.numeric(current_data$InducedVertBreak) - (p$InducedVertBreak %||% 0)) < 0.5
+            safe_abs_diff(current_data$RelSpeed, p$RelSpeed) < 0.5 &
+            safe_abs_diff(current_data$HorzBreak, p$HorzBreak) < 0.5 &
+            safe_abs_diff(current_data$InducedVertBreak, p$InducedVertBreak) < 0.5
           )
         }
         
