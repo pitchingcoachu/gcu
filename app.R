@@ -9,7 +9,11 @@ library(ggplot2)
 library(patchwork)
 library(rsconnect)
 library(hexbin)
+if (!requireNamespace("ggiraph", quietly = TRUE)) {
+  install.packages("ggiraph", repos = "https://cloud.r-project.org")
+}
 library(ggiraph)
+
 library(httr2)
 library(MASS)  # for kde2d in heatmaps
 library(digest)
