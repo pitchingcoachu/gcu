@@ -99,7 +99,11 @@ if (!nzchar(CLOUDINARY_UPLOAD_PRESET)) CLOUDINARY_UPLOAD_PRESET <- "pcu_notes_un
 
 get_modifications_db_path <- function() {
   override <- Sys.getenv("PITCH_MOD_DB_PATH", unset = "")
-  if (nzchar(override)) return(override)
+  if (nzchar(override)) {
+    path <- path.expand(override)
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    return(path)
+  }
   if (file.access(".", 2) == 0) return("pitch_modifications.db")
   alt <- file.path(tools::R_user_dir("pcu_pitch_dashboard", which = "data"), "pitch_modifications.db")
   dir.create(dirname(alt), recursive = TRUE, showWarnings = FALSE)
@@ -108,7 +112,11 @@ get_modifications_db_path <- function() {
 
 get_modifications_export_path <- function() {
   override <- Sys.getenv("PITCH_MOD_EXPORT_PATH", unset = "")
-  if (nzchar(override)) return(override)
+  if (nzchar(override)) {
+    path <- path.expand(override)
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    return(path)
+  }
   file.path("data", "pitch_type_modifications.csv")
 }
 
