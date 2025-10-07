@@ -2656,6 +2656,13 @@ pitch_ui <- function(show_header = FALSE) {
             style = "margin-bottom: 5px;"
           ),
           br(),
+          downloadButton(
+            "downloadPitchMods",
+            "Download Pitch Edits",
+            class = "btn-default btn-sm",
+            style = "margin-top: 5px;"
+          ),
+          br(),
           div(
             id = "modificationStatus",
             style = "font-size: 12px; color: #666; margin-top: 5px;",
@@ -8338,6 +8345,30 @@ server <- function(input, output, session) {
                     type = "message", duration = 2)
     load_modifications(force_reload = TRUE, verbose = TRUE)
   })
+
+  output$downloadPitchMods <- downloadHandler(
+    filename = function() paste0("pitch_type_modifications_", format(Sys.Date(), "%Y%m%d"), ".csv"),
+    content = function(file) {
+      db_path <- init_modifications_db()
+      con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
+      if (inherits(con, "error")) {
+        export_path <- get_modifications_export_path()
+        if (file.exists(export_path)) {
+          file.copy(export_path, file, overwrite = TRUE)
+        } else {
+          readr::write_csv(data.frame(message = "No pitch edits saved yet"), file)
+        }
+        return()
+      }
+      on.exit(dbDisconnect(con), add = TRUE)
+      mods <- try(dbGetQuery(con, "SELECT * FROM modifications ORDER BY created_at"), silent = TRUE)
+      if (inherits(mods, "try-error") || !nrow(mods)) {
+        readr::write_csv(data.frame(message = "No pitch edits saved yet"), file)
+      } else {
+        readr::write_csv(mods, file)
+      }
+    }
+  )
   
   # Status text output
   output$modificationStatusText <- renderText({
