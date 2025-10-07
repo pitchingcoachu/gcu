@@ -8309,7 +8309,8 @@ server <- function(input, output, session) {
       }
     } else {
       # No new data, just load normally if not already loaded
-      if (is.null(modified_pitch_data())) {
+      current_data <- tryCatch(modified_pitch_data(), error = function(e) NULL)
+      if (is.null(current_data)) {
         result <- load_pitch_modifications_db(pitch_data_pitching, verbose = FALSE)
         modified_pitch_data(result$data)
         modification_stats(list(
