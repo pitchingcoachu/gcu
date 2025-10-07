@@ -66,7 +66,7 @@ for (pkg in essential_packages) {
 app_packages <- c(
   "DT",
   "gridExtra",
-  "patchwork", 
+  "patchwork",
   "hexbin",
   "httr2",
   "MASS",
@@ -74,18 +74,16 @@ app_packages <- c(
   "akima",
   "plotly",
   "RCurl",
-  "jsonlite"
+  "jsonlite",
+  "ggiraph"   # now treated as required
 )
+
 
 cat("\nInstalling app-specific packages...\n")
 for (pkg in app_packages) {
   install_package_safe(pkg, critical = TRUE)
 }
 
-# Optional packages (nice to have but not critical)
-optional_packages <- c(
-  "ggiraph"
-)
 
 cat("\nInstalling optional packages...\n")
 for (pkg in optional_packages) {
