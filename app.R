@@ -115,6 +115,12 @@ get_modifications_export_path <- function() {
   if (nzchar(override)) {
     path <- path.expand(override)
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    if (!file.exists(path)) {
+      bundle_seed <- file.path("data", "pitch_type_modifications.csv")
+      if (file.exists(bundle_seed)) {
+        try(file.copy(bundle_seed, path, overwrite = FALSE), silent = TRUE)
+      }
+    }
     return(path)
   }
   file.path("data", "pitch_type_modifications.csv")
