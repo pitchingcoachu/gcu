@@ -28,7 +28,22 @@ jobs:
           libxml2-dev \
           libfontconfig1-dev \
           libharfbuzz-dev \
-          libfribidi-dev
+          libfribidi-dev \
+          libfreetype6-dev \
+          libpng-dev \
+          libjpeg-dev \
+          libtiff5 \
+          libfontconfig1 \
+          libxcb1 \
+          libicu-dev \
+          libcairo2-dev \
+          libgdal-dev \
+          libgeos-dev \
+          libgeos++-dev \
+          libproj-dev \
+          libssl-dev \
+          libudunits2-dev
+
         
     - name: Install R packages
       run: Rscript install_packages.R
