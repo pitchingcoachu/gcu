@@ -454,8 +454,8 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
       }
       
       if (length(match_idx) > 0) {
-        # Apply modification to first match
-        temp_data$TaggedPitchType[match_idx[1]] <- mod$new_pitch_type
+        # Apply modification to all matching rows (handles duplicate PitchKey entries)
+        temp_data$TaggedPitchType[match_idx] <- mod$new_pitch_type
         modifications_applied <- modifications_applied + 1
         
         if (verbose) {
