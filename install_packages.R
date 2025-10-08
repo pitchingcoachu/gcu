@@ -83,11 +83,14 @@ cat("\nInstalling app-specific packages...\n")
 for (pkg in app_packages) {
   install_package_safe(pkg, critical = TRUE)
 }
+# Optional packages (nice to have but not critical)
+optional_packages <- character(0)
 
-
-cat("\nInstalling optional packages...\n")
-for (pkg in optional_packages) {
-  install_package_safe(pkg, critical = FALSE)
+if (length(optional_packages)) {
+  cat("\nInstalling optional packages...\n")
+  for (pkg in optional_packages) {
+    install_package_safe(pkg, critical = FALSE)
+  }
 }
 
 # Check for critical package failures
