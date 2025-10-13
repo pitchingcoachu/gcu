@@ -270,7 +270,8 @@ import_modifications_from_export <- function(con, base_data) {
   # Only persist the columns the modifications table expects; drop extras (e.g., raw pitch columns)
   expected_cols <- c(
     "pitcher", "date", "rel_speed", "horz_break", "induced_vert_break",
-    "original_pitch_type", "new_pitch_type", "modified_at", "pitch_key", "created_at"
+    "original_pitch_type", "new_pitch_type", "new_pitcher",
+    "modified_at", "pitch_key", "created_at"
   )
   new_rows$id <- NULL
   for (col in expected_cols) {
@@ -329,6 +330,7 @@ init_modifications_db <- function() {
       induced_vert_break REAL,
       original_pitch_type TEXT,
       new_pitch_type TEXT NOT NULL,
+      new_pitcher TEXT,
       modified_at TEXT NOT NULL,
       pitch_key TEXT,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
@@ -341,6 +343,11 @@ init_modifications_db <- function() {
   dbExecute(con, "
     CREATE INDEX IF NOT EXISTS idx_pitch_key ON modifications (pitch_key)
   ")
+  # Ensure legacy databases get the new_pitcher column
+  cols <- try(dbListFields(con, "modifications"), silent = TRUE)
+  if (!inherits(cols, "try-error") && !"new_pitcher" %in% cols) {
+    try(dbExecute(con, "ALTER TABLE modifications ADD COLUMN new_pitcher TEXT"), silent = TRUE)
+  }
   base_data <- get0("pitch_data_pitching", ifnotfound = NULL)
   import_modifications_from_export(con, base_data)
   mods <- try(dbGetQuery(con, "SELECT * FROM modifications"), silent = TRUE)
@@ -352,7 +359,7 @@ init_modifications_db <- function() {
 }
 
 # Save pitch modifications to database
-save_pitch_modifications_db <- function(selected_pitches, new_type) {
+save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher = NULL) {
   db_path <- init_modifications_db()
   con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
   if (inherits(con, "error")) {
@@ -360,6 +367,11 @@ save_pitch_modifications_db <- function(selected_pitches, new_type) {
   }
   on.exit(dbDisconnect(con), add = TRUE)
   selected_pitches <- ensure_pitch_keys(selected_pitches)
+  if (is.null(new_pitcher) || !nzchar(new_pitcher)) {
+    new_pitcher_vec <- as.character(selected_pitches$Pitcher)
+  } else {
+    new_pitcher_vec <- rep(new_pitcher, nrow(selected_pitches))
+  }
   new_mods <- data.frame(
     pitcher = selected_pitches$Pitcher,
     date = as.character(selected_pitches$Date),
@@ -368,6 +380,7 @@ save_pitch_modifications_db <- function(selected_pitches, new_type) {
     induced_vert_break = suppressWarnings(as.numeric(selected_pitches$InducedVertBreak)),
     original_pitch_type = selected_pitches$TaggedPitchType,
     new_pitch_type = new_type,
+    new_pitcher = new_pitcher_vec,
     modified_at = as.character(Sys.time()),
     pitch_key = as.character(selected_pitches$PitchKey),
     stringsAsFactors = FALSE
@@ -435,6 +448,19 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     # Apply modifications with enhanced matching
     modifications_applied <- 0
     modifications_not_found <- 0
+    lookup_df <- get0("lookup_table", ifnotfound = NULL)
+    fetch_email <- function(name) {
+      if (is.null(lookup_df) || !"Pitcher" %in% names(lookup_df) || !"Email_lookup" %in% names(lookup_df)) {
+        return(NA_character_)
+      }
+      idx <- which(tolower(lookup_df$Pitcher) == tolower(name))
+      if (length(idx)) {
+        val <- lookup_df$Email_lookup[idx[1]]
+        if (is.na(val) || !nzchar(val)) return(NA_character_)
+        return(val)
+      }
+      NA_character_
+    }
     
     for (i in 1:nrow(mods)) {
       mod <- mods[i, ]
@@ -466,6 +492,13 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
       if (length(match_idx) > 0) {
         # Apply modification to all matching rows (handles duplicate PitchKey entries)
         temp_data$TaggedPitchType[match_idx] <- mod$new_pitch_type
+        if (!is.null(mod$new_pitcher) && nzchar(mod$new_pitcher)) {
+          temp_data$Pitcher[match_idx] <- mod$new_pitcher
+          new_email <- fetch_email(mod$new_pitcher)
+          if (!is.na(new_email) && "Email" %in% names(temp_data)) {
+            temp_data$Email[match_idx] <- new_email
+          }
+        }
         modifications_applied <- modifications_applied + 1
         
         if (verbose) {
@@ -11277,13 +11310,20 @@ server <- function(input, output, session) {
     # Get selected pitches
     selected_pitches <- df[selected_ids, ]
     
-    # Show modal for editing pitch types
+    # Build pitcher choices (include current selection to ensure availability)
+    available_pitchers <- sort(unique(pitch_data_pitching$Pitcher))
+    pitcher_choices <- sort(unique(c(available_pitchers, as.character(selected_pitches$Pitcher))))
+    
+    # Show modal for editing pitch types / pitcher
     showModal(modalDialog(
       title = paste("Edit Pitch Type for", nrow(selected_pitches), "pitch(es)"),
       selectInput("new_pitch_type", "New Pitch Type:",
                   choices = c("Fastball", "Sinker", "Cutter", "Slider", "Sweeper", 
                              "Curveball", "ChangeUp", "Splitter", "Knuckleball"),
                   selected = selected_pitches$TaggedPitchType[1]),
+      selectInput("new_pitcher", "Assign To Pitcher:",
+                  choices = pitcher_choices,
+                  selected = selected_pitches$Pitcher[1]),
       br(),
       strong("Selected Pitches:"),
       br(),
@@ -11320,13 +11360,20 @@ server <- function(input, output, session) {
     # Get selected pitches
     selected_pitches <- df[selected_ids, ]
     
-    # Show modal for editing pitch types
+    # Build pitcher choices (include current selection to ensure availability)
+    available_pitchers <- sort(unique(pitch_data_pitching$Pitcher))
+    pitcher_choices <- sort(unique(c(available_pitchers, as.character(selected_pitches$Pitcher))))
+    
+    # Show modal for editing pitch types / pitcher
     showModal(modalDialog(
       title = paste("Edit Pitch Type for", nrow(selected_pitches), "pitch(es)"),
       selectInput("new_pitch_type_summary", "New Pitch Type:",
                   choices = c("Fastball", "Sinker", "Cutter", "Slider", "Sweeper", 
                              "Curveball", "ChangeUp", "Splitter", "Knuckleball"),
                   selected = selected_pitches$TaggedPitchType[1]),
+      selectInput("new_pitcher_summary", "Assign To Pitcher:",
+                  choices = pitcher_choices,
+                  selected = selected_pitches$Pitcher[1]),
       br(),
       strong("Selected Pitches:"),
       br(),
@@ -11355,10 +11402,24 @@ server <- function(input, output, session) {
   
   # Confirm pitch type changes (main movement plot)
   observeEvent(input$confirm_pitch_edit, {
-    req(session$userData$selected_for_edit, input$new_pitch_type)
+    req(session$userData$selected_for_edit, input$new_pitch_type, input$new_pitcher)
     
     selected_pitches <- session$userData$selected_for_edit
     new_type <- input$new_pitch_type
+    new_pitcher <- input$new_pitcher %||% ""
+    lookup_df <- get0("lookup_table", ifnotfound = NULL)
+    fetch_email <- function(name) {
+      if (is.null(lookup_df) || !"Pitcher" %in% names(lookup_df) || !"Email_lookup" %in% names(lookup_df)) {
+        return(NA_character_)
+      }
+      idx <- which(tolower(lookup_df$Pitcher) == tolower(name))
+      if (length(idx)) {
+        val <- lookup_df$Email_lookup[idx[1]]
+        if (is.na(val) || !nzchar(val)) return(NA_character_)
+        return(val)
+      }
+      NA_character_
+    }
     
     # Update the modified pitch data
     current_data <- modified_pitch_data()
@@ -11376,12 +11437,19 @@ server <- function(input, output, session) {
         abs(updated_data$InducedVertBreak - (p$InducedVertBreak %||% 0)) < 0.1
       )
       if (length(match_idx) > 0) {
-        updated_data$TaggedPitchType[match_idx[1]] <- new_type
+        updated_data$TaggedPitchType[match_idx] <- new_type
+        if (nzchar(new_pitcher)) {
+          updated_data$Pitcher[match_idx] <- new_pitcher
+          new_email <- fetch_email(new_pitcher)
+          if (!is.na(new_email)) {
+            updated_data$Email[match_idx] <- new_email
+          }
+        }
       }
     }
     
     # Save modifications to database
-    save_result <- save_pitch_modifications_db(selected_pitches, new_type)
+    save_result <- save_pitch_modifications_db(selected_pitches, new_type, new_pitcher)
     if (!isTRUE(save_result$success)) {
       showNotification(
         paste0("Could not store pitch type edits: ", save_result$error %||% "unknown error"),
@@ -11412,10 +11480,24 @@ server <- function(input, output, session) {
   
   # Confirm pitch type changes (summary movement plot)
   observeEvent(input$confirm_pitch_edit_summary, {
-    req(session$userData$selected_for_edit_summary, input$new_pitch_type_summary)
+    req(session$userData$selected_for_edit_summary, input$new_pitch_type_summary, input$new_pitcher_summary)
     
     selected_pitches <- session$userData$selected_for_edit_summary
     new_type <- input$new_pitch_type_summary
+    new_pitcher <- input$new_pitcher_summary %||% ""
+    lookup_df <- get0("lookup_table", ifnotfound = NULL)
+    fetch_email <- function(name) {
+      if (is.null(lookup_df) || !"Pitcher" %in% names(lookup_df) || !"Email_lookup" %in% names(lookup_df)) {
+        return(NA_character_)
+      }
+      idx <- which(tolower(lookup_df$Pitcher) == tolower(name))
+      if (length(idx)) {
+        val <- lookup_df$Email_lookup[idx[1]]
+        if (is.na(val) || !nzchar(val)) return(NA_character_)
+        return(val)
+      }
+      NA_character_
+    }
     
     # Update the modified pitch data
     current_data <- modified_pitch_data()
@@ -11433,12 +11515,19 @@ server <- function(input, output, session) {
         abs(updated_data$InducedVertBreak - (p$InducedVertBreak %||% 0)) < 0.1
       )
       if (length(match_idx) > 0) {
-        updated_data$TaggedPitchType[match_idx[1]] <- new_type
+        updated_data$TaggedPitchType[match_idx] <- new_type
+        if (nzchar(new_pitcher)) {
+          updated_data$Pitcher[match_idx] <- new_pitcher
+          new_email <- fetch_email(new_pitcher)
+          if (!is.na(new_email)) {
+            updated_data$Email[match_idx] <- new_email
+          }
+        }
       }
     }
     
     # Save modifications to database
-    save_result <- save_pitch_modifications_db(selected_pitches, new_type)
+    save_result <- save_pitch_modifications_db(selected_pitches, new_type, new_pitcher)
     if (!isTRUE(save_result$success)) {
       showNotification(
         paste0("Could not store pitch type edits: ", save_result$error %||% "unknown error"),
