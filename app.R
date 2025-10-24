@@ -116,14 +116,14 @@ get_modifications_export_path <- function() {
     path <- path.expand(override)
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     if (!file.exists(path)) {
-      bundle_seed <- file.path("data", "pitch_type_modifications.csv")
+      bundle_seed <- file.path("data", "pitch_type_modifications_export.csv")
       if (file.exists(bundle_seed)) {
         try(file.copy(bundle_seed, path, overwrite = FALSE), silent = TRUE)
       }
     }
     return(path)
   }
-  file.path("data", "pitch_type_modifications.csv")
+  file.path("data", "pitch_type_modifications_export.csv")
 }
 
 compute_pitch_key <- function(df) {
@@ -2290,6 +2290,12 @@ ALLOWED_PITCHERS <- c(
   "Orr, Dillon"
 )
 
+# CAMPS SUITE - Allowed campers for camps module
+ALLOWED_CAMPERS <- c(
+  "Gregory, Billy",
+  "Johns, Tanner"
+)
+
 `%in_ci%` <- function(x, y) tolower(x) %in% tolower(y)
 
 # NEW: normalize for case, spaces, punctuation (so "D.J." == "DJ")
@@ -2683,6 +2689,11 @@ pitch_ui <- function(show_header = FALSE) {
           choices = c("All", "Bullpen", "Live"),
           selected = "All"
         ),
+        selectInput(
+          "teamType", "Team:",
+          choices = c("GCU" = "GCU", "Campers" = "Campers"),
+          selected = "GCU"
+        ),
         uiOutput("pitcher_ui"),
         dateRangeInput(
           "dates", "Date Range:",
@@ -3033,6 +3044,11 @@ mod_hit_ui <- function(id, show_header = FALSE) {
     sidebarLayout(
       sidebarPanel(
         selectInput(ns("hitter"), "Select Hitter:", choices = c("All" = "All", batter_map), selected = "All"),
+        selectInput(
+          ns("teamType"), "Team:",
+          choices = c("GCU" = "GCU", "Campers" = "Campers"),
+          selected = "GCU"
+        ),
         dateRangeInput(ns("dates"), "Date Range:",
                        start = min(pitch_data$Date, na.rm = TRUE),
                        end   = max(pitch_data$Date, na.rm = TRUE),
@@ -3201,33 +3217,26 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
     
-    # ----- TEAM FILTER (LSU only) -----
-    # keep your current default if you want
-    TEAM_CODE <- "GRA_CAN"
-    
-    # Map team-code synonyms (extend this list as needed)
-    TEAM_SYNONYMS <- list(
-      GRA_CAN = c("GRA_CAN")
-    )
-    
-    codes_for <- function(code) {
-      if (is.null(code) || is.na(code)) return(character(0))
-      if (code %in% names(TEAM_SYNONYMS)) TEAM_SYNONYMS[[code]] else code
-    }
-    
+    # ----- TEAM FILTER (GCU/Campers) -----
     pd_team <- reactive({
-      req(is_active())
+      req(is_active(), input$teamType)
       d <- pitch_data
-      if (nzchar(TEAM_CODE)) {
-        d <- dplyr::filter(d, BatterTeam %in% codes_for(TEAM_CODE))
+      
+      # Apply team filtering based on selection
+      if (!is.null(input$teamType)) {
+        if (input$teamType == "Campers") {
+          # Filter to only allowed campers
+          d <- dplyr::filter(d, Pitcher %in% ALLOWED_CAMPERS)
+        } else if (input$teamType == "GCU") {
+          # Filter to GCU allowed pitchers
+          d <- dplyr::filter(d, Pitcher %in% ALLOWED_PITCHERS)
+        }
       }
       d
     })
     
-    
-    
-    # On init: limit hitter choices to LSU hitters and set date range to LSU data
-    observeEvent(is_active(), {
+    # Update hitter choices based on team selection
+    observeEvent(input$teamType, {
       d <- pd_team()
       hitters <- sort(unique(as.character(d$Batter)))
       # Map "Last, First" -> "First Last" for labels
@@ -3246,6 +3255,11 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE)) {
           updateDateRangeInput(session, "dates", start = rng[1], end = rng[2])
         }
       }
+    }, ignoreInit = FALSE)
+    
+    # On init: set initial choices
+    observeEvent(is_active(), {
+      # This will trigger the teamType observer above
     }, ignoreInit = FALSE, once = TRUE)
     
     # ---- small helpers ----
@@ -4244,6 +4258,11 @@ mod_catch_ui <- function(id, show_header = FALSE) {
         # Exact same main sidebar as Pitching, but with Catcher selector
         selectInput(ns("sessionType"), "Session Type:", choices = c("All","Bullpen","Live"), selected = "All"),
         selectInput(ns("catcher"), "Select Catcher:", choices = c("All" = "All", catcher_map), selected = "All"),
+        selectInput(
+          ns("teamType"), "Team:",
+          choices = c("GCU" = "GCU", "Campers" = "Campers"),
+          selected = "GCU"
+        ),
         dateRangeInput(ns("dates"), "Date Range:",
                        start = min(pitch_data$Date, na.rm = TRUE),
                        end   = max(pitch_data$Date, na.rm = TRUE),
@@ -4435,7 +4454,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE)) {
     
     # Filtered data for Catching
     filtered_catch <- reactive({
-      req(is_active())
+      req(is_active(), input$teamType)
       
       # helpers
       is_valid_dates <- function(d) !is.null(d) && length(d) == 2 && all(is.finite(d))
@@ -4449,6 +4468,17 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE)) {
       # Session type first
       df <- if (identical(input$sessionType, "All")) pitch_data
       else dplyr::filter(pitch_data, SessionType == input$sessionType)
+      
+      # ⛔️ Team filtering - Filter by team selection ⛔️
+      if (!is.null(input$teamType)) {
+        if (input$teamType == "Campers") {
+          # Filter to only allowed campers
+          df <- dplyr::filter(df, Pitcher %in% ALLOWED_CAMPERS)
+        } else if (input$teamType == "GCU") {
+          # Filter to GCU allowed pitchers
+          df <- dplyr::filter(df, Pitcher %in% ALLOWED_PITCHERS)
+        }
+      }
       
       # ⛔️ Drop warmups & blank pitch types
       if ("TaggedPitchType" %in% names(df)) {
@@ -5073,7 +5103,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE)) {
 }     # <-- closes mod_catch_server()
 
 # ==========================
-# == Camps Suite (updated) ==
+# == Leaderboard (new)    ==
 # ==========================
 mod_camps_ui <- function(id, show_header = FALSE) {
   ns <- NS(id)
@@ -5126,9 +5156,9 @@ mod_camps_ui <- function(id, show_header = FALSE) {
         tabsetPanel(
           id = ns("tabs"),
           
-          # --- PITCHING (Summary page layout) ---
+          # --- SUMMARY (Summary page layout) ---
           tabPanel(
-            "Pitching",
+            "Summary",
             uiOutput(ns("campSummaryHeader")), br(),
             fluidRow(
               column(
@@ -5206,38 +5236,16 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
     # Load allowed campers configuration
     # ---------------------------
     load_allowed_campers <- function() {
-      allowed_path <- file.path("data", "allowed_campers.csv")
-      if (!file.exists(allowed_path)) {
-        # Return empty data frame if no allowed campers file
-        return(data.frame(player_name = character(), display_name = character(), 
-                         active = logical(), notes = character(), stringsAsFactors = FALSE))
-      }
-      tryCatch({
-        allowed <- readr::read_csv(allowed_path, show_col_types = FALSE)
-        # Ensure required columns exist
-        if (!"player_name" %in% names(allowed)) allowed$player_name <- character(0)
-        if (!"display_name" %in% names(allowed)) allowed$display_name <- ""
-        if (!"active" %in% names(allowed)) allowed$active <- TRUE
-        if (!"notes" %in% names(allowed)) allowed$notes <- ""
-        
-        # Convert active column to logical
-        allowed$active <- as.logical(allowed$active)
-        allowed$active[is.na(allowed$active)] <- FALSE
-        
-        # Filter to only active campers
-        allowed[allowed$active == TRUE, ]
-      }, error = function(e) {
-        warning("Error loading allowed campers: ", e$message)
-        data.frame(player_name = character(), display_name = character(), 
-                  active = logical(), notes = character(), stringsAsFactors = FALSE)
-      })
+      # Return hardcoded list of allowed campers
+      return(ALLOWED_CAMPERS)
     }
     
     # ---------------------------
     # Camps data hooks (Camps-only)
     # ---------------------------
     get_camps_pitching <- function() {
-      if (exists("camps_pitch_data_pitching", inherits = TRUE)) return(get("camps_pitch_data_pitching", inherits = TRUE))
+      # Use the main pitching dataset (pitch_data_pitching)
+      if (exists("pitch_data_pitching", inherits = TRUE)) return(get("pitch_data_pitching", inherits = TRUE))
       if (exists("load_camps_pitching", inherits = TRUE)) return(get("load_camps_pitching", inherits = TRUE)())
       data.frame(Date = as.Date(character()),
                  Pitcher = character(), PitcherThrows = character(),
@@ -5255,7 +5263,8 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
                  stringsAsFactors = FALSE)
     }
     get_camps_all <- function() {
-      if (exists("camps_pitch_data", inherits = TRUE)) return(get("camps_pitch_data", inherits = TRUE))
+      # Use the main dataset (pitch_data)
+      if (exists("pitch_data", inherits = TRUE)) return(get("pitch_data", inherits = TRUE))
       if (exists("load_camps_all", inherits = TRUE)) return(get("load_camps_all", inherits = TRUE)())
       data.frame(Date = as.Date(character()),
                  Pitcher = character(), Batter = character(), Catcher = character(),
@@ -5306,9 +5315,9 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       d$Date <- as_date_any(d$Date)
       
       # Filter by allowed campers
-      allowed <- load_allowed_campers()
-      if (nrow(allowed) > 0) {
-        d <- d[d$Pitcher %in% allowed$player_name, ]
+      allowed_campers <- load_allowed_campers()
+      if (length(allowed_campers) > 0) {
+        d <- d[d$Pitcher %in% allowed_campers, ]
       }
       
       d
@@ -5318,9 +5327,9 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       d$Date <- as_date_any(d$Date)
       
       # Filter by allowed campers
-      allowed <- load_allowed_campers()
-      if (nrow(allowed) > 0) {
-        d <- d[d$Pitcher %in% allowed$player_name, ]
+      allowed_campers <- load_allowed_campers()
+      if (length(allowed_campers) > 0) {
+        d <- d[d$Pitcher %in% allowed_campers, ]
       }
       
       d
@@ -5333,15 +5342,11 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       req(is_active())
       # Player choices (from allowed campers only)
       d <- camps_all()
-      allowed <- load_allowed_campers()
+      allowed_campers <- load_allowed_campers()
       
-      if (nrow(allowed) > 0) {
-        # Use display names if available, otherwise use player names
-        player_choices <- c("All" = "All")
-        for (i in seq_len(nrow(allowed))) {
-          display_name <- if (nzchar(allowed$display_name[i])) allowed$display_name[i] else allowed$player_name[i]
-          player_choices[display_name] <- allowed$player_name[i]
-        }
+      if (length(allowed_campers) > 0) {
+        # Use allowed campers list
+        player_choices <- c("All" = "All", setNames(allowed_campers, allowed_campers))
       } else {
         # Fallback to all players in data if no allowed campers configured
         all_players <- unique(d$Pitcher)
@@ -5460,46 +5465,136 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       )
     })
     
-    # Summary Release Plot
+    # Summary Release Plot - Match main Pitching Summary exactly
     output$campSummaryReleasePlot <- ggiraph::renderGirafe({
-      df <- pitch_df_for_plots()
-      if (!nrow(df)) return(NULL)
-      df <- df %>% dplyr::filter(is.finite(RelSide), is.finite(RelHeight))
-      if (!nrow(df)) return(NULL)
+      df <- pitch_df_for_plots(); if (!nrow(df)) return(NULL)
       
-      types <- intersect(names(all_colors), as.character(unique(df$TaggedPitchType)))
-      p <- ggplot(df, aes(RelSide, RelHeight, color = TaggedPitchType)) +
-        ggiraph::geom_point_interactive(aes(
-          tooltip = make_release_tt(df)
-        ), size = 2.8, alpha = 0.9) +
-        scale_color_manual(values = all_colors[types], limits = types, name = NULL) +
-        labs(x = "Release Side (ft)", y = "Release Height (ft)") +
+      # Get ordered types like main Pitching Summary
+      types_chr <- intersect(names(all_colors), as.character(unique(df$TaggedPitchType)))
+      types_chr <- types_chr[types_chr %in% names(all_colors)]
+      
+      # Create session label
+      sess_lbl <- if (length(unique(df$SessionType)) == 1) unique(df$SessionType)[1] else "All Sessions"
+      
+      # --- background geometry (same as main Pitching Summary)
+      rp_w <- 4; rp_h <- 0.83
+      xs <- seq(-rp_w, rp_w, length.out = 100)
+      ys <- rp_h * (1 - (xs / rp_w)^2)
+      mound <- data.frame(x = c(xs, rev(xs)), y = c(ys, rep(0, length(xs))))
+      
+      # --- averages for hover+dot (same as main Pitching Summary)
+      avg <- df %>%
+        dplyr::filter(is.finite(RelSide), is.finite(RelHeight)) %>%
+        dplyr::group_by(TaggedPitchType) %>%
+        dplyr::summarise(
+          avg_RelSide    = mean(RelSide,    na.rm = TRUE),
+          avg_RelHeight  = mean(RelHeight,  na.rm = TRUE),
+          avg_Extension  = mean(Extension,  na.rm = TRUE),
+          .groups = "drop"
+        ) %>%
+        dplyr::filter(TaggedPitchType %in% types_chr) %>%
+        dplyr::mutate(
+          TaggedPitchType = factor(TaggedPitchType, levels = types_chr),
+          tt = paste0(
+            "Session: ", sess_lbl,
+            "<br>Height: ", sprintf("%.1f ft", avg_RelHeight),
+            "<br>Side: ", sprintf("%.1f ft", avg_RelSide),
+            "<br>Extension: ", sprintf("%.1f ft", avg_Extension)
+          )
+        )
+      
+      # --- ensure y axis goes to at least 6 (same as main Pitching Summary)
+      y_max <- max(6, suppressWarnings(max(df$RelHeight, na.rm = TRUE) + 0.2))
+      
+      p <- ggplot() +
+        geom_polygon(data = mound, aes(x, y), fill = "tan", color = "tan") +
+        annotate("rect", xmin = -0.5, xmax = 0.5, ymin = rp_h - 0.05, ymax = rp_h + 0.05, fill = "white") +
+        geom_vline(xintercept = 0, color = "black", size = 0.7) +
+        ggiraph::geom_point_interactive(
+          data = avg,
+          aes(x = avg_RelSide, y = avg_RelHeight,
+              color = TaggedPitchType, tooltip = tt, data_id = TaggedPitchType),
+          size = 8, show.legend = FALSE
+        ) +
+        scale_color_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
+        scale_y_continuous(limits = c(0, y_max), breaks = seq(0, ceiling(y_max), by = 1)) +
         theme_minimal() + axis_theme +
-        theme(legend.position = "none")
+        labs(x = NULL, y = NULL) +
+        theme(
+          legend.position = "none",
+          axis.text.x = element_text(size = 15, face = "bold"),
+          axis.text.y = element_text(size = 15, face = "bold")
+        )
       
-      ggiraph::girafe(ggobj = p, options = list(ggiraph::opts_hover_inv(css = "opacity:0.1;")))
+      ggiraph::girafe(
+        ggobj = p,
+        width_svg = 8, height_svg = 6.5,
+        options = list(
+          ggiraph::opts_sizing(rescale = TRUE),
+          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
+          ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+          ggiraph::opts_hover_inv(css = "opacity:0.15;")
+        )
+      )
     })
     
-    # Summary Movement Plot
+    # Summary Movement Plot - Match main Pitching Summary exactly
     output$campSummaryMovementPlot <- ggiraph::renderGirafe({
-      df <- pitch_df_for_plots()
-      if (!nrow(df)) return(NULL)
-      df <- df %>% dplyr::filter(is.finite(HorzBreak), is.finite(InducedVertBreak))
-      if (!nrow(df)) return(NULL)
+      df <- pitch_df_for_plots(); if (!nrow(df)) return(NULL)
       
-      types <- intersect(names(all_colors), as.character(unique(df$TaggedPitchType)))
-      p <- ggplot(df, aes(HorzBreak, InducedVertBreak, color = TaggedPitchType)) +
-        ggiraph::geom_point_interactive(aes(
-          tooltip = make_hover_tt(df)
-        ), size = 2.8, alpha = 0.9) +
-        scale_color_manual(values = all_colors[types], limits = types, name = NULL) +
-        labs(x = "Horizontal Break (in)", y = "Induced Vertical Break (in)") +
+      types_chr <- intersect(names(all_colors), as.character(unique(df$TaggedPitchType)))
+      types_chr <- types_chr[types_chr %in% names(all_colors)]
+      if (!length(types_chr)) return(NULL)
+      
+      # last-25 avg per type (same as main Pitching Summary)
+      avg_mov <- df %>%
+        dplyr::group_by(TaggedPitchType) %>%
+        dplyr::slice_tail(n = 25) %>%
+        dplyr::summarise(
+          avg_HorzBreak        = mean(HorzBreak, na.rm = TRUE),
+          avg_InducedVertBreak = mean(InducedVertBreak, na.rm = TRUE),
+          .groups = "drop"
+        )
+      
+      # interactive payload (per pitch) — uses make_hover_tt()
+      df_i <- df %>%
+        dplyr::mutate(
+          tt  = make_hover_tt(.),
+          rid = dplyr::row_number()
+        )
+      
+      # Note: breakLines input doesn't exist in Camps, so skip the baseline reference lines
+      
+      p <- ggplot() +
+        geom_hline(yintercept = 0, color = "gray", size = 0.5) +
+        geom_vline(xintercept = 0, color = "gray", size = 0.5) +
+        ggiraph::geom_point_interactive(
+          data = avg_mov %>% dplyr::filter(TaggedPitchType %in% types_chr),
+          aes(x = avg_HorzBreak, y = avg_InducedVertBreak, color = TaggedPitchType,
+              tooltip = paste0(TaggedPitchType, "<br>IVB: ", round(avg_InducedVertBreak,1), 
+                              " in<br>HB: ", round(avg_HorzBreak,1), " in"),
+              data_id = TaggedPitchType),
+          size = 8, show.legend = FALSE
+        ) +
+        scale_color_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
         theme_minimal() + axis_theme +
-        theme(legend.position = "none") +
-        geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
-        geom_vline(xintercept = 0, linetype = "dashed", color = "gray50")
+        labs(x = NULL, y = NULL) +
+        theme(
+          legend.position = "none",
+          axis.text.x = element_text(size = 15, face = "bold"),
+          axis.text.y = element_text(size = 15, face = "bold")
+        )
       
-      ggiraph::girafe(ggobj = p, options = list(ggiraph::opts_hover_inv(css = "opacity:0.1;")))
+      ggiraph::girafe(
+        ggobj = p,
+        width_svg = 8, height_svg = 6.5,
+        options = list(
+          ggiraph::opts_sizing(rescale = TRUE),
+          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
+          ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+          ggiraph::opts_hover_inv(css = "opacity:0.15;")
+        )
+      )
     })
     
     # Summary Zone Plot (interactive)
@@ -5593,7 +5688,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       sel <- isolate(input$campSummaryMode); if (is.null(sel)) sel <- "Stuff"
       tagList(
         radioButtons(ns("campSummaryMode"), label = NULL,
-                     choices = c("Stuff","Process","Results","Banny","Performance","Custom"),
+                     choices = c("Stuff","Process","Results","Banny","Custom"),
                      selected = sel, inline = TRUE),
         conditionalPanel(
           sprintf("input['%s']=='Custom'", ns("campSummaryMode")),
@@ -5608,21 +5703,76 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
     # Summary Table
     output$campSummaryTablePage <- DT::renderDataTable({
       df <- pitch_df_for_plots()
-      if (!nrow(df)) return(NULL)
+      if (!nrow(df)) {
+        return(DT::datatable(
+          data.frame(Message = "No data for selected filters"),
+          options = list(dom = 't'), rownames = FALSE
+        ))
+      }
       
-      # Use the same make_summary function as the main Pitching suite
-      summary_df <- make_summary(df)
+      mode   <- if (!is.null(input$campSummaryMode)) input$campSummaryMode else "Stuff"
+      custom <- if (!is.null(input$campSummaryCustomCols)) input$campSummaryCustomCols else character(0)
       
-      # Apply table mode filtering
-      mode <- input$campSummaryMode
-      if (is.null(mode)) mode <- "Stuff"
+      # Use make_summary and then transform to match main Pitching Summary exactly
+      summ <- make_summary(df)
+      summ <- dplyr::mutate(summ,
+                            ReleaseTilt = as.character(ReleaseTilt),
+                            BreakTilt   = as.character(BreakTilt)
+      )
       
-      custom_cols <- input$campSummaryCustomCols
-      if (is.null(custom_cols)) custom_cols <- character(0)
+      # Add Process/Results columns (same as main Pitching Summary)
+      extras <- compute_process_results(df) %>%
+        dplyr::rename(Pitch = PitchType) %>%
+        dplyr::mutate(Pitch = as.character(Pitch))
       
-      visible_cols <- visible_set_for(mode, custom_cols)
+      # Build the exact same table structure as main Pitching Summary
+      df_table <- summ %>%
+        dplyr::mutate(
+          Pitch     = PitchType,
+          `#`       = PitchCount,
+          Velo      = round(Velo_Avg, 1),
+          Max       = round(Velo_Max, 1),
+          rTilt     = ReleaseTilt,
+          bTilt     = BreakTilt,
+          SpinEff   = paste0(round(SpinEff * 100, 1), "%"),
+          Spin      = round(SpinRate, 0),
+          Height    = round(RelHeight, 1),
+          Side      = round(RelSide, 1),
+          Ext       = round(Extension, 1),
+          `InZone%` = InZonePercent,
+          `Comp%`   = CompPercent,
+          `K%`      = KPercent,
+          `BB%`     = BBPercent,
+          `FPS%`    = FPSPercent,
+          `E+A%`    = EAPercent,
+          `Strike%` = StrikePercent,
+          `Whiff%`  = WhiffPercent,
+          VAA       = VertApprAngle,
+          HAA       = HorzApprAngle
+        ) %>%
+        dplyr::mutate(Pitch = as.character(Pitch)) %>%
+        dplyr::select(
+          Pitch, `#`, Usage, BF,
+          Velo, Max, IVB, HB, rTilt, bTilt, SpinEff, Spin, Height, Side, VAA, HAA, Ext,
+          `InZone%`, `Comp%`, `Strike%`, `FPS%`, `E+A%`, `K%`, `BB%`, `Whiff%`, EV, LA,
+          `Stuff+`, `Ctrl+`, `QP+`, `Pitching+`
+        ) %>%
+        dplyr::mutate(
+          EV = ifelse(is.na(as.numeric(EV)), "", round(as.numeric(EV), 1)),
+          LA = ifelse(is.na(as.numeric(LA)), "", round(as.numeric(LA), 1))
+        )
       
-      datatable_with_colvis(summary_df, default_visible = visible_cols)
+      # Add Process/Results columns and join
+      df_table <- df_table %>% dplyr::left_join(extras, by = "Pitch")
+      
+      # Column reordering (same as main Pitching Summary)
+      if (!identical(mode, "Banny")) {
+        df_table <- enforce_process_order(df_table)
+        df_table <- enforce_stuff_order(df_table)
+      }
+      
+      visible_set <- visible_set_for(mode, custom)
+      datatable_with_colvis(df_table, default_visible = visible_set)
     })
     
     # ======================================================
@@ -5651,9 +5801,8 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       
       # Apply allowed campers filtering
       allowed_campers <- load_allowed_campers()
-      if (nrow(allowed_campers) > 0) {
-        active_campers <- allowed_campers$player_name[allowed_campers$active == TRUE]
-        df <- dplyr::filter(df, Pitcher %in% active_campers)
+      if (length(allowed_campers) > 0) {
+        df <- dplyr::filter(df, Pitcher %in% allowed_campers)
       }
       
       # Apply individual player selection
@@ -6230,6 +6379,7 @@ mod_leader_ui <- function(id, show_header = FALSE) {
     sidebarLayout(
       sidebarPanel(
         selectInput(ns("domain"), "Leaderboard Domain:", choices = c("Pitching","Hitting","Catching"), selected = "Pitching"),
+        selectInput(ns("teamType"), "Team:", choices = c("GCU", "Campers"), selected = "GCU"),
         
         # --- Common filters (apply to all domains) ---
         selectInput(ns("sessionType"), "Session Type:", choices = c("All","Bullpen","Live"), selected = "All"),
@@ -6365,9 +6515,9 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
     
     # ---------- TEAM-SCOPED BASE ----------
     # Returns the base dataset for the selected domain & session type,
-    # filtered to LSU-only rows (PitcherTeam for Pitching/Catching; BatterTeam for Hitting).
+    # filtered to team-specific rows based on Team selector.
     team_base <- reactive({
-      req(is_active())
+      req(is_active(), input$teamType)
       base <- switch(
         input$domain,
         "Pitching" = if (input$sessionType == "All") pitch_data_pitching else dplyr::filter(pitch_data_pitching, SessionType == input$sessionType),
@@ -6375,21 +6525,24 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
         "Catching" = if (input$sessionType == "All") pitch_data               else dplyr::filter(pitch_data,            SessionType == input$sessionType)
       )
       
-      # Allow missing/blank TEAM_CODE → no team scoping
-      tc <- get0("TEAM_CODE", ifnotfound = "")
-      if (!is.character(tc) || length(tc) < 1 || !nzchar(tc[1])) return(base)
-      
-      # Optional: use synonyms if available
-      codes_for <- if (exists("TEAM_SYNONYMS", inherits = TRUE)) {
-        function(code) if (code %in% names(TEAM_SYNONYMS)) TEAM_SYNONYMS[[code]] else code
+      # Filter by team selection
+      if (input$teamType == "Campers") {
+        if (identical(input$domain, "Hitting")) {
+          # Filter by batter for hitting
+          dplyr::filter(base, Batter %in% ALLOWED_CAMPERS)
+        } else {
+          # Filter by pitcher for pitching/catching
+          dplyr::filter(base, Pitcher %in% ALLOWED_CAMPERS)
+        }
       } else {
-        function(code) code
-      }
-      
-      if (identical(input$domain, "Hitting")) {
-        dplyr::filter(base, BatterTeam %in% codes_for(tc[1]))
-      } else {
-        dplyr::filter(base, PitcherTeam %in% codes_for(tc[1]))
+        # GCU team
+        if (identical(input$domain, "Hitting")) {
+          # Filter by batter for hitting
+          dplyr::filter(base, Batter %in% ALLOWED_PITCHERS)
+        } else {
+          # Filter by pitcher for pitching/catching
+          dplyr::filter(base, Pitcher %in% ALLOWED_PITCHERS)
+        }
       }
     })
     
@@ -6905,6 +7058,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
     sidebarLayout(
       sidebarPanel(
         selectInput(ns("domain"), "Player Type:", choices = c("Pitcher","Hitter","Catcher"), selected = "Pitcher"),
+        selectInput(ns("teamType"), "Team:", choices = c("GCU", "Campers"), selected = "GCU"),
         width = 2
       ),
       mainPanel(
@@ -7243,6 +7397,28 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE)) {
           "Pitcher" = dplyr::filter(df, Pitcher == player),
           "Hitter"  = dplyr::filter(df, Batter  == player),
           "Catcher" = dplyr::filter(df, Catcher == player),
+          df
+        )
+      }
+      if (!nrow(df)) return(df)
+      
+      # Add team filtering
+      team_type <- input$teamType %||% "GCU"
+      if (team_type == "Campers") {
+        df <- switch(
+          dom,
+          "Pitcher" = dplyr::filter(df, Pitcher %in% ALLOWED_CAMPERS),
+          "Hitter"  = dplyr::filter(df, Batter %in% ALLOWED_CAMPERS),
+          "Catcher" = dplyr::filter(df, Catcher %in% ALLOWED_CAMPERS),
+          df
+        )
+      } else {
+        # GCU team
+        df <- switch(
+          dom,
+          "Pitcher" = dplyr::filter(df, Pitcher %in% ALLOWED_PITCHERS),
+          "Hitter"  = dplyr::filter(df, Batter %in% ALLOWED_PITCHERS),
+          "Catcher" = dplyr::filter(df, Catcher %in% ALLOWED_PITCHERS),
           df
         )
       }
@@ -8051,6 +8227,13 @@ correlations_ui <- function() {
                              selected = "Pitching")
              ),
              
+             # Team selection
+             div(class = "correlation-controls",
+                 selectInput("corr_teamType", "Team:",
+                             choices = c("GCU", "Campers"),
+                             selected = "GCU")
+             ),
+             
              # Date range
              div(class = "correlation-controls",
                  dateRangeInput("corr_date_range", "Date Range:",
@@ -8668,10 +8851,6 @@ ui <- tagList(
     tabPanel("Pitching",   value = "Pitching",   pitch_ui()),
     tabPanel("Hitting",    value = "Hitting",    mod_hit_ui("hit")),
     tabPanel("Catching",   value = "Catching",   mod_catch_ui("catch")),
-    tabPanel(
-      title = "Camps",
-      mod_camps_ui("camps", show_header = TRUE)
-    ),
     tabPanel("Leaderboard", value = "Leaderboard", mod_leader_ui("leader")),
     tabPanel("Comparison Tool", value = "Comparison Suite", mod_comp_ui("comp")),
     tabPanel("Correlations", value = "Correlations", correlations_ui()),
@@ -9262,7 +9441,6 @@ server <- function(input, output, session) {
   # Mount the new modules (lazy-run only when their tab is active)
   mod_hit_server("hit",     is_active = reactive(input$top == "Hitting"))
   mod_catch_server("catch", is_active = reactive(input$top == "Catching"))
-  mod_camps_server("camps")
   mod_leader_server("leader", is_active = reactive(input$top == "Leaderboard"))
   mod_comp_server("comp",   is_active = reactive(input$top == "Comparison Suite"))
   
@@ -9345,21 +9523,41 @@ server <- function(input, output, session) {
   
   # 1) Pitcher selector
   output$pitcher_ui <- renderUI({
-    req(input$sessionType)
+    req(input$sessionType, input$teamType)
     
     df_base <- if (input$sessionType == "All") pitch_data_pitching else
       dplyr::filter(pitch_data_pitching, SessionType == input$sessionType)
+    
+    # Apply team filtering
+    if (input$teamType == "Campers") {
+      df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_CAMPERS)
+      # Create name map for campers
+      raw_names_team <- sort(unique(df_base$Pitcher))
+      display_names_team <- ifelse(
+        grepl(",", raw_names_team),
+        vapply(strsplit(raw_names_team, ",\\s*"), function(x) paste(x[2], x[1]), ""),
+        raw_names_team
+      )
+      name_map_team <- setNames(raw_names_team, display_names_team)
+    } else {
+      # Use existing GCU team (already filtered to ALLOWED_PITCHERS)
+      name_map_team <- name_map_pitching
+    }
     
     sel_raw <- unique(df_base$Pitcher[norm_email(df_base$Email) == norm_email(user_email())]) %>% na.omit()
     
     if (is_admin()) {
       selectInput(
         "pitcher", "Select Pitcher:",
-        choices  = c("All" = "All", name_map_pitching),
+        choices  = c("All" = "All", name_map_team),
         selected = "All"
       )
     } else if (length(sel_raw) > 0) {
-      disp <- display_names_p[raw_names_p %in% sel_raw]
+      disp <- if (input$teamType == "Campers") {
+        display_names_team[raw_names_team %in% sel_raw]
+      } else {
+        display_names_p[raw_names_p %in% sel_raw]
+      }
       map2 <- setNames(sel_raw, disp)
       selectInput("pitcher", "Select Pitcher:", choices = map2, selected = sel_raw[1])
     } else {
@@ -9368,9 +9566,17 @@ server <- function(input, output, session) {
   })
   
   
-  observeEvent(input$sessionType, {
+  observeEvent(list(input$sessionType, input$teamType), {
+    req(input$sessionType, input$teamType)
+    
     df_base <- if (input$sessionType == "All") pitch_data_pitching else
       dplyr::filter(pitch_data_pitching, SessionType == input$sessionType)
+    
+    # Apply team filtering
+    if (input$teamType == "Campers") {
+      df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_CAMPERS)
+    }
+    
     last_date <- if (is.null(input$pitcher) || input$pitcher == "All") {
       max(df_base$Date, na.rm = TRUE)
     } else {
@@ -9382,7 +9588,7 @@ server <- function(input, output, session) {
   
   # 2) Filtered data
   filtered_data <- reactive({
-    req(input$sessionType, input$hand, input$zoneLoc, input$inZone)
+    req(input$sessionType, input$hand, input$zoneLoc, input$inZone, input$teamType)
     
     is_valid_dates <- function(d) !is.null(d) && length(d) == 2 && all(is.finite(d))
     nnz <- function(x) !is.null(x) && !is.na(x)
@@ -9394,6 +9600,15 @@ server <- function(input, output, session) {
     # Session type - use modified data instead of original
     df <- if (identical(input$sessionType, "All")) modified_pitch_data()
     else dplyr::filter(modified_pitch_data(), SessionType == input$sessionType)
+    
+    # ⛔️ Team filtering - Filter by team selection ⛔️
+    if (!is.null(input$teamType)) {
+      if (input$teamType == "Campers") {
+        # Filter to only allowed campers
+        df <- dplyr::filter(df, Pitcher %in% ALLOWED_CAMPERS)
+      }
+      # If "GCU" is selected, use the existing data (already filtered to ALLOWED_PITCHERS)
+    }
     
     # ⛔️ Drop warmups & blank pitch types
     if ("TaggedPitchType" %in% names(df)) {
@@ -13017,43 +13232,33 @@ server <- function(input, output, session) {
   
   # ============== CORRELATIONS SERVER LOGIC ==============
   
-  # Update player choices based on domain
+  # Update player choices based on domain and team selection
   observe({
-    req(input$corr_domain)
+    req(input$corr_domain, input$corr_teamType)
+    
+    team_type <- input$corr_teamType %||% "GCU"
     
     if (input$corr_domain == "Pitching") {
-      # Use the whitelist-filtered pitch_data_pitching for consistency with other modules
-      players <- sort(unique(pitch_data_pitching$Pitcher))
+      # Filter by team selection
+      if (team_type == "Campers") {
+        players <- sort(intersect(ALLOWED_CAMPERS, unique(pitch_data_pitching$Pitcher)))
+      } else {
+        players <- sort(intersect(ALLOWED_PITCHERS, unique(pitch_data_pitching$Pitcher)))
+      }
     } else if (input$corr_domain == "Hitting") {
-      # Apply team filtering to hitting data
-      team_data <- pitch_data
-      tc <- get0("TEAM_CODE", ifnotfound = "")
-      if (nzchar(tc)) {
-        # Team synonyms for LSU
-        codes_for <- function(code) {
-          TEAM_SYNONYMS <- list(
-            GRA_CAN = c("GRA_CAN")
-          )
-          if (code %in% names(TEAM_SYNONYMS)) TEAM_SYNONYMS[[code]] else code
-        }
-        team_data <- team_data %>% dplyr::filter(BatterTeam %in% codes_for(tc))
+      # Filter by team selection
+      if (team_type == "Campers") {
+        players <- sort(intersect(ALLOWED_CAMPERS, unique(na.omit(as.character(pitch_data$Batter)))))
+      } else {
+        players <- sort(intersect(ALLOWED_PITCHERS, unique(na.omit(as.character(pitch_data$Batter)))))
       }
-      players <- sort(unique(na.omit(as.character(team_data$Batter))))
     } else if (input$corr_domain == "Catching") {
-      # Apply team filtering to catching data
-      team_data <- pitch_data
-      tc <- get0("TEAM_CODE", ifnotfound = "")
-      if (nzchar(tc)) {
-        # Team synonyms for LSU
-        codes_for <- function(code) {
-          TEAM_SYNONYMS <- list(
-            GRA_CAN = c("GRA_CAN")
-          )
-          if (code %in% names(TEAM_SYNONYMS)) TEAM_SYNONYMS[[code]] else code
-        }
-        team_data <- team_data %>% dplyr::filter(PitcherTeam %in% codes_for(tc))
+      # Filter by team selection
+      if (team_type == "Campers") {
+        players <- sort(intersect(ALLOWED_CAMPERS, unique(na.omit(as.character(pitch_data$Catcher)))))
+      } else {
+        players <- sort(intersect(ALLOWED_PITCHERS, unique(na.omit(as.character(pitch_data$Catcher)))))
       }
-      players <- sort(unique(na.omit(as.character(team_data$Catcher))))
     } else {
       players <- c()
     }
@@ -13217,26 +13422,17 @@ server <- function(input, output, session) {
       return(NULL)
     }
     
-    # Apply team filtering (only for non-pitching domains since pitching already filtered by whitelist)
-    if (input$corr_domain != "Pitching") {
-      tc <- get0("TEAM_CODE", ifnotfound = "")
-      if (nzchar(tc)) {
-        # Team synonyms for LSU
-        codes_for <- function(code) {
-          TEAM_SYNONYMS <- list(
-            GRA_CAN = c("GRA_CAN")
-          )
-          if (code %in% names(TEAM_SYNONYMS)) TEAM_SYNONYMS[[code]] else code
-        }
-        
-        data_before_team <- nrow(data)
-        if (input$corr_domain == "Hitting") {
-          data <- data %>% filter(BatterTeam %in% codes_for(tc))
-        } else {
-          data <- data %>% filter(PitcherTeam %in% codes_for(tc))
-        }
-        cat("Team filter applied: ", data_before_team, "->", nrow(data), "\n")
-      }
+    # Apply team filtering based on Team selector
+    team_type <- input$corr_teamType %||% "GCU"
+    if (team_type == "Campers") {
+      data_before_team <- nrow(data)
+      data <- data %>% dplyr::filter(!!rlang::sym(player_col) %in% ALLOWED_CAMPERS)
+      cat("Campers filter applied: ", data_before_team, "->", nrow(data), "\n")
+    } else {
+      # GCU team
+      data_before_team <- nrow(data)
+      data <- data %>% dplyr::filter(!!rlang::sym(player_col) %in% ALLOWED_PITCHERS)
+      cat("GCU team filter applied: ", data_before_team, "->", nrow(data), "\n")
     }
     
     # Apply filters
