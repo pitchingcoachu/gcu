@@ -5126,15 +5126,56 @@ mod_camps_ui <- function(id, show_header = FALSE) {
         tabsetPanel(
           id = ns("tabs"),
           
-          # --- PITCHING (Summary + plots) ---
+          # --- PITCHING (Summary page layout) ---
           tabPanel(
             "Pitching",
-            # New: plots above table
-            div(style="margin: 6px 0 10px;", ggiraph::girafeOutput(ns("campPitchReleasePlot"), height = "280px")),
-            div(style="margin: 6px 0 10px;", ggiraph::girafeOutput(ns("campPitchMovePlot"),    height = "280px")),
-            div(style="margin: 6px 0 10px;", ggiraph::girafeOutput(ns("campPitchLocPlot"),     height = "320px")),
-            div(style = "margin: 8px 0;", uiOutput(ns("campPitchButtons"))),
-            DT::dataTableOutput(ns("campPitchTable"))
+            uiOutput(ns("campSummaryHeader")), br(),
+            fluidRow(
+              column(
+                4,
+                div("Release",
+                    style = "font-weight:bold; font-size:15px; margin-bottom:5px; text-align:center;"),
+                ggiraph::girafeOutput(ns("campSummaryReleasePlot"), height = "300px", width = "100%")
+              ),              
+              column(
+                4,
+                div("Movement",
+                    style = "font-weight:bold; font-size:15px; margin-bottom:5px; text-align:center;"),
+                ggiraph::girafeOutput(ns("campSummaryMovementPlot"), height = "300px", width = "100%")
+              ),
+              column(
+                4,
+                div(
+                  style = "text-align:center;",
+                  div(
+                    "Location",
+                    style = "font-weight:bold; font-size:15px; margin-bottom:5px;"
+                  ),
+                  div(
+                    style = "display:inline-block; width:80%;",
+                    selectInput(
+                      ns("campSummaryLocType"),
+                      label    = NULL,
+                      choices  = c("Pitch", "Heat"),
+                      selected = "Pitch",
+                      width    = "100%"
+                    )
+                  )
+                ),
+                conditionalPanel(
+                  paste0("input['", ns("campSummaryLocType"), "']=='Pitch'"),
+                  ggiraph::girafeOutput(ns("campSummaryZonePlot"), height = "300px", width = "100%")
+                ),
+                conditionalPanel(
+                  paste0("input['", ns("campSummaryLocType"), "']=='Heat'"),
+                  plotOutput(ns("campSummaryHeatZonePlot"), height = "300px")
+                )
+              )
+            ),
+            fluidRow(column(12, plotOutput(ns("campSummaryLegend"), height = "70px"))),
+            br(),
+            div(style = "margin: 8px 0;", uiOutput(ns("campSummaryTableButtons"))),
+            DT::dataTableOutput(ns("campSummaryTablePage"))
           ),
           
           # --- HITTING (Data & Performance) ---
@@ -5160,6 +5201,37 @@ mod_camps_ui <- function(id, show_header = FALSE) {
 mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    
+    # ---------------------------
+    # Load allowed campers configuration
+    # ---------------------------
+    load_allowed_campers <- function() {
+      allowed_path <- file.path("data", "allowed_campers.csv")
+      if (!file.exists(allowed_path)) {
+        # Return empty data frame if no allowed campers file
+        return(data.frame(player_name = character(), display_name = character(), 
+                         active = logical(), notes = character(), stringsAsFactors = FALSE))
+      }
+      tryCatch({
+        allowed <- readr::read_csv(allowed_path, show_col_types = FALSE)
+        # Ensure required columns exist
+        if (!"player_name" %in% names(allowed)) allowed$player_name <- character(0)
+        if (!"display_name" %in% names(allowed)) allowed$display_name <- ""
+        if (!"active" %in% names(allowed)) allowed$active <- TRUE
+        if (!"notes" %in% names(allowed)) allowed$notes <- ""
+        
+        # Convert active column to logical
+        allowed$active <- as.logical(allowed$active)
+        allowed$active[is.na(allowed$active)] <- FALSE
+        
+        # Filter to only active campers
+        allowed[allowed$active == TRUE, ]
+      }, error = function(e) {
+        warning("Error loading allowed campers: ", e$message)
+        data.frame(player_name = character(), display_name = character(), 
+                  active = logical(), notes = character(), stringsAsFactors = FALSE)
+      })
+    }
     
     # ---------------------------
     # Camps data hooks (Camps-only)
@@ -5227,16 +5299,30 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
     }
     
     # ---------------------------
-    # Load & normalize Camps data
+    # Load & normalize Camps data (filtered by allowed campers)
     # ---------------------------
     camps_pitching <- shiny::reactive({
       d <- get_camps_pitching()
       d$Date <- as_date_any(d$Date)
+      
+      # Filter by allowed campers
+      allowed <- load_allowed_campers()
+      if (nrow(allowed) > 0) {
+        d <- d[d$Pitcher %in% allowed$player_name, ]
+      }
+      
       d
     })
     camps_all <- shiny::reactive({
       d <- get_camps_all()
       d$Date <- as_date_any(d$Date)
+      
+      # Filter by allowed campers
+      allowed <- load_allowed_campers()
+      if (nrow(allowed) > 0) {
+        d <- d[d$Pitcher %in% allowed$player_name, ]
+      }
+      
       d
     })
     
@@ -5245,8 +5331,27 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
     # ---------------------------
     observe({
       req(is_active())
-      # Pitch types (from Camps)
+      # Player choices (from allowed campers only)
       d <- camps_all()
+      allowed <- load_allowed_campers()
+      
+      if (nrow(allowed) > 0) {
+        # Use display names if available, otherwise use player names
+        player_choices <- c("All" = "All")
+        for (i in seq_len(nrow(allowed))) {
+          display_name <- if (nzchar(allowed$display_name[i])) allowed$display_name[i] else allowed$player_name[i]
+          player_choices[display_name] <- allowed$player_name[i]
+        }
+      } else {
+        # Fallback to all players in data if no allowed campers configured
+        all_players <- unique(d$Pitcher)
+        all_players <- all_players[!is.na(all_players) & nzchar(all_players)]
+        player_choices <- c("All" = "All", setNames(all_players, all_players))
+      }
+      
+      updateSelectInput(session, "player", choices = player_choices)
+      
+      # Pitch types (from Camps)
       lv <- levels(d$TaggedPitchType)
       pt_levels <- if (is.null(lv)) unique(as.character(d$TaggedPitchType)) else lv
       updateSelectInput(session, "pitchType",
@@ -5338,8 +5443,190 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
     })
     
     # ======================================================
-    # PITCHING page (Summary — same options as Pitching suite)
-    # + Release / Movement / Location plots
+    # CAMPS SUMMARY PAGE (Exact copy of Pitching Summary)
+    # ======================================================
+    
+    # Summary header
+    output$campSummaryHeader <- renderUI({
+      df <- pitch_df_for_plots()
+      if (!nrow(df)) return(div("No data available"))
+      
+      player_name <- if (!is.null(input$player) && input$player != "All") input$player else "All Players"
+      total_pitches <- nrow(df)
+      
+      div(
+        style = "text-align: center; font-size: 18px; font-weight: bold;",
+        paste0(player_name, " - ", total_pitches, " pitches")
+      )
+    })
+    
+    # Summary Release Plot
+    output$campSummaryReleasePlot <- ggiraph::renderGirafe({
+      df <- pitch_df_for_plots()
+      if (!nrow(df)) return(NULL)
+      df <- df %>% dplyr::filter(is.finite(RelSide), is.finite(RelHeight))
+      if (!nrow(df)) return(NULL)
+      
+      types <- intersect(names(all_colors), as.character(unique(df$TaggedPitchType)))
+      p <- ggplot(df, aes(RelSide, RelHeight, color = TaggedPitchType)) +
+        ggiraph::geom_point_interactive(aes(
+          tooltip = make_release_tt(df)
+        ), size = 2.8, alpha = 0.9) +
+        scale_color_manual(values = all_colors[types], limits = types, name = NULL) +
+        labs(x = "Release Side (ft)", y = "Release Height (ft)") +
+        theme_minimal() + axis_theme +
+        theme(legend.position = "none")
+      
+      ggiraph::girafe(ggobj = p, options = list(ggiraph::opts_hover_inv(css = "opacity:0.1;")))
+    })
+    
+    # Summary Movement Plot
+    output$campSummaryMovementPlot <- ggiraph::renderGirafe({
+      df <- pitch_df_for_plots()
+      if (!nrow(df)) return(NULL)
+      df <- df %>% dplyr::filter(is.finite(HorzBreak), is.finite(InducedVertBreak))
+      if (!nrow(df)) return(NULL)
+      
+      types <- intersect(names(all_colors), as.character(unique(df$TaggedPitchType)))
+      p <- ggplot(df, aes(HorzBreak, InducedVertBreak, color = TaggedPitchType)) +
+        ggiraph::geom_point_interactive(aes(
+          tooltip = make_hover_tt(df)
+        ), size = 2.8, alpha = 0.9) +
+        scale_color_manual(values = all_colors[types], limits = types, name = NULL) +
+        labs(x = "Horizontal Break (in)", y = "Induced Vertical Break (in)") +
+        theme_minimal() + axis_theme +
+        theme(legend.position = "none") +
+        geom_hline(yintercept = 0, linetype = "dashed", color = "gray50") +
+        geom_vline(xintercept = 0, linetype = "dashed", color = "gray50")
+      
+      ggiraph::girafe(ggobj = p, options = list(ggiraph::opts_hover_inv(css = "opacity:0.1;")))
+    })
+    
+    # Summary Zone Plot (interactive)
+    output$campSummaryZonePlot <- ggiraph::renderGirafe({
+      df <- pitch_df_for_plots()
+      if (!nrow(df)) return(NULL)
+      df <- df %>% dplyr::filter(is.finite(PlateLocSide), is.finite(PlateLocHeight))
+      if (!nrow(df)) return(NULL)
+      
+      # Create outcome categories like the main Summary page
+      df$Result <- compute_result(df$PitchCall, df$PlayResult)
+      df$Result <- factor(df$Result, levels = result_levels)
+      
+      types <- intersect(names(all_colors), as.character(unique(df$TaggedPitchType)))
+      p <- ggplot(df, aes(PlateLocSide, PlateLocHeight)) +
+        ggiraph::geom_point_interactive(aes(
+          color = TaggedPitchType,
+          shape = Result,
+          tooltip = make_hover_tt(df)
+        ), size = 2.8, alpha = 0.9) +
+        scale_color_manual(values = all_colors[types], limits = types, name = NULL) +
+        scale_shape_manual(values = shape_map, name = NULL) +
+        geom_rect(aes(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP),
+                  fill = NA, color = "black", linewidth = 1) +
+        geom_rect(aes(xmin = -1.5, xmax = 1.5, ymin = 2.65-1.5, ymax = 2.65+1.5),
+                  fill = NA, color = "gray50", linetype = "dashed", linewidth = 0.8) +
+        coord_fixed(ratio = 1) +
+        labs(x = "Plate Side (ft)", y = "Plate Height (ft)") +
+        theme_minimal() + axis_theme +
+        theme(legend.position = "none")
+      
+      ggiraph::girafe(ggobj = p, options = list(ggiraph::opts_hover_inv(css = "opacity:0.1;")))
+    })
+    
+    # Summary Heat Zone Plot
+    output$campSummaryHeatZonePlot <- renderPlot({
+      df <- pitch_df_for_plots()
+      if (!nrow(df)) return(NULL)
+      df <- df %>% dplyr::filter(is.finite(PlateLocSide), is.finite(PlateLocHeight))
+      if (nrow(df) < 5) return(NULL)
+      
+      # Create heat map using your existing heat map function
+      tryCatch({
+        x_seq <- seq(-2, 2, length.out = 50)
+        y_seq <- seq(0, 4.5, length.out = 50)
+        kde_result <- MASS::kde2d(df$PlateLocSide, df$PlateLocHeight, n = 50,
+                                  lims = c(-2, 2, 0, 4.5))
+        
+        grid_df <- expand.grid(x = x_seq, y = y_seq)
+        grid_df$z <- as.vector(kde_result$z)
+        
+        draw_heat(grid_df, bins = HEAT_BINS, pal_fun = heat_pal_red, 
+                  title = "Pitch Frequency", mark_max = TRUE)
+      }, error = function(e) {
+        ggplot() + theme_void() + 
+          annotate("text", x = 0, y = 0, label = "Insufficient data for heatmap")
+      })
+    })
+    
+    # Summary Legend
+    output$campSummaryLegend <- renderPlot({
+      df <- pitch_df_for_plots()
+      if (!nrow(df)) return(ggplot() + theme_void())
+      
+      types <- intersect(names(all_colors), as.character(unique(df$TaggedPitchType)))
+      if (!length(types)) return(ggplot() + theme_void())
+      
+      # Create a simple legend plot
+      legend_df <- data.frame(
+        x = seq_along(types),
+        y = 1,
+        type = factor(types, levels = types)
+      )
+      
+      ggplot(legend_df, aes(x, y, color = type)) +
+        geom_point(size = 6) +
+        scale_color_manual(values = all_colors[types], name = "Pitch Type") +
+        theme_void() +
+        theme(
+          legend.position = "bottom",
+          legend.direction = "horizontal",
+          legend.text = element_text(size = 12),
+          legend.title = element_text(size = 14, face = "bold"),
+          legend.margin = margin(t = 0, b = 0)
+        ) +
+        guides(color = guide_legend(override.aes = list(size = 4), nrow = 1))
+    })
+    
+    # Summary Table Buttons
+    output$campSummaryTableButtons <- renderUI({
+      sel <- isolate(input$campSummaryMode); if (is.null(sel)) sel <- "Stuff"
+      tagList(
+        radioButtons(ns("campSummaryMode"), label = NULL,
+                     choices = c("Stuff","Process","Results","Banny","Performance","Custom"),
+                     selected = sel, inline = TRUE),
+        conditionalPanel(
+          sprintf("input['%s']=='Custom'", ns("campSummaryMode")),
+          selectizeInput(ns("campSummaryCustomCols"), label = NULL,
+                         choices = setdiff(all_table_cols, "Pitch"),
+                         multiple = TRUE,
+                         options = list(placeholder = "Choose columns to show…"))
+        )
+      )
+    })
+    
+    # Summary Table
+    output$campSummaryTablePage <- DT::renderDataTable({
+      df <- pitch_df_for_plots()
+      if (!nrow(df)) return(NULL)
+      
+      # Use the same make_summary function as the main Pitching suite
+      summary_df <- make_summary(df)
+      
+      # Apply table mode filtering
+      mode <- input$campSummaryMode
+      if (is.null(mode)) mode <- "Stuff"
+      
+      custom_cols <- input$campSummaryCustomCols
+      if (is.null(custom_cols)) custom_cols <- character(0)
+      
+      visible_cols <- visible_set_for(mode, custom_cols)
+      
+      datatable_with_colvis(summary_df, default_visible = visible_cols)
+    })
+    
+    # ======================================================
+    # ORIGINAL PITCHING PAGE PLOTS (keep for backward compatibility)
     # ======================================================
     
     output$campPitchButtons <- renderUI({
@@ -5361,6 +5648,15 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
     # ----- Plot data (pitching-only rows; optional player filter) -----
     pitch_df_for_plots <- reactive({
       df <- filtered_base()
+      
+      # Apply allowed campers filtering
+      allowed_campers <- load_allowed_campers()
+      if (nrow(allowed_campers) > 0) {
+        active_campers <- allowed_campers$player_name[allowed_campers$active == TRUE]
+        df <- dplyr::filter(df, Pitcher %in% active_campers)
+      }
+      
+      # Apply individual player selection
       if (!is.null(input$player) && input$player != "All") {
         df <- dplyr::filter(df, Pitcher == input$player)
       }

@@ -1,0 +1,5 @@
+# Allowed Campers Configuration
+player_name,display_name,active,notes
+"Smith, John",,"TRUE","Camp participant 2025"
+"Johnson, Mike",,"TRUE","Camp participant 2025"
+"Wilson, Chris",,"FALSE","Temporarily disabled"
