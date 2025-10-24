@@ -242,43 +242,89 @@ refresh_missing_pitch_keys <- function(con, mods_df, base_data) {
 write_modifications_snapshot <- function(con) {
   export_path <- get_modifications_export_path()
   if (!nzchar(export_path)) return()
+  
+  # Get all modifications from database
   mods <- try(dbGetQuery(con, "SELECT * FROM modifications ORDER BY created_at"), silent = TRUE)
   if (inherits(mods, "try-error") || !nrow(mods)) return()
+  
+  # Ensure export directory exists
   dir_path <- dirname(export_path)
   if (!dir.exists(dir_path)) {
     ok <- try(dir.create(dir_path, recursive = TRUE, showWarnings = FALSE), silent = TRUE)
     if (inherits(ok, "try-error") || !dir.exists(dir_path)) return()
   }
+  
+  # Write to temporary file first for atomic operation
   tmp <- tempfile(fileext = ".csv")
   on.exit(unlink(tmp), add = TRUE)
-  try(readr::write_csv(mods, tmp), silent = TRUE)
-  file.copy(tmp, export_path, overwrite = TRUE, copy.mode = TRUE)
+  
+  tryCatch({
+    # Write CSV with proper formatting
+    readr::write_csv(mods, tmp)
+    
+    # Atomic replace of export file
+    success <- file.copy(tmp, export_path, overwrite = TRUE, copy.mode = TRUE)
+    
+    if (success) {
+      cat("Successfully exported", nrow(mods), "modifications to", export_path, "\n")
+    } else {
+      warning("Failed to copy modifications export file")
+    }
+  }, error = function(e) {
+    warning("Error writing modifications snapshot: ", e$message)
+  })
 }
 
 import_modifications_from_export <- function(con, base_data) {
   export_path <- get_modifications_export_path()
   if (!file.exists(export_path)) return()
+  
+  # Read modifications from CSV export
   mods_csv <- try(readr::read_csv(export_path, show_col_types = FALSE), silent = TRUE)
   if (inherits(mods_csv, "try-error") || !nrow(mods_csv)) return()
+  
   mods_csv <- as.data.frame(mods_csv, stringsAsFactors = FALSE)
   if (!"pitch_key" %in% names(mods_csv)) mods_csv$pitch_key <- NA_character_
+  
+  # Attach pitch keys if missing
   mods_csv <- attach_pitch_keys_to_mods(mods_csv, base_data)
+  
+  # Get existing modifications from database
   existing <- try(dbGetQuery(con, "SELECT pitch_key FROM modifications"), silent = TRUE)
   existing_keys <- if (inherits(existing, "try-error")) character(0) else as.character(existing$pitch_key)
+  
+  # Find new rows (those not already in database)
   new_rows <- mods_csv[!(mods_csv$pitch_key %in% existing_keys), , drop = FALSE]
-  if (!nrow(new_rows)) return()
-  # Only persist the columns the modifications table expects; drop extras (e.g., raw pitch columns)
+  if (!nrow(new_rows)) {
+    cat("All modifications from export file already exist in database\n")
+    return()
+  }
+  
+  # Prepare data for database insertion
   expected_cols <- c(
     "pitcher", "date", "rel_speed", "horz_break", "induced_vert_break",
     "original_pitch_type", "new_pitch_type", "new_pitcher",
     "modified_at", "pitch_key", "created_at"
   )
+  
+  # Remove auto-increment id column if present
   new_rows$id <- NULL
+  
+  # Ensure all expected columns exist
   for (col in expected_cols) {
     if (!col %in% names(new_rows)) new_rows[[col]] <- NA
   }
+  
+  # Select only expected columns
   new_rows <- new_rows[, expected_cols, drop = FALSE]
-  dbWriteTable(con, "modifications", new_rows, append = TRUE)
+  
+  # Insert new modifications
+  tryCatch({
+    dbWriteTable(con, "modifications", new_rows, append = TRUE)
+    cat("Imported", nrow(new_rows), "new modifications from export file\n")
+  }, error = function(e) {
+    warning("Error importing modifications: ", e$message)
+  })
 }
 
 upload_media_cloudinary <- function(path) {
@@ -397,7 +443,20 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
     }
     dbWriteTable(con, "modifications", new_mods, append = TRUE)
     dbExecute(con, "COMMIT")
+    
+    # ENHANCED: Always update the export CSV after successful save
     write_modifications_snapshot(con)
+    
+    # Additional backup: create timestamped backup
+    export_path <- get_modifications_export_path()
+    if (file.exists(export_path) && nzchar(export_path)) {
+      backup_dir <- file.path(dirname(export_path), "backups")
+      dir.create(backup_dir, recursive = TRUE, showWarnings = FALSE)
+      timestamp <- format(Sys.time(), "%Y%m%d_%H%M%S")
+      backup_path <- file.path(backup_dir, paste0("pitch_modifications_", timestamp, ".csv"))
+      try(file.copy(export_path, backup_path), silent = TRUE)
+    }
+    
     list(success = TRUE, count = nrow(new_mods))
   }, error = function(e) {
     try(dbExecute(con, "ROLLBACK"), silent = TRUE)
