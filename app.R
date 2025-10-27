@@ -219,8 +219,8 @@ attach_pitch_keys_to_mods <- function(mods_df, base_data, tolerance = 0.5) {
     ivb_ok <- if (is.na(ivb_mod)) rep(TRUE, length(ivb_base)) else abs(ivb_base - ivb_mod) <= tol
     matches <- which(
       base$Pitcher == mod$pitcher &
-      as.character(base$Date) == as.character(mod$date) &
-      rel_ok & hb_ok & ivb_ok
+        as.character(base$Date) == as.character(mod$date) &
+        rel_ok & hb_ok & ivb_ok
     )
     if (length(matches)) mods_df$pitch_key[idx] <- base$PitchKey[matches[1]]
   }
@@ -532,10 +532,10 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
       if (!length(match_idx)) {
         match_idx <- which(
           temp_data$Pitcher == mod$pitcher &
-          temp_data$Date == mod$date &
-          abs(temp_data$RelSpeed - mod$rel_speed) < 0.1 &
-          abs(temp_data$HorzBreak - mod$horz_break) < 0.1 &
-          abs(temp_data$InducedVertBreak - mod$induced_vert_break) < 0.1
+            temp_data$Date == mod$date &
+            abs(temp_data$RelSpeed - mod$rel_speed) < 0.1 &
+            abs(temp_data$HorzBreak - mod$horz_break) < 0.1 &
+            abs(temp_data$InducedVertBreak - mod$induced_vert_break) < 0.1
         )
       }
       
@@ -543,8 +543,8 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
       if (length(match_idx) == 0) {
         match_idx <- which(
           temp_data$Pitcher == mod$pitcher &
-          temp_data$Date == mod$date &
-          abs(temp_data$RelSpeed - mod$rel_speed) < 0.5  # Slightly looser tolerance
+            temp_data$Date == mod$date &
+            abs(temp_data$RelSpeed - mod$rel_speed) < 0.5  # Slightly looser tolerance
         )
       }
       
@@ -562,23 +562,23 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
         
         if (verbose) {
           cat(sprintf("Applied: %s on %s - %s -> %s\n", 
-                     mod$pitcher, mod$date, mod$original_pitch_type, mod$new_pitch_type))
+                      mod$pitcher, mod$date, mod$original_pitch_type, mod$new_pitch_type))
         }
       } else {
         modifications_not_found <- modifications_not_found + 1
         if (verbose) {
           cat(sprintf("Could not find pitch to modify: %s on %s (%.1f mph)\n", 
-                     mod$pitcher, mod$date, mod$rel_speed))
+                      mod$pitcher, mod$date, mod$rel_speed))
         }
       }
     }
     
     if (verbose && modifications_applied > 0) {
       message(sprintf("Applied %d of %d stored pitch type modifications", 
-                     modifications_applied, nrow(mods)))
+                      modifications_applied, nrow(mods)))
       if (modifications_not_found > 0) {
         message(sprintf("Warning: %d modifications could not be applied (pitches not found)", 
-                       modifications_not_found))
+                        modifications_not_found))
       }
     }
     
@@ -2292,8 +2292,36 @@ ALLOWED_PITCHERS <- c(
 
 # CAMPS SUITE - Allowed campers for camps module
 ALLOWED_CAMPERS <- c(
-  "Gregory, Billy",
-  "Johns, Tanner"
+  "Bowman, Brock",
+  "Daniels, Tyke",
+  "Pearson, Blake",
+  "Rodriguez, Josiah",
+  "James, Brody",
+  "Nevarez, Matthew",
+  "Nunes, Nolan",
+  "Parks, Jaeden",
+  "Hill, Grant",
+  "McGinnis, Ayden",
+  "Morton, Ryker",
+  "McGuire, John",
+  "Willson, Brandon",
+  "Lauterbach, Camden",
+  "Turnquist, Dylan",
+  "Bournonville, Tanner",
+  "Evans, Lincoln",
+  "Gnirk, Will",
+  "Mann, Tyson",
+  "Neneman, Chase",
+  "Warmus, Joaquin",
+  "Kapadia, Taylor",
+  "Stoner, Timothy",
+  "Bergloff, Cameron",
+  "Hamm, Jacob",
+  "Hofmeister, Ben",
+  "Moo, Eriksen",
+  "Peltz, Zayden",
+  "Huff, Tyler",
+  "Moseman, Cody"
 )
 
 `%in_ci%` <- function(x, y) tolower(x) %in% tolower(y)
@@ -2322,8 +2350,19 @@ ALLOWED_PITCHERS_DL <- unique(c(
          ALLOWED_PITCHERS)
 ))
 
+# Also include ALLOWED_CAMPERS in the pitching dataset
+ALLOWED_CAMPERS_DL <- unique(c(
+  ALLOWED_CAMPERS,
+  ifelse(grepl(",", ALLOWED_CAMPERS),
+         paste0(trimws(sub(".*,", "", ALLOWED_CAMPERS)), " ", trimws(sub(",.*", "", ALLOWED_CAMPERS))),
+         ALLOWED_CAMPERS)
+))
+
+# Combine both allowed lists for the pitching dataset
+ALL_ALLOWED_PITCHERS <- unique(c(ALLOWED_PITCHERS_DL, ALLOWED_CAMPERS_DL))
+
 # Robust, case/spacing/punctuation-insensitive filter
-allowed_norm <- norm_name_ci(ALLOWED_PITCHERS_DL)
+allowed_norm <- norm_name_ci(ALL_ALLOWED_PITCHERS)
 pitch_data_pitching <- pitch_data_pitching %>%
   dplyr::mutate(.norm_raw  = norm_name_ci(Pitcher),
                 .norm_disp = norm_name_ci(.disp)) %>%
@@ -2691,8 +2730,8 @@ pitch_ui <- function(show_header = FALSE) {
         ),
         selectInput(
           "teamType", "Team:",
-          choices = c("GCU" = "GCU", "Campers" = "Campers"),
-          selected = "GCU"
+          choices = c("All" = "All", "GCU" = "GCU", "Campers" = "Campers"),
+          selected = "All"
         ),
         uiOutput("pitcher_ui"),
         dateRangeInput(
@@ -3046,8 +3085,8 @@ mod_hit_ui <- function(id, show_header = FALSE) {
         selectInput(ns("hitter"), "Select Hitter:", choices = c("All" = "All", batter_map), selected = "All"),
         selectInput(
           ns("teamType"), "Team:",
-          choices = c("GCU" = "GCU", "Campers" = "Campers"),
-          selected = "GCU"
+          choices = c("All" = "All", "GCU" = "GCU", "Campers" = "Campers"),
+          selected = "All"
         ),
         dateRangeInput(ns("dates"), "Date Range:",
                        start = min(pitch_data$Date, na.rm = TRUE),
@@ -3231,6 +3270,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE)) {
           # Filter to GCU allowed pitchers
           d <- dplyr::filter(d, Pitcher %in% ALLOWED_PITCHERS)
         }
+        # If "All" is selected, don't filter - show all data
       }
       d
     })
@@ -4260,8 +4300,8 @@ mod_catch_ui <- function(id, show_header = FALSE) {
         selectInput(ns("catcher"), "Select Catcher:", choices = c("All" = "All", catcher_map), selected = "All"),
         selectInput(
           ns("teamType"), "Team:",
-          choices = c("GCU" = "GCU", "Campers" = "Campers"),
-          selected = "GCU"
+          choices = c("All" = "All", "GCU" = "GCU", "Campers" = "Campers"),
+          selected = "All"
         ),
         dateRangeInput(ns("dates"), "Date Range:",
                        start = min(pitch_data$Date, na.rm = TRUE),
@@ -4478,6 +4518,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE)) {
           # Filter to GCU allowed pitchers
           df <- dplyr::filter(df, Pitcher %in% ALLOWED_PITCHERS)
         }
+        # If "All" is selected, don't filter - show all data
       }
       
       # ⛔️ Drop warmups & blank pitch types
@@ -5244,8 +5285,8 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
     # Camps data hooks (Camps-only)
     # ---------------------------
     get_camps_pitching <- function() {
-      # Use the main pitching dataset (pitch_data_pitching)
-      if (exists("pitch_data_pitching", inherits = TRUE)) return(get("pitch_data_pitching", inherits = TRUE))
+      # Use the unfiltered main dataset (pitch_data) for camps to be independent of ALLOWED_PITCHERS
+      if (exists("pitch_data", inherits = TRUE)) return(get("pitch_data", inherits = TRUE))
       if (exists("load_camps_pitching", inherits = TRUE)) return(get("load_camps_pitching", inherits = TRUE)())
       data.frame(Date = as.Date(character()),
                  Pitcher = character(), PitcherThrows = character(),
@@ -5314,11 +5355,11 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       d <- get_camps_pitching()
       d$Date <- as_date_any(d$Date)
       
-      # Filter by allowed campers
-      allowed_campers <- load_allowed_campers()
-      if (length(allowed_campers) > 0) {
-        d <- d[d$Pitcher %in% allowed_campers, ]
-      }
+      # TEMPORARY: Disable filtering to test
+      # allowed_campers <- load_allowed_campers()
+      # if (length(allowed_campers) > 0) {
+      #   d <- d[d$Pitcher %in% allowed_campers, ]
+      # }
       
       d
     })
@@ -5326,11 +5367,11 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       d <- get_camps_all()
       d$Date <- as_date_any(d$Date)
       
-      # Filter by allowed campers
-      allowed_campers <- load_allowed_campers()
-      if (length(allowed_campers) > 0) {
-        d <- d[d$Pitcher %in% allowed_campers, ]
-      }
+      # TEMPORARY: Disable filtering to test
+      # allowed_campers <- load_allowed_campers()
+      # if (length(allowed_campers) > 0) {
+      #   d <- d[d$Pitcher %in% allowed_campers, ]
+      # }
       
       d
     })
@@ -5340,19 +5381,20 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
     # ---------------------------
     observe({
       req(is_active())
-      # Player choices (from allowed campers only)
+      # Player choices (TEMPORARY: show all players for testing)
       d <- camps_all()
-      allowed_campers <- load_allowed_campers()
       
-      if (length(allowed_campers) > 0) {
-        # Use allowed campers list
-        player_choices <- c("All" = "All", setNames(allowed_campers, allowed_campers))
-      } else {
-        # Fallback to all players in data if no allowed campers configured
-        all_players <- unique(d$Pitcher)
-        all_players <- all_players[!is.na(all_players) & nzchar(all_players)]
-        player_choices <- c("All" = "All", setNames(all_players, all_players))
-      }
+      # TEMPORARY: Disable allowed campers filtering
+      # allowed_campers <- load_allowed_campers()
+      # if (length(allowed_campers) > 0) {
+      #   # Use allowed campers list
+      #   player_choices <- c("All" = "All", setNames(allowed_campers, allowed_campers))
+      # } else {
+      # Show all players in data for testing
+      all_players <- unique(d$Pitcher)
+      all_players <- all_players[!is.na(all_players) & nzchar(all_players)]
+      player_choices <- c("All" = "All", setNames(all_players, all_players))
+      # }
       
       updateSelectInput(session, "player", choices = player_choices)
       
@@ -5572,7 +5614,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
           data = avg_mov %>% dplyr::filter(TaggedPitchType %in% types_chr),
           aes(x = avg_HorzBreak, y = avg_InducedVertBreak, color = TaggedPitchType,
               tooltip = paste0(TaggedPitchType, "<br>IVB: ", round(avg_InducedVertBreak,1), 
-                              " in<br>HB: ", round(avg_HorzBreak,1), " in"),
+                               " in<br>HB: ", round(avg_HorzBreak,1), " in"),
               data_id = TaggedPitchType),
           size = 8, show.legend = FALSE
         ) +
@@ -5799,11 +5841,11 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
     pitch_df_for_plots <- reactive({
       df <- filtered_base()
       
-      # Apply allowed campers filtering
-      allowed_campers <- load_allowed_campers()
-      if (length(allowed_campers) > 0) {
-        df <- dplyr::filter(df, Pitcher %in% allowed_campers)
-      }
+      # TEMPORARY: Disable filtering to test
+      # allowed_campers <- load_allowed_campers()
+      # if (length(allowed_campers) > 0) {
+      #   df <- dplyr::filter(df, Pitcher %in% allowed_campers)
+      # }
       
       # Apply individual player selection
       if (!is.null(input$player) && input$player != "All") {
@@ -6379,7 +6421,7 @@ mod_leader_ui <- function(id, show_header = FALSE) {
     sidebarLayout(
       sidebarPanel(
         selectInput(ns("domain"), "Leaderboard Domain:", choices = c("Pitching","Hitting","Catching"), selected = "Pitching"),
-        selectInput(ns("teamType"), "Team:", choices = c("GCU", "Campers"), selected = "GCU"),
+        selectInput(ns("teamType"), "Team:", choices = c("All", "GCU", "Campers"), selected = "All"),
         
         # --- Common filters (apply to all domains) ---
         selectInput(ns("sessionType"), "Session Type:", choices = c("All","Bullpen","Live"), selected = "All"),
@@ -6534,7 +6576,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
           # Filter by pitcher for pitching/catching
           dplyr::filter(base, Pitcher %in% ALLOWED_CAMPERS)
         }
-      } else {
+      } else if (input$teamType == "GCU") {
         # GCU team
         if (identical(input$domain, "Hitting")) {
           # Filter by batter for hitting
@@ -6543,6 +6585,9 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
           # Filter by pitcher for pitching/catching
           dplyr::filter(base, Pitcher %in% ALLOWED_PITCHERS)
         }
+      } else {
+        # "All" - show all data, no filtering
+        base
       }
     })
     
@@ -7058,7 +7103,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
     sidebarLayout(
       sidebarPanel(
         selectInput(ns("domain"), "Player Type:", choices = c("Pitcher","Hitter","Catcher"), selected = "Pitcher"),
-        selectInput(ns("teamType"), "Team:", choices = c("GCU", "Campers"), selected = "GCU"),
+        selectInput(ns("teamType"), "Team:", choices = c("All", "GCU", "Campers"), selected = "All"),
         width = 2
       ),
       mainPanel(
@@ -7403,7 +7448,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE)) {
       if (!nrow(df)) return(df)
       
       # Add team filtering
-      team_type <- input$teamType %||% "GCU"
+      team_type <- input$teamType %||% "All"
       if (team_type == "Campers") {
         df <- switch(
           dom,
@@ -8230,8 +8275,8 @@ correlations_ui <- function() {
              # Team selection
              div(class = "correlation-controls",
                  selectInput("corr_teamType", "Team:",
-                             choices = c("GCU", "Campers"),
-                             selected = "GCU")
+                             choices = c("All", "GCU", "Campers"),
+                             selected = "All")
              ),
              
              # Date range
@@ -8882,7 +8927,7 @@ server <- function(input, output, session) {
     if (force_reload || check_data_freshness()) {
       if (verbose) {
         showNotification("Checking for stored pitch type modifications...", 
-                        type = "message", duration = 2)
+                         type = "message", duration = 2)
       }
       
       result <- load_pitch_modifications_db(pitch_data_pitching, verbose = verbose)
@@ -8895,13 +8940,13 @@ server <- function(input, output, session) {
       if (verbose && result$applied_count > 0) {
         showNotification(
           sprintf("Applied %d of %d stored pitch type modifications", 
-                 result$applied_count, result$total_modifications),
+                  result$applied_count, result$total_modifications),
           type = "message", duration = 5
         )
       } else if (verbose && result$total_modifications > 0) {
         showNotification(
           sprintf("Warning: %d stored modifications could not be applied (pitches not found)", 
-                 result$total_modifications - result$applied_count),
+                  result$total_modifications - result$applied_count),
           type = "warning", duration = 5
         )
       }
@@ -8933,10 +8978,10 @@ server <- function(input, output, session) {
   # Manual refresh button observer
   observeEvent(input$refreshModifications, {
     showNotification("Manually refreshing pitch type modifications...", 
-                    type = "message", duration = 2)
+                     type = "message", duration = 2)
     load_modifications(force_reload = TRUE, verbose = TRUE)
   })
-
+  
   output$downloadPitchMods <- downloadHandler(
     filename = function() paste0("pitch_type_modifications_", format(Sys.Date(), "%Y%m%d"), ".csv"),
     content = function(file) {
@@ -8966,7 +9011,7 @@ server <- function(input, output, session) {
     stats <- modification_stats()
     if (stats$total_modifications > 0) {
       sprintf("%d edits stored, %d applied", 
-             stats$total_modifications, stats$applied_count)
+              stats$total_modifications, stats$applied_count)
     } else {
       "No stored edits"
     }
@@ -9539,9 +9584,25 @@ server <- function(input, output, session) {
         raw_names_team
       )
       name_map_team <- setNames(raw_names_team, display_names_team)
+    } else if (input$teamType == "GCU") {
+      # Filter to only GCU allowed pitchers (exclude campers)
+      df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_PITCHERS)
+      raw_names_team <- sort(unique(df_base$Pitcher))
+      display_names_team <- ifelse(
+        grepl(",", raw_names_team),
+        vapply(strsplit(raw_names_team, ",\\s*"), function(x) paste(x[2], x[1]), ""),
+        raw_names_team
+      )
+      name_map_team <- setNames(raw_names_team, display_names_team)
     } else {
-      # Use existing GCU team (already filtered to ALLOWED_PITCHERS)
-      name_map_team <- name_map_pitching
+      # "All" - show all pitchers (both GCU and Campers)
+      raw_names_team <- sort(unique(df_base$Pitcher))
+      display_names_team <- ifelse(
+        grepl(",", raw_names_team),
+        vapply(strsplit(raw_names_team, ",\\s*"), function(x) paste(x[2], x[1]), ""),
+        raw_names_team
+      )
+      name_map_team <- setNames(raw_names_team, display_names_team)
     }
     
     sel_raw <- unique(df_base$Pitcher[norm_email(df_base$Email) == norm_email(user_email())]) %>% na.omit()
@@ -9575,7 +9636,10 @@ server <- function(input, output, session) {
     # Apply team filtering
     if (input$teamType == "Campers") {
       df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_CAMPERS)
+    } else if (input$teamType == "GCU") {
+      df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_PITCHERS)
     }
+    # If "All" is selected, don't filter - show all data
     
     last_date <- if (is.null(input$pitcher) || input$pitcher == "All") {
       max(df_base$Date, na.rm = TRUE)
@@ -11889,7 +11953,7 @@ server <- function(input, output, session) {
       title = paste("Edit Pitch Type for", nrow(selected_pitches), "pitch(es)"),
       selectInput("new_pitch_type", "New Pitch Type:",
                   choices = c("Fastball", "Sinker", "Cutter", "Slider", "Sweeper", 
-                             "Curveball", "ChangeUp", "Splitter", "Knuckleball"),
+                              "Curveball", "ChangeUp", "Splitter", "Knuckleball"),
                   selected = selected_pitches$TaggedPitchType[1]),
       selectInput("new_pitcher", "Assign To Pitcher:",
                   choices = pitcher_choices,
@@ -11902,8 +11966,8 @@ server <- function(input, output, session) {
           lapply(1:nrow(selected_pitches), function(i) {
             p <- selected_pitches[i, ]
             div(sprintf("Pitch %d: %s - %s (%.1f mph, HB: %.1f, IVB: %.1f)",
-                       i, p$TaggedPitchType, p$Date, 
-                       p$RelSpeed %||% 0, p$HorzBreak %||% 0, p$InducedVertBreak %||% 0))
+                        i, p$TaggedPitchType, p$Date, 
+                        p$RelSpeed %||% 0, p$HorzBreak %||% 0, p$InducedVertBreak %||% 0))
           })
         )
       } else {
@@ -11939,7 +12003,7 @@ server <- function(input, output, session) {
       title = paste("Edit Pitch Type for", nrow(selected_pitches), "pitch(es)"),
       selectInput("new_pitch_type_summary", "New Pitch Type:",
                   choices = c("Fastball", "Sinker", "Cutter", "Slider", "Sweeper", 
-                             "Curveball", "ChangeUp", "Splitter", "Knuckleball"),
+                              "Curveball", "ChangeUp", "Splitter", "Knuckleball"),
                   selected = selected_pitches$TaggedPitchType[1]),
       selectInput("new_pitcher_summary", "Assign To Pitcher:",
                   choices = pitcher_choices,
@@ -11952,8 +12016,8 @@ server <- function(input, output, session) {
           lapply(1:nrow(selected_pitches), function(i) {
             p <- selected_pitches[i, ]
             div(sprintf("Pitch %d: %s - %s (%.1f mph, HB: %.1f, IVB: %.1f)",
-                       i, p$TaggedPitchType, p$Date, 
-                       p$RelSpeed %||% 0, p$HorzBreak %||% 0, p$InducedVertBreak %||% 0))
+                        i, p$TaggedPitchType, p$Date, 
+                        p$RelSpeed %||% 0, p$HorzBreak %||% 0, p$InducedVertBreak %||% 0))
           })
         )
       } else {
@@ -12001,10 +12065,10 @@ server <- function(input, output, session) {
       p <- selected_pitches[i, ]
       match_idx <- which(
         updated_data$Pitcher == p$Pitcher &
-        updated_data$Date == p$Date &
-        abs(updated_data$RelSpeed - (p$RelSpeed %||% 0)) < 0.1 &
-        abs(updated_data$HorzBreak - (p$HorzBreak %||% 0)) < 0.1 &
-        abs(updated_data$InducedVertBreak - (p$InducedVertBreak %||% 0)) < 0.1
+          updated_data$Date == p$Date &
+          abs(updated_data$RelSpeed - (p$RelSpeed %||% 0)) < 0.1 &
+          abs(updated_data$HorzBreak - (p$HorzBreak %||% 0)) < 0.1 &
+          abs(updated_data$InducedVertBreak - (p$InducedVertBreak %||% 0)) < 0.1
       )
       if (length(match_idx) > 0) {
         updated_data$TaggedPitchType[match_idx] <- new_type
@@ -12079,10 +12143,10 @@ server <- function(input, output, session) {
       p <- selected_pitches[i, ]
       match_idx <- which(
         updated_data$Pitcher == p$Pitcher &
-        updated_data$Date == p$Date &
-        abs(updated_data$RelSpeed - (p$RelSpeed %||% 0)) < 0.1 &
-        abs(updated_data$HorzBreak - (p$HorzBreak %||% 0)) < 0.1 &
-        abs(updated_data$InducedVertBreak - (p$InducedVertBreak %||% 0)) < 0.1
+          updated_data$Date == p$Date &
+          abs(updated_data$RelSpeed - (p$RelSpeed %||% 0)) < 0.1 &
+          abs(updated_data$HorzBreak - (p$HorzBreak %||% 0)) < 0.1 &
+          abs(updated_data$InducedVertBreak - (p$InducedVertBreak %||% 0)) < 0.1
       )
       if (length(match_idx) > 0) {
         updated_data$TaggedPitchType[match_idx] <- new_type
@@ -13236,28 +13300,37 @@ server <- function(input, output, session) {
   observe({
     req(input$corr_domain, input$corr_teamType)
     
-    team_type <- input$corr_teamType %||% "GCU"
+    team_type <- input$corr_teamType %||% "All"
     
     if (input$corr_domain == "Pitching") {
       # Filter by team selection
       if (team_type == "Campers") {
         players <- sort(intersect(ALLOWED_CAMPERS, unique(pitch_data_pitching$Pitcher)))
-      } else {
+      } else if (team_type == "GCU") {
         players <- sort(intersect(ALLOWED_PITCHERS, unique(pitch_data_pitching$Pitcher)))
+      } else {
+        # "All" - show all players
+        players <- sort(unique(pitch_data_pitching$Pitcher))
       }
     } else if (input$corr_domain == "Hitting") {
       # Filter by team selection
       if (team_type == "Campers") {
         players <- sort(intersect(ALLOWED_CAMPERS, unique(na.omit(as.character(pitch_data$Batter)))))
-      } else {
+      } else if (team_type == "GCU") {
         players <- sort(intersect(ALLOWED_PITCHERS, unique(na.omit(as.character(pitch_data$Batter)))))
+      } else {
+        # "All" - show all players
+        players <- sort(unique(na.omit(as.character(pitch_data$Batter))))
       }
     } else if (input$corr_domain == "Catching") {
       # Filter by team selection
       if (team_type == "Campers") {
         players <- sort(intersect(ALLOWED_CAMPERS, unique(na.omit(as.character(pitch_data$Catcher)))))
-      } else {
+      } else if (team_type == "GCU") {
         players <- sort(intersect(ALLOWED_PITCHERS, unique(na.omit(as.character(pitch_data$Catcher)))))
+      } else {
+        # "All" - show all players
+        players <- sort(unique(na.omit(as.character(pitch_data$Catcher))))
       }
     } else {
       players <- c()
@@ -13423,17 +13496,18 @@ server <- function(input, output, session) {
     }
     
     # Apply team filtering based on Team selector
-    team_type <- input$corr_teamType %||% "GCU"
+    team_type <- input$corr_teamType %||% "All"
     if (team_type == "Campers") {
       data_before_team <- nrow(data)
       data <- data %>% dplyr::filter(!!rlang::sym(player_col) %in% ALLOWED_CAMPERS)
       cat("Campers filter applied: ", data_before_team, "->", nrow(data), "\n")
-    } else {
+    } else if (team_type == "GCU") {
       # GCU team
       data_before_team <- nrow(data)
       data <- data %>% dplyr::filter(!!rlang::sym(player_col) %in% ALLOWED_PITCHERS)
-      cat("GCU team filter applied: ", data_before_team, "->", nrow(data), "\n")
+      cat("GCU filter applied: ", data_before_team, "->", nrow(data), "\n")
     }
+    # If "All" is selected, don't filter - show all data
     
     # Apply filters
     if (!is.null(input$corr_date_range)) {
