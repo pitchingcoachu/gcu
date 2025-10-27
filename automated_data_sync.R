@@ -10,6 +10,8 @@ library(dplyr)
 library(lubridate)
 library(stringr)
 
+# Load CSV filtering utilities
+source("csv_filter_utils.R")
 # FTP credentials
 FTP_HOST <- "ftp.trackmanbaseball.com"
 FTP_USER <- "GrandCanyon"
@@ -39,6 +41,11 @@ list_ftp_files <- function(ftp_path) {
 
 # Function to download CSV file (no filtering - app will handle filtering)
 download_csv <- function(remote_file, local_file) {
+  # Check if this file should be excluded
+  filename <- basename(remote_file)
+  if (should_exclude_csv(filename)) {
+    return(FALSE)
+  }
   # Skip if file already exists (incremental sync)
   if (file.exists(local_file)) {
     cat("Skipping existing file:", basename(local_file), "\n")
