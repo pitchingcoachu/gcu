@@ -7274,7 +7274,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
         # Helper function for innings pitched calculation
         ip_calculation <- function(pitches_data) {
           outs <- sum(pitches_data$KorBB == "Strikeout", na.rm = TRUE) + 
-            sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
+                  sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
           innings <- outs / 3
           whole_innings <- floor(innings)
           remaining_outs <- outs %% 3
@@ -7289,8 +7289,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
           all_ip <- ip_calculation(dfi)
           all_p <- nrow(dfi)
           all_bf <- sum(dfi$Balls == 0 & dfi$Strikes == 0, na.rm = TRUE)
-          all_h <- sum(dfi$TaggedHitType %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE)
-          all_xbh <- sum(dfi$TaggedHitType %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE)
+          all_h <- sum(dfi$PlayResult %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE)
+          all_xbh <- sum(dfi$PlayResult %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE)
           all_barrels <- sum(dfi$ExitSpeed >= 95 & dfi$Angle >= 10 & dfi$Angle <= 35, na.rm = TRUE)
           all_bb <- sum(dfi$KorBB == "Walk", na.rm = TRUE)
           all_hbp <- sum(dfi$PlayResult == "HitByPitch", na.rm = TRUE)
@@ -7346,160 +7346,160 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
       } else {
         # Normal mode processing
         
-        build_all_row <- function(df) {
-          safe_pct <- function(num, den) {
-            num <- suppressWarnings(as.numeric(num)); den <- suppressWarnings(as.numeric(den))
-            ifelse(is.finite(den) & den > 0 & is.finite(num), paste0(round(100*num/den, 1), "%"), "")
-          }
-          nz_mean_local <- function(x) { x <- suppressWarnings(as.numeric(x)); m <- mean(x, na.rm = TRUE); if (is.finite(m)) m else NA_real_ }
-          
-          scores <- ifelse(
-            df$PlateLocSide >= ZONE_LEFT & df$PlateLocSide <= ZONE_RIGHT &
-              df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP, 1.47,
-            ifelse(
-              df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
-                df$PlateLocHeight >= (2.65-1.5) & df$PlateLocHeight <= (2.65+1.5),
-              0.73, 0
-            )
-          )
-          has_pc  <- sum(!is.na(df$PitchCall)) > 0
-          strikes <- sum(df$PitchCall %in% c("StrikeCalled","StrikeSwinging","FoulBallNotFieldable","InPlay","FoulBallFieldable"), na.rm = TRUE)
-          sw      <- sum(df$PitchCall == "StrikeSwinging", na.rm = TRUE)
-          den     <- sum(df$PitchCall %in% c("StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay"), na.rm = TRUE)
-          csw_all  <- sum(df$PitchCall %in% c("StrikeCalled","StrikeSwinging"), na.rm = TRUE)
-          
-          bf_live <- sum(df$SessionType == "Live" & df$Balls == 0 & df$Strikes == 0, na.rm = TRUE)
-          k_live  <- sum(df$SessionType == "Live" & df$KorBB == "Strikeout",        na.rm = TRUE)
-          bb_live <- sum(df$SessionType == "Live" & df$KorBB == "Walk",             na.rm = TRUE)
-          fps_live <- sum(df$SessionType == "Live" &
-                            df$Balls == 0 & df$Strikes == 0 &
-                            df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"),
-                          na.rm = TRUE)
-          ea_live  <- sum(df$SessionType == "Live" & (
-            (df$Balls == 0 & df$Strikes == 0 & df$PitchCall == "InPlay") |
-              (df$Balls == 0 & df$Strikes == 1 & df$PitchCall %in% c(
-                "InPlay", "StrikeCalled", "StrikeSwinging", "FoulBallNotFieldable", "FoulBallFieldable"
-              )) |
-              (df$Balls == 1 & df$Strikes == 0 & df$PitchCall == "InPlay") |
-              (df$Balls == 1 & df$Strikes == 1 & df$PitchCall %in% c(
-                "InPlay", "StrikeCalled", "StrikeSwinging", "FoulBallNotFieldable", "FoulBallFieldable"
-              ))
-          ),
-          na.rm = TRUE
-          )
-          
-          vmax   <- suppressWarnings(max(as.numeric(df$RelSpeed), na.rm = TRUE)); vmax <- if (is.finite(vmax)) round(vmax, 1) else NA_real_
-          ev_all <- nz_mean_local(ifelse(df$SessionType=="Live", df$ExitSpeed, NA_real_))
-          la_all <- nz_mean_local(ifelse(df$SessionType=="Live", df$Angle,     NA_real_))
-          stuff_all <- round(nz_mean_local(df$`Stuff+`), 1)
-          ctrl_all   <- round(nz_mean_local(scores) * 100, 1)
-          qp_all    <- round(nz_mean_local(compute_qp_points(df)) * 200, 1)
-          
-          tibble::tibble(
-            `#`            = nrow(df),
-            Usage          = "100%",
-            BF             = bf_live,
-            Velo           = round(nz_mean_local(df$RelSpeed), 1),
-            Max            = vmax,
-            IVB            = round(nz_mean_local(df$InducedVertBreak), 1),
-            HB             = round(nz_mean_local(df$HorzBreak), 1),
-            rTilt          = convert_to_clock(nz_mean_local(df$ReleaseTilt)),
-            bTilt          = convert_to_clock(nz_mean_local(df$BreakTilt)),
-            SpinEff        = { v <- nz_mean_local(df$SpinEfficiency); if (is.na(v)) "" else paste0(round(v*100,1), "%") },
-            Spin           = round(nz_mean_local(df$SpinRate), 0),
-            Height         = round(nz_mean_local(df$RelHeight), 1),
-            Side           = round(nz_mean_local(df$RelSide), 1),
-            VAA            = round(nz_mean_local(df$VertApprAngle), 1),
-            HAA            = round(nz_mean_local(df$HorzApprAngle), 1),
-            Ext            = round(nz_mean_local(df$Extension), 1),
-            `InZone%`      = { inzone <- (df$PlateLocSide >= ZONE_LEFT & df$PlateLocSide <= ZONE_RIGHT &
-                                            df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP);
-            safe_pct(sum(inzone, na.rm = TRUE), sum(!is.na(inzone))) },
-            `Comp%`        = { comp <- (df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
-                                          df$PlateLocHeight >= (2.65-1.5) & df$PlateLocHeight <= (2.65+1.5));
-            safe_pct(sum(comp, na.rm = TRUE), sum(!is.na(comp))) },
-            `Strike%`      = if (has_pc) safe_pct(strikes, nrow(df)) else "",
-            `FPS%`         = safe_pct(fps_live, bf_live),
-            `E+A%`         = safe_pct(ea_live,  bf_live),
-            `K%`           = safe_pct(k_live,   bf_live),
-            `BB%`          = safe_pct(bb_live,  bf_live),
-            `Whiff%`       = safe_pct(sw, den),
-            `CSW%`   = if (has_pc) safe_pct(csw_all, nrow(df)) else "",
-            EV = round(ev_all, 1),
-            LA = round(la_all, 1),
-            `Stuff+`       = stuff_all,
-            `Ctrl+`        = ctrl_all,
-            `QP+`          = qp_all,
-            `Pitching+`    = round((stuff_all + qp_all)/2, 1)
-          )
+      build_all_row <- function(df) {
+        safe_pct <- function(num, den) {
+          num <- suppressWarnings(as.numeric(num)); den <- suppressWarnings(as.numeric(den))
+          ifelse(is.finite(den) & den > 0 & is.finite(num), paste0(round(100*num/den, 1), "%"), "")
         }
+        nz_mean_local <- function(x) { x <- suppressWarnings(as.numeric(x)); m <- mean(x, na.rm = TRUE); if (is.finite(m)) m else NA_real_ }
         
-        custom <- input$lbCustomCols; if (is.null(custom)) custom <- character(0)
-        original_data <- if (identical(mode, "Usage")) filtered_lb_before_pitch_type() else NULL
-        
-        rows <- lapply(by_player, function(dfi) {
-          base_row <- build_all_row(dfi)
-          extras_all <- compute_process_results(dfi) %>%
-            dplyr::filter(PitchType == "All") %>%
-            dplyr::select(IP, BABIP, `GB%`, `Barrel%`, AVG, SLG, xWOBA, xISO, FIP, WHIP)
-          if (!nrow(extras_all)) {
-            extras_all <- tibble::tibble(
-              IP = NA_real_, BABIP = NA_real_, `GB%` = NA_real_, `Barrel%` = NA_real_,
-              AVG = NA_real_, SLG = NA_real_, xWOBA = NA_real_, xISO = NA_real_,
-              FIP = NA_real_, WHIP = NA_real_
-            )
-          }
-          out_row <- dplyr::bind_cols(
-            tibble::tibble(Player = as.character(dfi[[player_col]][1])),
-            base_row,
-            extras_all
+        scores <- ifelse(
+          df$PlateLocSide >= ZONE_LEFT & df$PlateLocSide <= ZONE_RIGHT &
+            df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP, 1.47,
+          ifelse(
+            df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
+              df$PlateLocHeight >= (2.65-1.5) & df$PlateLocHeight <= (2.65+1.5),
+            0.73, 0
           )
-          if (identical(mode, "Usage")) {
-            player_val <- as.character(dfi[[player_col]][1])
-            original_player <- if (!is.null(original_data)) {
-              original_data[original_data[[player_col]] == player_val, , drop = FALSE]
-            } else NULL
-            usage_cols <- compute_usage_by_count(dfi, original_player) %>%
-              dplyr::filter(tolower(PitchType) == "all") %>%
-              dplyr::select(`0-0`,`Behind`,`Even`,`Ahead`,`<2K`,`2K`)
-            if (!nrow(usage_cols)) {
-              usage_cols <- tibble::tibble(`0-0` = "", Behind = "", Even = "", Ahead = "", `<2K` = "", `2K` = "")
-            }
-            out_row <- dplyr::bind_cols(out_row, usage_cols)
-          }
-          out_row
-        })
-        
-        out_tbl <- dplyr::bind_rows(rows) %>% dplyr::relocate(Player)
-        visible_set <- visible_set_for_lb(mode, custom)
-        
-        if ("Pitching+" %in% names(out_tbl)) {
-          suppressWarnings(out_tbl <- out_tbl %>% dplyr::arrange(dplyr::desc(as.numeric(`Pitching+`))))
-        }
-        
-        # Add error handling wrapper for leaderboard table
-        build_lb_dt <- function(data, ...) {
-          tryCatch(
-            datatable_with_colvis(data, ...),
-            error = function(e) {
-              message("lbTable datatable error [mode=", mode, "]: ", conditionMessage(e))
-              message("Columns: ", paste(names(data), collapse = ", "))
-              # Return a fallback datatable with error message
-              DT::datatable(
-                data.frame(Error = paste("Table rendering error:", conditionMessage(e))),
-                options = list(dom = 't'), rownames = FALSE
-              )
-            }
-          )
-        }
-        
-        build_lb_dt(
-          out_tbl,
-          lock            = "Player",
-          remember        = FALSE,
-          default_visible = intersect(visible_set, names(out_tbl)),
-          mode            = mode
         )
+        has_pc  <- sum(!is.na(df$PitchCall)) > 0
+        strikes <- sum(df$PitchCall %in% c("StrikeCalled","StrikeSwinging","FoulBallNotFieldable","InPlay","FoulBallFieldable"), na.rm = TRUE)
+        sw      <- sum(df$PitchCall == "StrikeSwinging", na.rm = TRUE)
+        den     <- sum(df$PitchCall %in% c("StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay"), na.rm = TRUE)
+        csw_all  <- sum(df$PitchCall %in% c("StrikeCalled","StrikeSwinging"), na.rm = TRUE)
+        
+        bf_live <- sum(df$SessionType == "Live" & df$Balls == 0 & df$Strikes == 0, na.rm = TRUE)
+        k_live  <- sum(df$SessionType == "Live" & df$KorBB == "Strikeout",        na.rm = TRUE)
+        bb_live <- sum(df$SessionType == "Live" & df$KorBB == "Walk",             na.rm = TRUE)
+        fps_live <- sum(df$SessionType == "Live" &
+                          df$Balls == 0 & df$Strikes == 0 &
+                          df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"),
+                        na.rm = TRUE)
+        ea_live  <- sum(df$SessionType == "Live" & (
+          (df$Balls == 0 & df$Strikes == 0 & df$PitchCall == "InPlay") |
+            (df$Balls == 0 & df$Strikes == 1 & df$PitchCall %in% c(
+              "InPlay", "StrikeCalled", "StrikeSwinging", "FoulBallNotFieldable", "FoulBallFieldable"
+            )) |
+            (df$Balls == 1 & df$Strikes == 0 & df$PitchCall == "InPlay") |
+            (df$Balls == 1 & df$Strikes == 1 & df$PitchCall %in% c(
+              "InPlay", "StrikeCalled", "StrikeSwinging", "FoulBallNotFieldable", "FoulBallFieldable"
+            ))
+        ),
+        na.rm = TRUE
+        )
+        
+        vmax   <- suppressWarnings(max(as.numeric(df$RelSpeed), na.rm = TRUE)); vmax <- if (is.finite(vmax)) round(vmax, 1) else NA_real_
+        ev_all <- nz_mean_local(ifelse(df$SessionType=="Live", df$ExitSpeed, NA_real_))
+        la_all <- nz_mean_local(ifelse(df$SessionType=="Live", df$Angle,     NA_real_))
+        stuff_all <- round(nz_mean_local(df$`Stuff+`), 1)
+        ctrl_all   <- round(nz_mean_local(scores) * 100, 1)
+        qp_all    <- round(nz_mean_local(compute_qp_points(df)) * 200, 1)
+        
+        tibble::tibble(
+          `#`            = nrow(df),
+          Usage          = "100%",
+          BF             = bf_live,
+          Velo           = round(nz_mean_local(df$RelSpeed), 1),
+          Max            = vmax,
+          IVB            = round(nz_mean_local(df$InducedVertBreak), 1),
+          HB             = round(nz_mean_local(df$HorzBreak), 1),
+          rTilt          = convert_to_clock(nz_mean_local(df$ReleaseTilt)),
+          bTilt          = convert_to_clock(nz_mean_local(df$BreakTilt)),
+          SpinEff        = { v <- nz_mean_local(df$SpinEfficiency); if (is.na(v)) "" else paste0(round(v*100,1), "%") },
+          Spin           = round(nz_mean_local(df$SpinRate), 0),
+          Height         = round(nz_mean_local(df$RelHeight), 1),
+          Side           = round(nz_mean_local(df$RelSide), 1),
+          VAA            = round(nz_mean_local(df$VertApprAngle), 1),
+          HAA            = round(nz_mean_local(df$HorzApprAngle), 1),
+          Ext            = round(nz_mean_local(df$Extension), 1),
+          `InZone%`      = { inzone <- (df$PlateLocSide >= ZONE_LEFT & df$PlateLocSide <= ZONE_RIGHT &
+                                          df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP);
+          safe_pct(sum(inzone, na.rm = TRUE), sum(!is.na(inzone))) },
+          `Comp%`        = { comp <- (df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
+                                        df$PlateLocHeight >= (2.65-1.5) & df$PlateLocHeight <= (2.65+1.5));
+          safe_pct(sum(comp, na.rm = TRUE), sum(!is.na(comp))) },
+          `Strike%`      = if (has_pc) safe_pct(strikes, nrow(df)) else "",
+          `FPS%`         = safe_pct(fps_live, bf_live),
+          `E+A%`         = safe_pct(ea_live,  bf_live),
+          `K%`           = safe_pct(k_live,   bf_live),
+          `BB%`          = safe_pct(bb_live,  bf_live),
+          `Whiff%`       = safe_pct(sw, den),
+          `CSW%`   = if (has_pc) safe_pct(csw_all, nrow(df)) else "",
+          EV = round(ev_all, 1),
+          LA = round(la_all, 1),
+          `Stuff+`       = stuff_all,
+          `Ctrl+`        = ctrl_all,
+          `QP+`          = qp_all,
+          `Pitching+`    = round((stuff_all + qp_all)/2, 1)
+        )
+      }
+      
+      custom <- input$lbCustomCols; if (is.null(custom)) custom <- character(0)
+      original_data <- if (identical(mode, "Usage")) filtered_lb_before_pitch_type() else NULL
+      
+      rows <- lapply(by_player, function(dfi) {
+        base_row <- build_all_row(dfi)
+        extras_all <- compute_process_results(dfi) %>%
+          dplyr::filter(PitchType == "All") %>%
+          dplyr::select(IP, BABIP, `GB%`, `Barrel%`, AVG, SLG, xWOBA, xISO, FIP, WHIP)
+        if (!nrow(extras_all)) {
+          extras_all <- tibble::tibble(
+            IP = NA_real_, BABIP = NA_real_, `GB%` = NA_real_, `Barrel%` = NA_real_,
+            AVG = NA_real_, SLG = NA_real_, xWOBA = NA_real_, xISO = NA_real_,
+            FIP = NA_real_, WHIP = NA_real_
+          )
+        }
+        out_row <- dplyr::bind_cols(
+          tibble::tibble(Player = as.character(dfi[[player_col]][1])),
+          base_row,
+          extras_all
+        )
+        if (identical(mode, "Usage")) {
+          player_val <- as.character(dfi[[player_col]][1])
+          original_player <- if (!is.null(original_data)) {
+            original_data[original_data[[player_col]] == player_val, , drop = FALSE]
+          } else NULL
+          usage_cols <- compute_usage_by_count(dfi, original_player) %>%
+            dplyr::filter(tolower(PitchType) == "all") %>%
+            dplyr::select(`0-0`,`Behind`,`Even`,`Ahead`,`<2K`,`2K`)
+          if (!nrow(usage_cols)) {
+            usage_cols <- tibble::tibble(`0-0` = "", Behind = "", Even = "", Ahead = "", `<2K` = "", `2K` = "")
+          }
+          out_row <- dplyr::bind_cols(out_row, usage_cols)
+        }
+        out_row
+      })
+      
+      out_tbl <- dplyr::bind_rows(rows) %>% dplyr::relocate(Player)
+      visible_set <- visible_set_for_lb(mode, custom)
+      
+      if ("Pitching+" %in% names(out_tbl)) {
+        suppressWarnings(out_tbl <- out_tbl %>% dplyr::arrange(dplyr::desc(as.numeric(`Pitching+`))))
+      }
+      
+      # Add error handling wrapper for leaderboard table
+      build_lb_dt <- function(data, ...) {
+        tryCatch(
+          datatable_with_colvis(data, ...),
+          error = function(e) {
+            message("lbTable datatable error [mode=", mode, "]: ", conditionMessage(e))
+            message("Columns: ", paste(names(data), collapse = ", "))
+            # Return a fallback datatable with error message
+            DT::datatable(
+              data.frame(Error = paste("Table rendering error:", conditionMessage(e))),
+              options = list(dom = 't'), rownames = FALSE
+            )
+          }
+        )
+      }
+      
+      build_lb_dt(
+        out_tbl,
+        lock            = "Player",
+        remember        = FALSE,
+        default_visible = intersect(visible_set, names(out_tbl)),
+        mode            = mode
+      )
       } # End of else block for normal modes
     }, server = FALSE)
     
@@ -8761,7 +8761,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE)) {
         # Helper function for innings pitched calculation
         ip_calculation <- function(pitches_data) {
           outs <- sum(pitches_data$KorBB == "Strikeout", na.rm = TRUE) + 
-            sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
+                  sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
           innings <- outs / 3
           whole_innings <- floor(innings)
           remaining_outs <- outs %% 3
@@ -8778,8 +8778,8 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE)) {
             IP = ip_calculation(dplyr::cur_data_all()),
             P = dplyr::n(),
             BF = sum(Balls == 0 & Strikes == 0, na.rm = TRUE),
-            H = sum(TaggedHitType %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE),
-            XBH = sum(TaggedHitType %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE),
+            H = sum(PlayResult %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE),
+            XBH = sum(PlayResult %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE),
             Barrels = sum(ExitSpeed >= 95 & Angle >= 10 & Angle <= 35, na.rm = TRUE),
             BB = sum(KorBB == "Walk", na.rm = TRUE),
             HBP = sum(PlayResult == "HitByPitch", na.rm = TRUE),
@@ -8794,8 +8794,8 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE)) {
         all_ip <- ip_calculation(df)
         all_p <- nrow(df)
         all_bf <- sum(df$Balls == 0 & df$Strikes == 0, na.rm = TRUE)
-        all_h <- sum(df$TaggedHitType %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE)
-        all_xbh <- sum(df$TaggedHitType %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE)
+        all_h <- sum(df$PlayResult %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE)
+        all_xbh <- sum(df$PlayResult %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE)
         all_barrels <- sum(df$ExitSpeed >= 95 & df$Angle >= 10 & df$Angle <= 35, na.rm = TRUE)
         all_bb <- sum(df$KorBB == "Walk", na.rm = TRUE)
         all_hbp <- sum(df$PlayResult == "HitByPitch", na.rm = TRUE)
@@ -11635,7 +11635,7 @@ server <- function(input, output, session) {
         # Helper function for innings pitched calculation
         ip_calculation <- function(pitches_data) {
           outs <- sum(pitches_data$KorBB == "Strikeout", na.rm = TRUE) + 
-            sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
+                  sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
           innings <- outs / 3
           whole_innings <- floor(innings)
           remaining_outs <- outs %% 3
@@ -11652,8 +11652,8 @@ server <- function(input, output, session) {
             IP = ip_calculation(dplyr::cur_data_all()),
             P = dplyr::n(),
             BF = sum(Balls == 0 & Strikes == 0, na.rm = TRUE),
-            H = sum(TaggedHitType %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE),
-            XBH = sum(TaggedHitType %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE),
+            H = sum(PlayResult %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE),
+            XBH = sum(PlayResult %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE),
             Barrels = sum(ExitSpeed >= 95 & Angle >= 10 & Angle <= 35, na.rm = TRUE),
             BB = sum(KorBB == "Walk", na.rm = TRUE),
             HBP = sum(PlayResult == "HitByPitch", na.rm = TRUE),
@@ -11668,8 +11668,8 @@ server <- function(input, output, session) {
         all_ip <- ip_calculation(df)
         all_p <- nrow(df)
         all_bf <- sum(df$Balls == 0 & df$Strikes == 0, na.rm = TRUE)
-        all_h <- sum(df$TaggedHitType %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE)
-        all_xbh <- sum(df$TaggedHitType %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE)
+        all_h <- sum(df$PlayResult %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE)
+        all_xbh <- sum(df$PlayResult %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE)
         all_barrels <- sum(df$ExitSpeed >= 95 & df$Angle >= 10 & df$Angle <= 35, na.rm = TRUE)
         all_bb <- sum(df$KorBB == "Walk", na.rm = TRUE)
         all_hbp <- sum(df$PlayResult == "HitByPitch", na.rm = TRUE)
