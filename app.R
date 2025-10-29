@@ -1504,10 +1504,9 @@ make_session_logs_table <- function(df) {
         `E+A%`   = .s_fmt_pct1(
           sum(d$SessionType=="Live" & (
             (d$Balls==0 & d$Strikes==0 & d$PitchCall=="InPlay") |
-              (d$Balls==0 & d$Strikes==1 & d$PitchCall %in% c("InPlay","FoulBallNotFieldable")) |
+              (d$Balls==0 & d$Strikes==1 & d$PitchCall %in% c("InPlay","FoulBallNotFieldable", "FoulBallFieldable","StrikeSwinging","StrikeCalled")) |
               (d$Balls==1 & d$Strikes==0 & d$PitchCall=="InPlay") |
-              (d$Balls==1 & d$Strikes==1 & d$PitchCall %in% c("InPlay","FoulBallNotFieldable")) |
-              (d$Balls==0 & d$Strikes==2 & d$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled"))
+              (d$Balls==1 & d$Strikes==1 & d$PitchCall %in% c("InPlay","FoulBallNotFieldable","StrikeSwinging","StrikeCalled", "FoulBallFieldable"))
           ), na.rm = TRUE),
           sum(d$SessionType=="Live" & d$Balls==0 & d$Strikes==0, na.rm = TRUE)
         ),
@@ -2985,12 +2984,12 @@ nz_mean <- function(x) {
       ),
       FPSPercent     = safe_div(
         sum(SessionType == "Live" & Balls == 0 & Strikes == 0 &
-              PitchCall %in% c("InPlay","StrikeSwinging","FoulBallNotFieldable","StrikeCalled"), na.rm = TRUE),
+              PitchCall %in% c("InPlay","StrikeSwinging","FoulBallNotFieldable","StrikeCalled","FoulBallFieldable"), na.rm = TRUE),
         BF_live
       ),
       EAPercent      = safe_div(
         sum(SessionType == "Live" & Balls == 0 & Strikes == 0 &
-              PitchCall %in% c("InPlay","StrikeSwinging","FoulBallNotFieldable"), na.rm = TRUE),
+              PitchCall %in% c("InPlay","StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable"), na.rm = TRUE),
         BF_live
       ),
       KPercent       = safe_div(sum(SessionType == "Live" & KorBB == "Strikeout", na.rm = TRUE), BF_live),
@@ -3130,7 +3129,7 @@ make_summary <- function(df) {
       BBPercent = safe_pct(BB_all, BF_all),
       
       FPS_all = sum(!is.na(Balls) & !is.na(Strikes) & Balls == 0 & Strikes == 0 &
-                      !is.na(PitchCall) & PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBall"), na.rm = TRUE),
+                      !is.na(PitchCall) & PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBall","FoulBallFieldable"), na.rm = TRUE),
       EA_all  = sum(
         (!is.na(Balls) & !is.na(Strikes) & !is.na(PitchCall)) & (
           (Balls == 0 & Strikes == 0 & PitchCall == "InPlay") |
@@ -6523,7 +6522,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
         bb_live <- sum(df$SessionType == "Live" & df$KorBB == "Walk",             na.rm = TRUE)
         fps_live <- sum(df$SessionType == "Live" &
                           df$Balls == 0 & df$Strikes == 0 &
-                          df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable"),
+                          df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"),
                         na.rm = TRUE)
         ea_live  <- sum(df$SessionType == "Live" & (
           (df$Balls == 0 & df$Strikes == 0 & df$PitchCall == "InPlay") |
@@ -7296,7 +7295,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
         bb_live <- sum(df$SessionType == "Live" & df$KorBB == "Walk",             na.rm = TRUE)
         fps_live <- sum(df$SessionType == "Live" &
                           df$Balls == 0 & df$Strikes == 0 &
-                          df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable"),
+                          df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"),
                         na.rm = TRUE)
         ea_live  <- sum(df$SessionType == "Live" & (
           (df$Balls == 0 & df$Strikes == 0 & df$PitchCall == "InPlay") |
@@ -8753,7 +8752,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE)) {
       k_live  <- sum(df$SessionType == "Live" & df$KorBB == "Strikeout",        na.rm = TRUE)
       bb_live <- sum(df$SessionType == "Live" & df$KorBB == "Walk",             na.rm = TRUE)
       fps_live <- sum(df$SessionType == "Live" & df$Balls == 0 & df$Strikes == 0 &
-                        df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable"), na.rm = TRUE)
+                        df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"), na.rm = TRUE)
       ea_live  <- sum(df$SessionType == "Live" & (
         (df$Balls == 0 & df$Strikes == 0 & df$PitchCall == "InPlay") |
           (df$Balls == 0 & df$Strikes == 1 & df$PitchCall %in% c(
@@ -11508,7 +11507,7 @@ server <- function(input, output, session) {
           k_live  <- sum(df$SessionType == "Live" & df$KorBB == "Strikeout",        na.rm = TRUE)
           bb_live <- sum(df$SessionType == "Live" & df$KorBB == "Walk",             na.rm = TRUE)
           fps_live <- sum(df$SessionType == "Live" & df$Balls == 0 & df$Strikes == 0 &
-                            df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable"), na.rm = TRUE)
+                            df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"), na.rm = TRUE)
           ea_live  <- sum(df$SessionType == "Live" & (
             (df$Balls == 0 & df$Strikes == 0 & df$PitchCall == "InPlay") |
               (df$Balls == 0 & df$Strikes == 1 & df$PitchCall %in% c(
@@ -12019,7 +12018,7 @@ server <- function(input, output, session) {
         k_live  <- sum(df$SessionType == "Live" & df$KorBB == "Strikeout",        na.rm = TRUE)
         bb_live <- sum(df$SessionType == "Live" & df$KorBB == "Walk",             na.rm = TRUE)
         fps_live <- sum(df$SessionType == "Live" & df$Balls == 0 & df$Strikes == 0 &
-                          df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable"), na.rm = TRUE)
+                          df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"), na.rm = TRUE)
         ea_live  <- sum(df$SessionType == "Live" & (
           (df$Balls == 0 & df$Strikes == 0 & df$PitchCall == "InPlay") |
             (df$Balls == 0 & df$Strikes == 1 & df$PitchCall %in% c(
@@ -13828,7 +13827,7 @@ server <- function(input, output, session) {
         summarise(
           BF  = sum(SessionType == "Live" & Balls == 0 & Strikes == 0, na.rm = TRUE),
           FPS = sum(SessionType == "Live" & Balls == 0 & Strikes == 0 &
-                      PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable"),
+                      PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"),
                     na.rm = TRUE),
           .groups = "drop"
         ) %>%
@@ -13840,7 +13839,7 @@ server <- function(input, output, session) {
         summarise(
           BF  = sum(Balls == 0 & Strikes == 0, na.rm = TRUE),
           FPS = sum(Balls == 0 & Strikes == 0 &
-                      PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable"),
+                      PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"),
                     na.rm = TRUE),
           .groups = "drop"
         ) %>%
@@ -13854,10 +13853,9 @@ server <- function(input, output, session) {
   output$eaTrendPlot <- renderPlot({
     df <- filtered_data(); req(nrow(df) > 0)
     is_EA <- (df$Balls == 0 & df$Strikes == 0 & df$PitchCall == "InPlay") |
-      (df$Balls == 0 & df$Strikes == 1 & df$PitchCall %in% c("InPlay","FoulBallNotFieldable")) |
+      (df$Balls == 0 & df$Strikes == 1 & df$PitchCall %in% c("InPlay","FoulBallNotFieldable","FoulBallFieldable","StrikeSwinging","StrikeCalled")) |
       (df$Balls == 1 & df$Strikes == 0 & df$PitchCall == "InPlay") |
-      (df$Balls == 1 & df$Strikes == 1 & df$PitchCall %in% c("InPlay","FoulBallNotFieldable")) |
-      (df$Balls == 0 & df$Strikes == 2 & df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled"))
+      (df$Balls == 1 & df$Strikes == 1 & df$PitchCall %in% c("InPlay","FoulBallNotFieldable","FoulBallFieldable","StrikeSwinging","StrikeCalled"))
     df$EA_flag <- is_EA
     
     if (input$sessionType == "All") {
@@ -13892,7 +13890,7 @@ server <- function(input, output, session) {
         group_by(Date, SessionType) %>%
         summarise(
           sw  = sum(PitchCall == "StrikeSwinging", na.rm = TRUE),
-          den = sum(PitchCall %in% c("StrikeSwinging","FoulBallNotFieldable","InPlay"), na.rm = TRUE),
+          den = sum(PitchCall %in% c("StrikeSwinging","FoulBallNotFieldable","InPlay","FoulBallFieldable"), na.rm = TRUE),
           .groups = "drop"
         ) %>%
         mutate(value = ifelse(den > 0, 100 * sw / den, NA_real_)) %>%
@@ -13902,7 +13900,7 @@ server <- function(input, output, session) {
         group_by(Date) %>%
         summarise(
           sw  = sum(PitchCall == "StrikeSwinging", na.rm = TRUE),
-          den = sum(PitchCall %in% c("StrikeSwinging","FoulBallNotFieldable","InPlay"), na.rm = TRUE),
+          den = sum(PitchCall %in% c("StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay"), na.rm = TRUE),
           .groups = "drop"
         ) %>%
         mutate(value = ifelse(den > 0, 100 * sw / den, NA_real_)) %>%
@@ -13943,7 +13941,7 @@ server <- function(input, output, session) {
   # ---------- Strike% ----------
   output$strikeTrendPlot <- renderPlot({
     df <- filtered_data(); req(nrow(df) > 0)
-    strike_calls <- c("StrikeCalled","StrikeSwinging","FoulBallNotFieldable","InPlay")
+    strike_calls <- c("StrikeCalled","StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay")
     if (input$sessionType == "All") {
       dat <- df %>%
         group_by(Date, SessionType) %>%
@@ -14413,7 +14411,7 @@ server <- function(input, output, session) {
         `FPS%` = as.numeric(ifelse(
           !is.na(Balls) & !is.na(Strikes) & !is.na(PitchCall) &
             Balls==0 & Strikes==0 &
-            PitchCall %in% c("InPlay","StrikeSwinging","FoulBallNotFieldable","StrikeCalled"),
+            PitchCall %in% c("InPlay","StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","StrikeCalled"),
           100, 0
         )),
         `CSW%` = as.numeric(ifelse(
@@ -14446,8 +14444,8 @@ server <- function(input, output, session) {
         `E+A%` = as.numeric(ifelse(
           !is.na(PitchCall) & !is.na(Balls) & !is.na(Strikes) & !is.na(SessionType) &
             SessionType == "Live" & (
-              (Balls == 0 & Strikes == 0 & PitchCall %in% c("InPlay","StrikeSwinging","FoulBallNotFieldable","StrikeCalled")) |
-                (Balls == 0 & Strikes == 1 & PitchCall %in% c("InPlay","FoulBallNotFieldable")) |
+              (Balls == 0 & Strikes == 0 & PitchCall %in% c("InPlay","StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","StrikeCalled")) |
+                (Balls == 0 & Strikes == 1 & PitchCall %in% c("InPlay","FoulBallNotFieldable","FoulBallFieldable")) |
                 (Balls == 1 & Strikes == 0 & PitchCall == "InPlay") |
                 (Balls == 1 & Strikes == 1 & PitchCall %in% c("InPlay", "StrikeCalled", "StrikeSwinging", "FoulBallNotFieldable", "FoulBallFieldable"))
             ),
@@ -15750,7 +15748,7 @@ server <- function(input, output, session) {
       
     } else if (stat == "Whiff%") {
       # Whiff% - rate heatmap (whiffs per swing opportunity)
-      swing_opps <- c("StrikeSwinging", "FoulBallNotFieldable", "InPlay")
+      swing_opps <- c("StrikeSwinging", "FoulBallNotFieldable","FoulBallFieldable", "InPlay")
       df_swings <- df_loc %>%
         dplyr::filter(PitchCall %in% swing_opps)
       
@@ -15913,7 +15911,7 @@ server <- function(input, output, session) {
                  dplyr::summarise(
                    bf_live = sum(Balls == 0 & Strikes == 0, na.rm = TRUE),
                    fps_live = sum(Balls == 0 & Strikes == 0 &
-                                    PitchCall %in% c("InPlay", "StrikeSwinging", "StrikeCalled", "FoulBallNotFieldable"), 
+                                    PitchCall %in% c("InPlay", "StrikeSwinging", "StrikeCalled", "FoulBallNotFieldable", "FoulBallFieldable"), 
                                   na.rm = TRUE),
                    value = ifelse(bf_live > 0, round(100 * fps_live / bf_live, 1), 0),
                    .groups = 'drop'
