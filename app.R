@@ -1609,6 +1609,290 @@ compute_result <- function(pitch_call, play_result) {
   )
 }
 
+# QP+ Locations plotting function - creates a grid of strike zones for each pitch type
+create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_hand) {
+  # Validate inputs
+  if (is.null(data) || nrow(data) == 0) {
+    return(ggplot() + 
+             annotate("text", x = 0, y = 2.5, label = "No data available", size = 6) +
+             theme_void())
+  }
+  
+  if (is.null(count_state) || is.null(pitcher_hand) || is.null(batter_hand)) {
+    return(ggplot() + 
+             annotate("text", x = 0, y = 2.5, label = "Missing parameters", size = 6) +
+             theme_void())
+  }
+  
+  # Try to filter data safely
+  tryCatch({
+    # Filter data for the specific count state
+    state_data <- data %>%
+      dplyr::filter(
+        !is.na(PlateLocSide), !is.na(PlateLocHeight),
+        !is.na(Balls), !is.na(Strikes)
+      ) %>%
+      dplyr::mutate(
+        count_group = count_state_vec(Balls, Strikes)
+      ) %>%
+      dplyr::filter(count_group == count_state)
+    
+    if (nrow(state_data) == 0) {
+      return(ggplot() + 
+               annotate("text", x = 0, y = 2.5, label = paste("No data for", count_state, "counts"), size = 5) +
+               theme_void())
+    }
+    
+    # Get unique pitch types in the data
+    pitch_types <- sort(unique(state_data$TaggedPitchType))
+    pitch_types <- pitch_types[!is.na(pitch_types)]
+    
+    if (length(pitch_types) == 0) {
+      return(ggplot() + 
+               annotate("text", x = 0, y = 2.5, label = "No pitch types available", size = 6) +
+               theme_void())
+    }
+    
+    # Function to create QP+ heatmap data for the competitive zone
+    create_qp_heatmap_data <- function(pt, p_hand, b_hand, state) {
+      # Create a larger grid that extends beyond the competitive zone for better color range
+      x_seq <- seq(COMP_LEFT - 0.3, COMP_RIGHT + 0.3, length.out = 18)
+      y_seq <- seq(COMP_BOTTOM - 0.3, COMP_TOP + 0.3, length.out = 18)
+      grid_data <- expand.grid(x = x_seq, y = y_seq)
+      
+      # Calculate QP+ scores for each grid point
+      grid_data$qp_score <- sapply(seq_len(nrow(grid_data)), function(i) {
+        x <- grid_data$x[i]
+        y <- grid_data$y[i]
+        sq <- zone9_square(x, y)
+        
+        # Start with base QP+ score, but apply count-specific modifications
+        if (is.na(sq)) {
+          base_score <- 0  # Outside competitive zone
+        } else {
+          # Get custom seeds for count-specific adjustments
+          custom_seeds <- get_custom_seeds_for_count(pt, p_hand, state)
+          if (!is.null(custom_seeds)) {
+            # Use custom calculation with count-specific seeds
+            rc <- sq_to_rc(sq)
+            dec <- qp_decay(state)
+            best <- 0
+            for (j in seq_len(nrow(custom_seeds))) {
+              d <- abs(custom_seeds$r[j] - rc$r) + abs(custom_seeds$c[j] - rc$c)
+              di <- ifelse(d >= 3, 4, d + 1)
+              best <- max(best, custom_seeds$w[j] * dec[di])
+            }
+            base_score <- best * 100
+          } else {
+            # Use original calculation
+            base_score <- qp_weight_for_square(sq, pt, p_hand, state) * 100
+          }
+        }
+        
+        # Apply penalties for out-of-zone locations based on count state
+        if (state %in% c("Behind", "Even", "Ahead")) {
+          # Check if location is outside the strike zone
+          outside_zone <- (x < ZONE_LEFT || x > ZONE_RIGHT || 
+                             y < ZONE_BOTTOM || y > ZONE_TOP)
+          
+          if (outside_zone) {
+            # Calculate distance to nearest strike zone edge
+            x_dist <- pmax(0, pmax(ZONE_LEFT - x, x - ZONE_RIGHT))
+            y_dist <- pmax(0, pmax(ZONE_BOTTOM - y, y - ZONE_TOP))
+            zone_distance <- sqrt(x_dist^2 + y_dist^2)
+            
+            # Check if we're below the zone (for breaking balls/offspeed in even/ahead)
+            below_zone <- y < ZONE_BOTTOM
+            over_plate <- x >= ZONE_LEFT && x <= ZONE_RIGHT
+            # Expand to 1 square left and right of plate
+            plate_width <- ZONE_RIGHT - ZONE_LEFT
+            expanded_plate <- x >= (ZONE_LEFT - plate_width/3) && x <= (ZONE_RIGHT + plate_width/3)
+            very_low_over_plate <- below_zone && over_plate && y >= (ZONE_BOTTOM - 0.4)
+            low_over_expanded_plate <- below_zone && expanded_plate  # Any low area over expanded plate area
+            is_non_fastball_sinker <- pt %in% c("Cutter", "Slider", "Sweeper", "Curveball", "ChangeUp", "Splitter")
+            
+            # Apply count-specific penalties for out-of-zone locations
+            if (state == "Behind") {
+              # Most aggressive penalty for all pitches
+              distance_penalty <- pmin(0.9, 0.5 + zone_distance * 0.8)
+              if (zone_distance > 0.5) {
+                distance_penalty <- pmin(0.95, 0.7 + zone_distance * 1.2)
+              }
+            } else if (state == "Even") {
+              # Moderate penalty, but reduced for non-fastball/sinker below zone
+              if (below_zone && is_non_fastball_sinker) {
+                # Less penalty below zone for non-fastball/sinker in even counts
+                distance_penalty <- pmin(0.6, 0.15 + zone_distance * 0.4)
+                if (zone_distance > 0.5) {
+                  distance_penalty <- pmin(0.75, 0.25 + zone_distance * 0.5)
+                }
+              } else {
+                # Standard even count penalty
+                distance_penalty <- pmin(0.75, 0.3 + zone_distance * 0.6)
+                if (zone_distance > 0.5) {
+                  distance_penalty <- pmin(0.85, 0.5 + zone_distance * 0.8)
+                }
+              }
+            } else { # Ahead
+              # Special handling for non-fastball/sinker below zone over expanded plate area
+              if (low_over_expanded_plate && is_non_fastball_sinker) {
+                # For ahead counts, low over expanded plate should be light red - force higher minimum score
+                base_score <- pmax(base_score, 60)  # Higher minimum for light red instead of light blue
+                distance_penalty <- pmin(0.1, 0.01 + zone_distance * 0.05)  # Even smaller penalty
+              } else if (below_zone && is_non_fastball_sinker) {
+                # Moderate penalty below zone but outside expanded plate for non-fastball/sinker in ahead counts
+                distance_penalty <- pmin(0.6, 0.2 + zone_distance * 0.4)
+                if (zone_distance > 0.5) {
+                  distance_penalty <- pmin(0.75, 0.3 + zone_distance * 0.5)
+                }
+              } else {
+                # Standard ahead count penalty
+                distance_penalty <- pmin(0.6, 0.2 + zone_distance * 0.4)
+                if (zone_distance > 0.5) {
+                  distance_penalty <- pmin(0.75, 0.4 + zone_distance * 0.6)
+                }
+              }
+            }
+            
+            base_score <- base_score * (1 - distance_penalty)
+          }
+        }
+        
+        return(base_score)
+      })
+      
+      grid_data$pitch_type <- pt
+      return(grid_data)
+    }
+    
+    # Helper function to get custom seeds for count-specific adjustments
+    get_custom_seeds_for_count <- function(pt, hand, state) {
+      pt <- as.character(pt)
+      hand <- ifelse(hand %in% c("Left","Right"), hand, "Right")
+      
+      glove_col <- ifelse(hand == "Left", 3, 1)
+      arm_col   <- ifelse(glove_col == 1, 3, 1)
+      
+      r_top <- 1; r_mid <- 2; r_bot <- 3
+      c_mid <- 2; c_g  <- glove_col; c_a <- arm_col
+      
+      # Apply count-specific modifications
+      if (pt == "Fastball") {
+        if (state == "Behind") {
+          # For Behind fastballs: make middle very blue, bottom light red
+          return(data.frame(r = c(r_top, r_top, r_top, r_mid, r_mid, r_mid, r_bot, r_bot, r_bot),
+                            c = c(c_mid, c_g,   c_a,   c_mid, c_g,   c_a,   c_mid, c_g,   c_a),
+                            w = c(1.00,  1.00,  1.00,  0.05,  0.05,  0.05,  0.85,  0.85,  0.85)))
+        } else if (state == "Ahead") {
+          # For Ahead fastballs: make red bottom zone thinner (closer to actual bottom)
+          # Add more middle positions that are blue, keep only bottom edge red
+          return(data.frame(r = c(r_top, r_top, r_top, r_mid, r_mid, r_mid, r_bot, r_bot, r_bot),
+                            c = c(c_mid, c_g,   c_a,   c_mid, c_g,   c_a,   c_mid, c_g,   c_a),
+                            w = c(1.00,  1.00,  1.00,  0.30,  0.30,  0.30,  0.50,  0.50,  0.50)))
+        } else {
+          # For Even fastballs: standard middle/bottom switch
+          return(data.frame(r = c(r_top, r_top, r_top, r_mid, r_mid, r_mid, r_bot, r_bot, r_bot),
+                            c = c(c_mid, c_g,   c_a,   c_mid, c_g,   c_a,   c_mid, c_g,   c_a),
+                            w = c(1.00,  1.00,  1.00,  0.30,  0.30,  0.30,  0.70,  0.70,  0.70)))
+        }
+      } else if (pt == "Cutter") {
+        # For Cutter: make bottom glove side same intensity as middle/upper glove side
+        return(data.frame(r = c(r_mid, r_top, r_top, r_bot),
+                          c = c(c_g,   c_g,   c_mid, c_g),
+                          w = c(1.00,  1.00,  0.75,  1.00)))  # Bottom glove now 1.00 instead of 0.80
+      }
+      
+      # Return NULL to use original seeds for other pitch types/counts
+      return(NULL)
+    }
+    
+    # Prepare QP+ heatmap data for all pitch types
+    all_heatmap_data <- do.call(rbind, lapply(pitch_types, function(pt) {
+      create_qp_heatmap_data(pt, pitcher_hand, batter_hand, count_state)
+    }))
+    
+    # Add pitch data with results and colors
+    state_data_with_result <- state_data %>%
+      dplyr::mutate(
+        Result = compute_result(PitchCall, PlayResult),
+        tooltip = make_hover_tt(.),
+        pitch_type = factor(TaggedPitchType, levels = pitch_types),
+        # Add pitch type colors
+        pitch_color = dplyr::coalesce(all_colors[as.character(TaggedPitchType)], "gray")
+      ) %>%
+      dplyr::filter(!is.na(Result))
+    
+    # Create strike zone and home plate data for faceting
+    strike_zone_all <- do.call(rbind, lapply(pitch_types, function(pt) {
+      data.frame(
+        xmin = ZONE_LEFT, xmax = ZONE_RIGHT, 
+        ymin = ZONE_BOTTOM, ymax = ZONE_TOP,
+        pitch_type = pt
+      )
+    }))
+    
+    home_plate_all <- do.call(rbind, lapply(pitch_types, function(pt) {
+      data.frame(
+        x = c(-0.75, 0.75, 0.75, 0.00, -0.75),
+        y = c(1.05, 1.05, 1.15, 1.25, 1.15) - 0.5,
+        pitch_type = pt
+      )
+    }))
+    
+    # Create the plot with QP+ heatmap and colored pitches
+    p <- ggplot() +
+      # Add QP+ heatmap
+      geom_tile(data = all_heatmap_data, 
+                aes(x = x, y = y, fill = qp_score), 
+                alpha = 0.6) +
+      # Blue to red color scale for QP+
+      scale_fill_gradient2(
+        low = "blue", mid = "white", high = "red",
+        midpoint = 50, name = "QP+",
+        guide = "none"
+      ) +
+      # Add home plate
+      geom_polygon(data = home_plate_all, 
+                   aes(x = x, y = y, group = pitch_type), 
+                   fill = NA, color = "black", linewidth = 1) +
+      # Add strike zone
+      geom_rect(data = strike_zone_all, 
+                aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                fill = NA, color = "black", linewidth = 1) +
+      # Add pitched balls with interactive tooltips and pitch type colors
+      {if (nrow(state_data_with_result) > 0) {
+        ggiraph::geom_point_interactive(
+          data = state_data_with_result,
+          aes(x = PlateLocSide, y = PlateLocHeight, 
+              shape = Result, tooltip = tooltip, color = pitch_color),
+          size = 2.5, alpha = 0.9, stroke = 1.2
+        )
+      }} +
+      scale_shape_manual(
+        values = shape_map,
+        name = "Result",
+        guide = "none"
+      ) +
+      scale_color_identity() +  # Use the actual colors from pitch_color column
+      facet_wrap(~ pitch_type, nrow = 1) +
+      coord_fixed(ratio = 1, xlim = c(-2, 2), ylim = c(0.5, 4.5)) +
+      theme_void() +
+      theme(
+        strip.text = element_text(size = 11, face = "bold"),
+        panel.spacing = unit(0.5, "lines"),
+        legend.position = "none"
+      )
+    
+    return(p)
+    
+  }, error = function(e) {
+    # Return error message plot if something goes wrong
+    return(ggplot() + 
+             annotate("text", x = 0, y = 2.5, label = paste("Error:", e$message), size = 4) +
+             theme_void())
+  })
+}
+
 # vectorized clock converter
 convert_to_clock <- Vectorize(function(x) {
   if (is.na(x)) return(NA_character_)
@@ -3246,8 +3530,8 @@ pitch_ui <- function(show_header = FALSE) {
         uiOutput("pitcher_ui"),
         dateRangeInput(
           "dates", "Date Range:",
-          start  = max(pitch_data$Date, na.rm = TRUE),
-          end    = max(pitch_data$Date, na.rm = TRUE),
+          start  = if(exists("pitch_data") && nrow(pitch_data) > 0) max(pitch_data$Date, na.rm = TRUE) else Sys.Date(),
+          end    = if(exists("pitch_data") && nrow(pitch_data) > 0) max(pitch_data$Date, na.rm = TRUE) else Sys.Date(),
           format = "mm/dd/yyyy"
         ),
         selectInput(
@@ -3256,7 +3540,7 @@ pitch_ui <- function(show_header = FALSE) {
         ),
         selectInput(
           "pitchType", "Pitch Type:",
-          choices = c("All", levels(pitch_data$TaggedPitchType)),
+          choices = c("All", if(exists("pitch_data") && nrow(pitch_data) > 0) levels(pitch_data$TaggedPitchType) else character(0)),
           selected = "All", multiple = TRUE
         ),
         selectInput(
@@ -3462,6 +3746,44 @@ pitch_ui <- function(show_header = FALSE) {
               mainPanel(
                 conditionalPanel("input.hmChartType=='Heat'",  plotOutput("heatmapsHeatPlot", height = "500px")),
                 conditionalPanel("input.hmChartType=='Pitch'", ggiraph::girafeOutput("heatmapsPitchPlot", height = "500px"))
+              )
+            )
+          ),
+          # --- QP LOCATIONS TAB ---
+          tabPanel(
+            "QP Locations",
+            value = "qp_locations",
+            fluidRow(
+              column(2,
+                     div(style = "padding: 10px;",
+                         h5("Pitch Results", style = "font-weight: bold; margin-bottom: 10px;"),
+                         div(style = "font-size: 12px;",
+                             div(style = "margin-bottom: 3px;", "\u25CF Called Strike"),  # ●
+                             div(style = "margin-bottom: 3px;", "\u25CB Ball"),           # ○
+                             div(style = "margin-bottom: 3px;", "\u25B3 Foul"),           # △
+                             div(style = "margin-bottom: 3px;", "\u2605 Whiff"),          # ★
+                             div(style = "margin-bottom: 3px;", "\u25B2 In Play (Out)"),  # ▲
+                             div(style = "margin-bottom: 3px;", "\u25A0 In Play (Hit)")   # ■
+                         ),
+                         br(),
+                         h5("Pitch Type", style = "font-weight: bold; margin-bottom: 10px;"),
+                         uiOutput("qpPitchTypeColors"),
+                         br(),
+                         h5("QP+ Heatmap", style = "font-weight: bold; margin-bottom: 10px;"),
+                         div(style = "font-size: 12px;",
+                             div(style = "display: flex; align-items: center; margin-bottom: 3px;",
+                                 div(style = "width: 20px; height: 10px; background: linear-gradient(to right, blue, white, red); margin-right: 8px; border: 1px solid #ccc;"),
+                                 "Blue (Low) → Red (High)"
+                             ),
+                             p(style = "font-size: 11px; color: #666; margin-top: 5px;",
+                               "Shows optimal QP+ locations for each pitch type based on count situation."
+                             )
+                         )
+                     )
+              ),
+              column(10,
+                     # Main content area - all controlled by qpLocationsMessage
+                     uiOutput("qpLocationsMessage")
               )
             )
           ),
@@ -3762,8 +4084,26 @@ safe_for_dt <- function(df) {
   as.data.frame(out, stringsAsFactors = FALSE, check.names = FALSE)
 }
 
-mod_hit_server <- function(id, is_active = shiny::reactive(TRUE)) {
+mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_range = NULL) {
   moduleServer(id, function(input, output, session) {
+    
+    # Sync local date input with global date range
+    if (!is.null(global_date_range)) {
+      observe({
+        if (!is.null(global_date_range()) && length(global_date_range()) == 2) {
+          updateDateRangeInput(session, "dates", 
+                               start = global_date_range()[1], 
+                               end = global_date_range()[2])
+        }
+      })
+      
+      # Update global date range when local input changes
+      observeEvent(input$dates, {
+        if (!is.null(input$dates) && length(input$dates) == 2) {
+          global_date_range(input$dates)
+        }
+      })
+    }
     ns <- session$ns
     
     # ----- TEAM FILTER (GCU/Campers) -----
@@ -4914,8 +5254,26 @@ mod_catch_ui <- function(id, show_header = FALSE) {
 # =====================================
 # 2) CATCHING SERVER MODULE (replace stub)
 # =====================================
-mod_catch_server <- function(id, is_active = shiny::reactive(TRUE)) {
+mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_range = NULL) {
   moduleServer(id, function(input, output, session) {
+    
+    # Sync local date input with global date range
+    if (!is.null(global_date_range)) {
+      observe({
+        if (!is.null(global_date_range()) && length(global_date_range()) == 2) {
+          updateDateRangeInput(session, "dates", 
+                               start = global_date_range()[1], 
+                               end = global_date_range()[2])
+        }
+      })
+      
+      # Update global date range when local input changes
+      observeEvent(input$dates, {
+        if (!is.null(input$dates) && length(input$dates) == 2) {
+          global_date_range(input$dates)
+        }
+      })
+    }
     ns <- session$ns
     
     MIN_THROW_MPH <- 70  # only count throws at/above this speed
@@ -7064,8 +7422,26 @@ mod_leader_ui <- function(id, show_header = FALSE) {
   )
 }
 
-mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
+mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date_range = NULL) {
   moduleServer(id, function(input, output, session) {
+    
+    # Sync local date input with global date range
+    if (!is.null(global_date_range)) {
+      observe({
+        if (!is.null(global_date_range()) && length(global_date_range()) == 2) {
+          updateDateRangeInput(session, "dates", 
+                               start = global_date_range()[1], 
+                               end = global_date_range()[2])
+        }
+      })
+      
+      # Update global date range when local input changes
+      observeEvent(input$dates, {
+        if (!is.null(input$dates) && length(input$dates) == 2) {
+          global_date_range(input$dates)
+        }
+      })
+    }
     ns <- session$ns
     
     # ---------- constants ----------
@@ -7274,7 +7650,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
         # Helper function for innings pitched calculation
         ip_calculation <- function(pitches_data) {
           outs <- sum(pitches_data$KorBB == "Strikeout", na.rm = TRUE) + 
-                  sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
+            sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
           innings <- outs / 3
           whole_innings <- floor(innings)
           remaining_outs <- outs %% 3
@@ -7346,160 +7722,160 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE)) {
       } else {
         # Normal mode processing
         
-      build_all_row <- function(df) {
-        safe_pct <- function(num, den) {
-          num <- suppressWarnings(as.numeric(num)); den <- suppressWarnings(as.numeric(den))
-          ifelse(is.finite(den) & den > 0 & is.finite(num), paste0(round(100*num/den, 1), "%"), "")
-        }
-        nz_mean_local <- function(x) { x <- suppressWarnings(as.numeric(x)); m <- mean(x, na.rm = TRUE); if (is.finite(m)) m else NA_real_ }
-        
-        scores <- ifelse(
-          df$PlateLocSide >= ZONE_LEFT & df$PlateLocSide <= ZONE_RIGHT &
-            df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP, 1.47,
-          ifelse(
-            df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
-              df$PlateLocHeight >= (2.65-1.5) & df$PlateLocHeight <= (2.65+1.5),
-            0.73, 0
-          )
-        )
-        has_pc  <- sum(!is.na(df$PitchCall)) > 0
-        strikes <- sum(df$PitchCall %in% c("StrikeCalled","StrikeSwinging","FoulBallNotFieldable","InPlay","FoulBallFieldable"), na.rm = TRUE)
-        sw      <- sum(df$PitchCall == "StrikeSwinging", na.rm = TRUE)
-        den     <- sum(df$PitchCall %in% c("StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay"), na.rm = TRUE)
-        csw_all  <- sum(df$PitchCall %in% c("StrikeCalled","StrikeSwinging"), na.rm = TRUE)
-        
-        bf_live <- sum(df$SessionType == "Live" & df$Balls == 0 & df$Strikes == 0, na.rm = TRUE)
-        k_live  <- sum(df$SessionType == "Live" & df$KorBB == "Strikeout",        na.rm = TRUE)
-        bb_live <- sum(df$SessionType == "Live" & df$KorBB == "Walk",             na.rm = TRUE)
-        fps_live <- sum(df$SessionType == "Live" &
-                          df$Balls == 0 & df$Strikes == 0 &
-                          df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"),
-                        na.rm = TRUE)
-        ea_live  <- sum(df$SessionType == "Live" & (
-          (df$Balls == 0 & df$Strikes == 0 & df$PitchCall == "InPlay") |
-            (df$Balls == 0 & df$Strikes == 1 & df$PitchCall %in% c(
-              "InPlay", "StrikeCalled", "StrikeSwinging", "FoulBallNotFieldable", "FoulBallFieldable"
-            )) |
-            (df$Balls == 1 & df$Strikes == 0 & df$PitchCall == "InPlay") |
-            (df$Balls == 1 & df$Strikes == 1 & df$PitchCall %in% c(
-              "InPlay", "StrikeCalled", "StrikeSwinging", "FoulBallNotFieldable", "FoulBallFieldable"
-            ))
-        ),
-        na.rm = TRUE
-        )
-        
-        vmax   <- suppressWarnings(max(as.numeric(df$RelSpeed), na.rm = TRUE)); vmax <- if (is.finite(vmax)) round(vmax, 1) else NA_real_
-        ev_all <- nz_mean_local(ifelse(df$SessionType=="Live", df$ExitSpeed, NA_real_))
-        la_all <- nz_mean_local(ifelse(df$SessionType=="Live", df$Angle,     NA_real_))
-        stuff_all <- round(nz_mean_local(df$`Stuff+`), 1)
-        ctrl_all   <- round(nz_mean_local(scores) * 100, 1)
-        qp_all    <- round(nz_mean_local(compute_qp_points(df)) * 200, 1)
-        
-        tibble::tibble(
-          `#`            = nrow(df),
-          Usage          = "100%",
-          BF             = bf_live,
-          Velo           = round(nz_mean_local(df$RelSpeed), 1),
-          Max            = vmax,
-          IVB            = round(nz_mean_local(df$InducedVertBreak), 1),
-          HB             = round(nz_mean_local(df$HorzBreak), 1),
-          rTilt          = convert_to_clock(nz_mean_local(df$ReleaseTilt)),
-          bTilt          = convert_to_clock(nz_mean_local(df$BreakTilt)),
-          SpinEff        = { v <- nz_mean_local(df$SpinEfficiency); if (is.na(v)) "" else paste0(round(v*100,1), "%") },
-          Spin           = round(nz_mean_local(df$SpinRate), 0),
-          Height         = round(nz_mean_local(df$RelHeight), 1),
-          Side           = round(nz_mean_local(df$RelSide), 1),
-          VAA            = round(nz_mean_local(df$VertApprAngle), 1),
-          HAA            = round(nz_mean_local(df$HorzApprAngle), 1),
-          Ext            = round(nz_mean_local(df$Extension), 1),
-          `InZone%`      = { inzone <- (df$PlateLocSide >= ZONE_LEFT & df$PlateLocSide <= ZONE_RIGHT &
-                                          df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP);
-          safe_pct(sum(inzone, na.rm = TRUE), sum(!is.na(inzone))) },
-          `Comp%`        = { comp <- (df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
-                                        df$PlateLocHeight >= (2.65-1.5) & df$PlateLocHeight <= (2.65+1.5));
-          safe_pct(sum(comp, na.rm = TRUE), sum(!is.na(comp))) },
-          `Strike%`      = if (has_pc) safe_pct(strikes, nrow(df)) else "",
-          `FPS%`         = safe_pct(fps_live, bf_live),
-          `E+A%`         = safe_pct(ea_live,  bf_live),
-          `K%`           = safe_pct(k_live,   bf_live),
-          `BB%`          = safe_pct(bb_live,  bf_live),
-          `Whiff%`       = safe_pct(sw, den),
-          `CSW%`   = if (has_pc) safe_pct(csw_all, nrow(df)) else "",
-          EV = round(ev_all, 1),
-          LA = round(la_all, 1),
-          `Stuff+`       = stuff_all,
-          `Ctrl+`        = ctrl_all,
-          `QP+`          = qp_all,
-          `Pitching+`    = round((stuff_all + qp_all)/2, 1)
-        )
-      }
-      
-      custom <- input$lbCustomCols; if (is.null(custom)) custom <- character(0)
-      original_data <- if (identical(mode, "Usage")) filtered_lb_before_pitch_type() else NULL
-      
-      rows <- lapply(by_player, function(dfi) {
-        base_row <- build_all_row(dfi)
-        extras_all <- compute_process_results(dfi) %>%
-          dplyr::filter(PitchType == "All") %>%
-          dplyr::select(IP, BABIP, `GB%`, `Barrel%`, AVG, SLG, xWOBA, xISO, FIP, WHIP)
-        if (!nrow(extras_all)) {
-          extras_all <- tibble::tibble(
-            IP = NA_real_, BABIP = NA_real_, `GB%` = NA_real_, `Barrel%` = NA_real_,
-            AVG = NA_real_, SLG = NA_real_, xWOBA = NA_real_, xISO = NA_real_,
-            FIP = NA_real_, WHIP = NA_real_
-          )
-        }
-        out_row <- dplyr::bind_cols(
-          tibble::tibble(Player = as.character(dfi[[player_col]][1])),
-          base_row,
-          extras_all
-        )
-        if (identical(mode, "Usage")) {
-          player_val <- as.character(dfi[[player_col]][1])
-          original_player <- if (!is.null(original_data)) {
-            original_data[original_data[[player_col]] == player_val, , drop = FALSE]
-          } else NULL
-          usage_cols <- compute_usage_by_count(dfi, original_player) %>%
-            dplyr::filter(tolower(PitchType) == "all") %>%
-            dplyr::select(`0-0`,`Behind`,`Even`,`Ahead`,`<2K`,`2K`)
-          if (!nrow(usage_cols)) {
-            usage_cols <- tibble::tibble(`0-0` = "", Behind = "", Even = "", Ahead = "", `<2K` = "", `2K` = "")
+        build_all_row <- function(df) {
+          safe_pct <- function(num, den) {
+            num <- suppressWarnings(as.numeric(num)); den <- suppressWarnings(as.numeric(den))
+            ifelse(is.finite(den) & den > 0 & is.finite(num), paste0(round(100*num/den, 1), "%"), "")
           }
-          out_row <- dplyr::bind_cols(out_row, usage_cols)
+          nz_mean_local <- function(x) { x <- suppressWarnings(as.numeric(x)); m <- mean(x, na.rm = TRUE); if (is.finite(m)) m else NA_real_ }
+          
+          scores <- ifelse(
+            df$PlateLocSide >= ZONE_LEFT & df$PlateLocSide <= ZONE_RIGHT &
+              df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP, 1.47,
+            ifelse(
+              df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
+                df$PlateLocHeight >= (2.65-1.5) & df$PlateLocHeight <= (2.65+1.5),
+              0.73, 0
+            )
+          )
+          has_pc  <- sum(!is.na(df$PitchCall)) > 0
+          strikes <- sum(df$PitchCall %in% c("StrikeCalled","StrikeSwinging","FoulBallNotFieldable","InPlay","FoulBallFieldable"), na.rm = TRUE)
+          sw      <- sum(df$PitchCall == "StrikeSwinging", na.rm = TRUE)
+          den     <- sum(df$PitchCall %in% c("StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay"), na.rm = TRUE)
+          csw_all  <- sum(df$PitchCall %in% c("StrikeCalled","StrikeSwinging"), na.rm = TRUE)
+          
+          bf_live <- sum(df$SessionType == "Live" & df$Balls == 0 & df$Strikes == 0, na.rm = TRUE)
+          k_live  <- sum(df$SessionType == "Live" & df$KorBB == "Strikeout",        na.rm = TRUE)
+          bb_live <- sum(df$SessionType == "Live" & df$KorBB == "Walk",             na.rm = TRUE)
+          fps_live <- sum(df$SessionType == "Live" &
+                            df$Balls == 0 & df$Strikes == 0 &
+                            df$PitchCall %in% c("InPlay","StrikeSwinging","StrikeCalled","FoulBallNotFieldable","FoulBallFieldable"),
+                          na.rm = TRUE)
+          ea_live  <- sum(df$SessionType == "Live" & (
+            (df$Balls == 0 & df$Strikes == 0 & df$PitchCall == "InPlay") |
+              (df$Balls == 0 & df$Strikes == 1 & df$PitchCall %in% c(
+                "InPlay", "StrikeCalled", "StrikeSwinging", "FoulBallNotFieldable", "FoulBallFieldable"
+              )) |
+              (df$Balls == 1 & df$Strikes == 0 & df$PitchCall == "InPlay") |
+              (df$Balls == 1 & df$Strikes == 1 & df$PitchCall %in% c(
+                "InPlay", "StrikeCalled", "StrikeSwinging", "FoulBallNotFieldable", "FoulBallFieldable"
+              ))
+          ),
+          na.rm = TRUE
+          )
+          
+          vmax   <- suppressWarnings(max(as.numeric(df$RelSpeed), na.rm = TRUE)); vmax <- if (is.finite(vmax)) round(vmax, 1) else NA_real_
+          ev_all <- nz_mean_local(ifelse(df$SessionType=="Live", df$ExitSpeed, NA_real_))
+          la_all <- nz_mean_local(ifelse(df$SessionType=="Live", df$Angle,     NA_real_))
+          stuff_all <- round(nz_mean_local(df$`Stuff+`), 1)
+          ctrl_all   <- round(nz_mean_local(scores) * 100, 1)
+          qp_all    <- round(nz_mean_local(compute_qp_points(df)) * 200, 1)
+          
+          tibble::tibble(
+            `#`            = nrow(df),
+            Usage          = "100%",
+            BF             = bf_live,
+            Velo           = round(nz_mean_local(df$RelSpeed), 1),
+            Max            = vmax,
+            IVB            = round(nz_mean_local(df$InducedVertBreak), 1),
+            HB             = round(nz_mean_local(df$HorzBreak), 1),
+            rTilt          = convert_to_clock(nz_mean_local(df$ReleaseTilt)),
+            bTilt          = convert_to_clock(nz_mean_local(df$BreakTilt)),
+            SpinEff        = { v <- nz_mean_local(df$SpinEfficiency); if (is.na(v)) "" else paste0(round(v*100,1), "%") },
+            Spin           = round(nz_mean_local(df$SpinRate), 0),
+            Height         = round(nz_mean_local(df$RelHeight), 1),
+            Side           = round(nz_mean_local(df$RelSide), 1),
+            VAA            = round(nz_mean_local(df$VertApprAngle), 1),
+            HAA            = round(nz_mean_local(df$HorzApprAngle), 1),
+            Ext            = round(nz_mean_local(df$Extension), 1),
+            `InZone%`      = { inzone <- (df$PlateLocSide >= ZONE_LEFT & df$PlateLocSide <= ZONE_RIGHT &
+                                            df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP);
+            safe_pct(sum(inzone, na.rm = TRUE), sum(!is.na(inzone))) },
+            `Comp%`        = { comp <- (df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
+                                          df$PlateLocHeight >= (2.65-1.5) & df$PlateLocHeight <= (2.65+1.5));
+            safe_pct(sum(comp, na.rm = TRUE), sum(!is.na(comp))) },
+            `Strike%`      = if (has_pc) safe_pct(strikes, nrow(df)) else "",
+            `FPS%`         = safe_pct(fps_live, bf_live),
+            `E+A%`         = safe_pct(ea_live,  bf_live),
+            `K%`           = safe_pct(k_live,   bf_live),
+            `BB%`          = safe_pct(bb_live,  bf_live),
+            `Whiff%`       = safe_pct(sw, den),
+            `CSW%`   = if (has_pc) safe_pct(csw_all, nrow(df)) else "",
+            EV = round(ev_all, 1),
+            LA = round(la_all, 1),
+            `Stuff+`       = stuff_all,
+            `Ctrl+`        = ctrl_all,
+            `QP+`          = qp_all,
+            `Pitching+`    = round((stuff_all + qp_all)/2, 1)
+          )
         }
-        out_row
-      })
-      
-      out_tbl <- dplyr::bind_rows(rows) %>% dplyr::relocate(Player)
-      visible_set <- visible_set_for_lb(mode, custom)
-      
-      if ("Pitching+" %in% names(out_tbl)) {
-        suppressWarnings(out_tbl <- out_tbl %>% dplyr::arrange(dplyr::desc(as.numeric(`Pitching+`))))
-      }
-      
-      # Add error handling wrapper for leaderboard table
-      build_lb_dt <- function(data, ...) {
-        tryCatch(
-          datatable_with_colvis(data, ...),
-          error = function(e) {
-            message("lbTable datatable error [mode=", mode, "]: ", conditionMessage(e))
-            message("Columns: ", paste(names(data), collapse = ", "))
-            # Return a fallback datatable with error message
-            DT::datatable(
-              data.frame(Error = paste("Table rendering error:", conditionMessage(e))),
-              options = list(dom = 't'), rownames = FALSE
+        
+        custom <- input$lbCustomCols; if (is.null(custom)) custom <- character(0)
+        original_data <- if (identical(mode, "Usage")) filtered_lb_before_pitch_type() else NULL
+        
+        rows <- lapply(by_player, function(dfi) {
+          base_row <- build_all_row(dfi)
+          extras_all <- compute_process_results(dfi) %>%
+            dplyr::filter(PitchType == "All") %>%
+            dplyr::select(IP, BABIP, `GB%`, `Barrel%`, AVG, SLG, xWOBA, xISO, FIP, WHIP)
+          if (!nrow(extras_all)) {
+            extras_all <- tibble::tibble(
+              IP = NA_real_, BABIP = NA_real_, `GB%` = NA_real_, `Barrel%` = NA_real_,
+              AVG = NA_real_, SLG = NA_real_, xWOBA = NA_real_, xISO = NA_real_,
+              FIP = NA_real_, WHIP = NA_real_
             )
           }
+          out_row <- dplyr::bind_cols(
+            tibble::tibble(Player = as.character(dfi[[player_col]][1])),
+            base_row,
+            extras_all
+          )
+          if (identical(mode, "Usage")) {
+            player_val <- as.character(dfi[[player_col]][1])
+            original_player <- if (!is.null(original_data)) {
+              original_data[original_data[[player_col]] == player_val, , drop = FALSE]
+            } else NULL
+            usage_cols <- compute_usage_by_count(dfi, original_player) %>%
+              dplyr::filter(tolower(PitchType) == "all") %>%
+              dplyr::select(`0-0`,`Behind`,`Even`,`Ahead`,`<2K`,`2K`)
+            if (!nrow(usage_cols)) {
+              usage_cols <- tibble::tibble(`0-0` = "", Behind = "", Even = "", Ahead = "", `<2K` = "", `2K` = "")
+            }
+            out_row <- dplyr::bind_cols(out_row, usage_cols)
+          }
+          out_row
+        })
+        
+        out_tbl <- dplyr::bind_rows(rows) %>% dplyr::relocate(Player)
+        visible_set <- visible_set_for_lb(mode, custom)
+        
+        if ("Pitching+" %in% names(out_tbl)) {
+          suppressWarnings(out_tbl <- out_tbl %>% dplyr::arrange(dplyr::desc(as.numeric(`Pitching+`))))
+        }
+        
+        # Add error handling wrapper for leaderboard table
+        build_lb_dt <- function(data, ...) {
+          tryCatch(
+            datatable_with_colvis(data, ...),
+            error = function(e) {
+              message("lbTable datatable error [mode=", mode, "]: ", conditionMessage(e))
+              message("Columns: ", paste(names(data), collapse = ", "))
+              # Return a fallback datatable with error message
+              DT::datatable(
+                data.frame(Error = paste("Table rendering error:", conditionMessage(e))),
+                options = list(dom = 't'), rownames = FALSE
+              )
+            }
+          )
+        }
+        
+        build_lb_dt(
+          out_tbl,
+          lock            = "Player",
+          remember        = FALSE,
+          default_visible = intersect(visible_set, names(out_tbl)),
+          mode            = mode
         )
-      }
-      
-      build_lb_dt(
-        out_tbl,
-        lock            = "Player",
-        remember        = FALSE,
-        default_visible = intersect(visible_set, names(out_tbl)),
-        mode            = mode
-      )
       } # End of else block for normal modes
     }, server = FALSE)
     
@@ -8056,8 +8432,36 @@ mod_comp_ui <- function(id, show_header = FALSE) {
   )
 } 
 
-mod_comp_server <- function(id, is_active = shiny::reactive(TRUE)) {
+mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_range = NULL) {
   moduleServer(id, function(input, output, session) {
+    
+    # Sync local date input with global date range if available
+    if (!is.null(global_date_range)) {
+      # Comp module has different date input names (cmpA_dates, cmpB_dates)
+      observe({
+        if (!is.null(global_date_range()) && length(global_date_range()) == 2) {
+          updateDateRangeInput(session, "cmpA_dates", 
+                               start = global_date_range()[1], 
+                               end = global_date_range()[2])
+          updateDateRangeInput(session, "cmpB_dates", 
+                               start = global_date_range()[1], 
+                               end = global_date_range()[2])
+        }
+      })
+      
+      # Update global date range when either comparison date input changes
+      observeEvent(input$cmpA_dates, {
+        if (!is.null(input$cmpA_dates) && length(input$cmpA_dates) == 2) {
+          global_date_range(input$cmpA_dates)
+        }
+      })
+      
+      observeEvent(input$cmpB_dates, {
+        if (!is.null(input$cmpB_dates) && length(input$cmpB_dates) == 2) {
+          global_date_range(input$cmpB_dates)
+        }
+      })
+    }
     ns <- session$ns
     tooltip_css <- "color:#fff !important;font-weight:600;padding:6px;border-radius:8px;text-shadow:0 1px 1px rgba(0,0,0,.4);"
     
@@ -8761,7 +9165,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE)) {
         # Helper function for innings pitched calculation
         ip_calculation <- function(pitches_data) {
           outs <- sum(pitches_data$KorBB == "Strikeout", na.rm = TRUE) + 
-                  sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
+            sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
           innings <- outs / 3
           whole_innings <- floor(innings)
           remaining_outs <- outs %% 3
@@ -9810,6 +10214,46 @@ server <- function(input, output, session) {
   # Initialize database on startup
   init_modifications_db()
   
+  # Global persistent date range - initializes to most recent date on startup
+  global_date_range <- reactiveVal()
+  
+  # Initialize global date range on startup
+  observe({
+    if (is.null(global_date_range())) {
+      if (exists("pitch_data") && nrow(pitch_data) > 0) {
+        max_date <- max(pitch_data$Date, na.rm = TRUE)
+        global_date_range(c(max_date, max_date))
+      } else {
+        global_date_range(c(Sys.Date(), Sys.Date()))
+      }
+    }
+  })
+  
+  # Update global date range when main input changes
+  observeEvent(input$dates, {
+    if (!is.null(input$dates) && length(input$dates) == 2) {
+      # Only update if the dates are actually different to prevent loops
+      current_global <- global_date_range()
+      if (is.null(current_global) || 
+          !identical(as.Date(input$dates), as.Date(current_global))) {
+        global_date_range(input$dates)
+      }
+    }
+  })
+  
+  # Sync date range input with global value - only when global changes
+  observe({
+    global_dates <- global_date_range()
+    if (!is.null(global_dates) && !is.null(input$dates)) {
+      # Only update UI if the values are actually different to prevent loops
+      if (!identical(as.Date(input$dates), as.Date(global_dates))) {
+        updateDateRangeInput(session, "dates", 
+                             start = global_dates[1], 
+                             end = global_dates[2])
+      }
+    }
+  })
+  
   # Reactive value to store modified pitch data with edits persisted
   modified_pitch_data <- reactiveVal()
   
@@ -10246,16 +10690,34 @@ server <- function(input, output, session) {
   }, once = TRUE)
   
   # Update date only when the *user* changes pitcher (and not during a note jump)
+  # Now respects global date range persistence instead of resetting to last date
   observeEvent(input$pitcher, {
     if (isTRUE(noteJumping())) return()
     req(input$pitcher)
-    last_date <- if (input$pitcher == "All") {
-      max(pitch_data_pitching$Date, na.rm = TRUE)
+    
+    # If we have a global date range set, use it instead of resetting to last date
+    if (!is.null(global_date_range())) {
+      # Only update if the dates are actually different to prevent loops
+      current_input <- input$dates
+      global_dates <- global_date_range()
+      if (is.null(current_input) || 
+          !identical(as.Date(current_input), as.Date(global_dates))) {
+        updateDateRangeInput(session, "dates", 
+                             start = global_dates[1], 
+                             end = global_dates[2])
+      }
     } else {
-      max(pitch_data_pitching$Date[pitch_data_pitching$Pitcher == input$pitcher], na.rm = TRUE)
-    }
-    if (is.finite(last_date)) {
-      updateDateRangeInput(session, "dates", start = last_date, end = last_date)
+      # Only fall back to last date if no global date range is set
+      last_date <- if (input$pitcher == "All") {
+        max(pitch_data_pitching$Date, na.rm = TRUE)
+      } else {
+        max(pitch_data_pitching$Date[pitch_data_pitching$Pitcher == input$pitcher], na.rm = TRUE)
+      }
+      if (is.finite(last_date)) {
+        updateDateRangeInput(session, "dates", start = last_date, end = last_date)
+        # Update global date range with this new value
+        global_date_range(c(last_date, last_date))
+      }
     }
   }, ignoreInit = TRUE)
   
@@ -10349,18 +10811,6 @@ server <- function(input, output, session) {
   }, ignoreInit = TRUE)
   
   
-  # →  New: whenever the selected pitcher changes, move the dateRange to their last date
-  observeEvent(input$pitcher, {
-    if (isTRUE(noteJumping())) return()
-    req(input$pitcher)
-    last_date <- if (input$pitcher == "All") {
-      max(pitch_data_pitching$Date, na.rm = TRUE)
-    } else {
-      max(pitch_data_pitching$Date[pitch_data_pitching$Pitcher == input$pitcher], na.rm = TRUE)
-    }
-    updateDateRangeInput(session, "dates", start = last_date, end = last_date)
-  })
-  
   observeEvent(input$countFilter, {
     sel <- input$countFilter
     if (is.null(sel) || !length(sel)) {
@@ -10378,10 +10828,10 @@ server <- function(input, output, session) {
   # (Note: Shiny exposes url_* in session$clientData.) :contentReference[oaicite:2]{index=2}
   
   # Mount the new modules (lazy-run only when their tab is active)
-  mod_hit_server("hit",     is_active = reactive(input$top == "Hitting"))
-  mod_catch_server("catch", is_active = reactive(input$top == "Catching"))
-  mod_leader_server("leader", is_active = reactive(input$top == "Leaderboard"))
-  mod_comp_server("comp",   is_active = reactive(input$top == "Comparison Suite"))
+  mod_hit_server("hit",     is_active = reactive(input$top == "Hitting"), global_date_range = global_date_range)
+  mod_catch_server("catch", is_active = reactive(input$top == "Catching"), global_date_range = global_date_range)
+  mod_leader_server("leader", is_active = reactive(input$top == "Leaderboard"), global_date_range = global_date_range)
+  mod_comp_server("comp",   is_active = reactive(input$top == "Comparison Suite"), global_date_range = global_date_range)
   
   
   # Buttons above Summary table
@@ -11635,7 +12085,7 @@ server <- function(input, output, session) {
         # Helper function for innings pitched calculation
         ip_calculation <- function(pitches_data) {
           outs <- sum(pitches_data$KorBB == "Strikeout", na.rm = TRUE) + 
-                  sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
+            sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
           innings <- outs / 3
           whole_innings <- floor(innings)
           remaining_outs <- outs %% 3
@@ -16730,6 +17180,224 @@ server <- function(input, output, session) {
     ifelse(is.finite(val), sprintf("Stuff+: %.1f", val), "Stuff+: —")
   })
   output$calc2_hb_adj <- renderText(hb_adj_text(input$calc2_hand, input$calc2_hb))
+  
+  # ===== QP LOCATIONS SERVER LOGIC =====
+  
+  # Helper function to get pitcher handedness
+  get_pitcher_handedness <- reactive({
+    tryCatch({
+      if (is.null(input$pitcher) || input$pitcher == "All") {
+        # If "All" is selected, use the hand filter if it's not "All"
+        if (!is.null(input$hand) && input$hand != "All") {
+          return(input$hand)
+        } else {
+          return(NULL)  # No handedness available
+        }
+      } else {
+        # Get the specific pitcher's handedness from the data
+        df <- filtered_data()
+        if (is.null(df) || nrow(df) == 0) return(NULL)
+        
+        pitcher_data <- df %>% 
+          dplyr::filter(Pitcher == input$pitcher) %>%
+          dplyr::slice(1)
+        
+        if (nrow(pitcher_data) > 0) {
+          hand <- as.character(pitcher_data$PitcherThrows[1])
+          if (!is.na(hand) && hand %in% c("Left", "Right")) {
+            return(hand)
+          }
+        }
+        
+        # Fallback to hand filter if specific pitcher handedness not found
+        if (!is.null(input$hand) && input$hand != "All") {
+          return(input$hand)
+        } else {
+          return(NULL)
+        }
+      }
+    }, error = function(e) {
+      return(NULL)
+    })
+  })
+  
+  # Helper function to check if QP Locations should be shown
+  should_show_qp_locations <- reactive({
+    tryCatch({
+      pitcher_hand <- get_pitcher_handedness()
+      batter_hand <- input$batterSide
+      
+      # Need both pitcher and batter handedness to be non-"All"
+      !is.null(pitcher_hand) && 
+        !is.null(batter_hand) && 
+        batter_hand != "All"
+    }, error = function(e) {
+      return(FALSE)
+    })
+  })
+  
+  # QP Locations message and content
+  output$qpLocationsMessage <- renderUI({
+    if (!should_show_qp_locations()) {
+      div(style = "text-align: center; padding: 100px 20px; color: #999;",
+          h4("QP+ Locations requires handedness selection"),
+          p("Please select both pitcher handedness and batter handedness to view QP+ location charts."),
+          if (is.null(get_pitcher_handedness())) {
+            p("→ Pitcher handedness: Select a specific pitcher or set 'Pitcher Hand' filter")
+          },
+          if (is.null(input$batterSide) || input$batterSide == "All") {
+            p("→ Batter handedness: Set 'Batter Hand' filter to 'Left' or 'Right'")
+          }
+      )
+    } else {
+      # Show the main content when conditions are met
+      div(
+        div(style = "margin-bottom: 20px;",
+            h4("Behind Counts", style = "text-align: center; font-weight: bold;"),
+            ggiraph::girafeOutput("qpLocationsBehind", height = "350px")
+        ),
+        div(style = "margin-bottom: 20px;",
+            h4("Even Counts", style = "text-align: center; font-weight: bold;"),
+            ggiraph::girafeOutput("qpLocationsEven", height = "350px")
+        ),
+        div(style = "margin-bottom: 20px;",
+            h4("Ahead Counts", style = "text-align: center; font-weight: bold;"),
+            ggiraph::girafeOutput("qpLocationsAhead", height = "350px")
+        )
+      )
+    }
+  })
+  
+  # CSS for QP Locations tooltips
+  tooltip_css <- "color:#fff !important;font-weight:600;padding:6px;border-radius:8px;text-shadow:0 1px 1px rgba(0,0,0,.4);"
+  
+  # QP Locations Behind plot
+  output$qpLocationsBehind <- ggiraph::renderGirafe({
+    tryCatch({
+      if (!should_show_qp_locations()) return(NULL)
+      
+      df <- filtered_data()
+      if (!nrow(df)) return(NULL)
+      
+      pitcher_hand <- get_pitcher_handedness()
+      batter_hand <- input$batterSide
+      
+      p <- create_qp_locations_plot(df, "Behind", pitcher_hand, batter_hand)
+      
+      ggiraph::girafe(
+        ggobj = p,
+        width_svg = 12, height_svg = 4,
+        options = list(
+          ggiraph::opts_hover_inv(css = "opacity:0.1;"),
+          ggiraph::opts_hover(css = "stroke-width:2;"),
+          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css,
+                                opacity = 0.9
+          )
+        )
+      )
+    }, error = function(e) {
+      message("Error in qpLocationsBehind: ", e$message)
+      return(NULL)
+    })
+  })
+  
+  # QP Locations Even plot
+  output$qpLocationsEven <- ggiraph::renderGirafe({
+    tryCatch({
+      if (!should_show_qp_locations()) return(NULL)
+      
+      df <- filtered_data()
+      if (!nrow(df)) return(NULL)
+      
+      pitcher_hand <- get_pitcher_handedness()
+      batter_hand <- input$batterSide
+      
+      p <- create_qp_locations_plot(df, "Even", pitcher_hand, batter_hand)
+      
+      ggiraph::girafe(
+        ggobj = p,
+        width_svg = 12, height_svg = 4,
+        options = list(
+          ggiraph::opts_hover_inv(css = "opacity:0.1;"),
+          ggiraph::opts_hover(css = "stroke-width:2;"),
+          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css,
+                                opacity = 0.9
+          )
+        )
+      )
+    }, error = function(e) {
+      message("Error in qpLocationsEven: ", e$message)
+      return(NULL)
+    })
+  })
+  
+  # QP Locations Ahead plot
+  output$qpLocationsAhead <- ggiraph::renderGirafe({
+    tryCatch({
+      if (!should_show_qp_locations()) return(NULL)
+      
+      df <- filtered_data()
+      if (!nrow(df)) return(NULL)
+      
+      pitcher_hand <- get_pitcher_handedness()
+      batter_hand <- input$batterSide
+      
+      p <- create_qp_locations_plot(df, "Ahead", pitcher_hand, batter_hand)
+      
+      ggiraph::girafe(
+        ggobj = p,
+        width_svg = 12, height_svg = 4,
+        options = list(
+          ggiraph::opts_hover_inv(css = "opacity:0.1;"),
+          ggiraph::opts_hover(css = "stroke-width:2;"),
+          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css,
+                                opacity = 0.9
+          )
+        )
+      )
+    }, error = function(e) {
+      message("Error in qpLocationsAhead: ", e$message)
+      return(NULL)
+    })
+  })
+  
+  # QP Locations Pitch Type Color Legend
+  output$qpPitchTypeColors <- renderUI({
+    tryCatch({
+      if (!should_show_qp_locations()) {
+        return(div(style = "font-size: 12px; color: #999;", "Select data to see pitch types"))
+      }
+      
+      df <- filtered_data()
+      if (!nrow(df)) {
+        return(div(style = "font-size: 12px; color: #999;", "No data available"))
+      }
+      
+      # Get unique pitch types in the current data
+      pitch_types <- sort(unique(df$TaggedPitchType))
+      pitch_types <- pitch_types[!is.na(pitch_types)]
+      
+      if (length(pitch_types) == 0) {
+        return(div(style = "font-size: 12px; color: #999;", "No pitch types found"))
+      }
+      
+      # Create legend entries for each pitch type with its color
+      legend_items <- lapply(pitch_types, function(pt) {
+        color <- all_colors[[as.character(pt)]]
+        if (is.null(color)) color <- "gray"
+        
+        div(style = "margin-bottom: 5px;",
+            span(style = paste0("display: inline-block; width: 12px; height: 12px; background-color: ", color, "; border-radius: 50%; margin-right: 8px;")),
+            pt
+        )
+      })
+      
+      div(style = "font-size: 12px;", legend_items)
+      
+    }, error = function(e) {
+      div(style = "font-size: 12px; color: #999;", "Error loading pitch types")
+    })
+  })
 }
 # ---------- Run ----------
 shinyApp(ui=ui, server=server)# app.R
