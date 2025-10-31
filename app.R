@@ -2302,6 +2302,62 @@ compute_qp_points <- function(df) {
   out
 }
 
+# QP Locations filter: determine if pitch locations are good (red/QP+ >= 50) or bad (blue/white/QP+ < 50)
+# This function calculates QP+ scores for pitch locations and classifies them
+filter_qp_locations <- function(df, qp_choice) {
+  # Pass-through if "All" or invalid choice
+  if (is.null(qp_choice) || qp_choice == "All" || !qp_choice %in% c("Yes", "No")) {
+    return(df)
+  }
+  
+  # Need location data to calculate QP+ scores
+  if (!all(c("PlateLocSide", "PlateLocHeight", "TaggedPitchType", "PitcherThrows", "Balls", "Strikes") %in% names(df))) {
+    return(df)
+  }
+  
+  # Calculate QP+ scores for each pitch
+  n <- nrow(df)
+  if (!n) return(df)
+  
+  x <- suppressWarnings(as.numeric(df$PlateLocSide))
+  y <- suppressWarnings(as.numeric(df$PlateLocHeight))
+  pt <- as.character(df$TaggedPitchType)
+  hand <- as.character(df$PitcherThrows)
+  state <- count_state_vec(df$Balls, df$Strikes)
+  
+  # Calculate QP+ scores (0-100 scale)
+  qp_scores <- rep(NA_real_, n)
+  
+  for (i in seq_len(n)) {
+    if (is.na(x[i]) || is.na(y[i])) {
+      qp_scores[i] <- 0  # Missing location = poor
+      next
+    }
+    
+    # Get square position in competitive zone
+    sq <- zone9_square(x[i], y[i])
+    
+    if (is.na(sq)) {
+      qp_scores[i] <- 0  # Outside competitive zone = poor
+    } else {
+      # Calculate QP+ score using existing function
+      qp_weight <- qp_weight_for_square(sq, pt[i], hand[i], ifelse(is.na(state[i]), "Even", state[i]))
+      qp_scores[i] <- qp_weight * 100
+    }
+  }
+  
+  # Apply filter based on choice
+  if (qp_choice == "Yes") {
+    # Show only good locations (red areas, QP+ >= 50)
+    return(df[qp_scores >= 50 & !is.na(qp_scores), , drop = FALSE])
+  } else if (qp_choice == "No") {
+    # Show only poor locations (blue/white areas, QP+ < 50)
+    return(df[qp_scores < 50 & !is.na(qp_scores), , drop = FALSE])
+  }
+  
+  return(df)
+}
+
 
 # Colors & factor levels
 all_colors <- c(
@@ -3560,6 +3616,10 @@ pitch_ui <- function(show_header = FALSE) {
           "batterSide", "Batter Hand:",
           choices = c("All","Left","Right"), selected = "All"
         ),
+        selectInput(
+          "qpLocations", "QP Locations:",
+          choices = c("All", "Yes", "No"), selected = "All"
+        ),
         
         # NEW: Count filter (multi-select)
         selectInput(
@@ -4529,7 +4589,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
     
     # --- Filtered data for Hitting (LSU only; no Session Type input) ---
     filtered_hit <- reactive({
-      req(is_active(), input$dates, input$hand, input$zoneLoc, input$inZone)
+      req(is_active(), input$dates, input$hand, input$zoneLoc, input$inZone, input$qpLocations)
       pitch_types <- if (is.null(input$pitchType)) "All" else input$pitchType
       
       df <- pd_team() %>% dplyr::filter(Date >= input$dates[1], Date <= input$dates[2])
@@ -4544,6 +4604,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       
       df <- enforce_zone(df, input$zoneLoc)
       df <- enforce_inzone(df, input$inZone)
+      df <- filter_qp_locations(df, input$qpLocations)
       df <- apply_count_filter(df, input$countFilter)
       
       # ---- Apply BIP Result filter (balls in play only) ----
@@ -5425,6 +5486,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       # Spatial & count filters
       df <- enforce_zone(df, input$zoneLoc)
       df <- enforce_inzone(df, input$inZone)
+      df <- filter_qp_locations(df, input$qpLocations)
       df <- apply_count_filter(df, input$countFilter)
       
       # Numeric ranges
@@ -6327,7 +6389,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
     # Common filtering (Camps-only base)
     # ---------------------------
     filtered_base <- reactive({
-      req(is_active(), input$dates, input$hand, input$zoneLoc, input$inZone)
+      req(is_active(), input$dates, input$hand, input$zoneLoc, input$inZone, input$qpLocations)
       df <- camps_all()
       
       # Date range (use Date column coerced to Date)
@@ -6347,6 +6409,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       # Zone / in-zone / count (your existing helpers)
       df <- enforce_zone(df, input$zoneLoc)
       df <- enforce_inzone(df, input$inZone)
+      df <- filter_qp_locations(df, input$qpLocations)
       df <- apply_count_filter(df, input$countFilter)
       
       # Numeric ranges
@@ -7365,6 +7428,7 @@ mod_leader_ui <- function(id, show_header = FALSE) {
         ),
         selectInput(ns("inZone"),     "In Zone:",       choices = c("All","Yes","No","Competitive"), selected = "All"),
         selectInput(ns("batterSide"), "Batter Hand:",   choices = c("All","Left","Right"), selected = "All"),
+        selectInput(ns("qpLocations"), "QP Locations:", choices = c("All", "Yes", "No"), selected = "All"),
         selectInput(
           ns("countFilter"), "Count:",
           choices  = c("All"="All","Even"="Even","Behind"="Behind","Ahead"="Ahead","2K Not Full"="2KNF",
@@ -7548,7 +7612,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
     
     # Domain-aware filtered data BEFORE pitch-type filtering (used for usage denominators)
     filtered_lb_before_pitch_type <- reactive({
-      req(is_active(), input$dates, input$hand, input$zoneLoc, input$inZone)
+      req(is_active(), input$dates, input$hand, input$zoneLoc, input$inZone, input$qpLocations)
       
       df <- team_base()
       
@@ -7568,6 +7632,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       # Zone / in-zone / count filters
       df <- enforce_zone(df, input$zoneLoc)
       df <- enforce_inzone(df, input$inZone)
+      df <- filter_qp_locations(df, input$qpLocations)
       df <- apply_count_filter(df, input$countFilter)
       
       # Numeric ranges
@@ -8260,6 +8325,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
               uiOutput(ns("cmpA_player_ui")),
               selectInput(ns("cmpA_hand"),   "Pitcher Hand:", choices = c("All","Left","Right"), selected = "All"),
               selectInput(ns("cmpA_batter"), "Batter Hand:",  choices = c("All","Left","Right"), selected = "All"),
+              selectInput(ns("cmpA_qpLocations"), "QP Locations:", choices = c("All", "Yes", "No"), selected = "All"),
               selectInput(
                 ns("cmpA_pitchType"),"Pitch Type:",
                 choices  = c("All", levels(pitch_data$TaggedPitchType)),
@@ -8331,6 +8397,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
               uiOutput(ns("cmpB_player_ui")),
               selectInput(ns("cmpB_hand"),   "Pitcher Hand:", choices = c("All","Left","Right"), selected = "All"),
               selectInput(ns("cmpB_batter"), "Batter Hand:",  choices = c("All","Left","Right"), selected = "All"),
+              selectInput(ns("cmpB_qpLocations"), "QP Locations:", choices = c("All", "Yes", "No"), selected = "All"),
               selectInput(
                 ns("cmpB_pitchType"),"Pitch Type:",
                 choices  = c("All", levels(pitch_data$TaggedPitchType)),
@@ -8561,6 +8628,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
       bats   <- input[[paste0("cmp", which, "_batter")]]
       zone   <- input[[paste0("cmp", which, "_zone")]]
       ptypes <- input[[paste0("cmp", which, "_pitchType")]]
+      qpLoc  <- input[[paste0("cmp", which, "_qpLocations")]]
       vmin   <- input[[paste0("cmp", which, "_veloMin")]]
       vmax   <- input[[paste0("cmp", which, "_veloMax")]]
       ivbmin <- input[[paste0("cmp", which, "_ivbMin")]]
@@ -8643,6 +8711,12 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
       
       if (!is.null(zone) && !identical(zone, "All")) {
         df <- enforce_zone(df, zone)
+        if (!nrow(df)) return(df)
+      }
+      
+      # Apply QP Locations filter
+      if (!is.null(qpLoc) && qpLoc != "All") {
+        df <- filter_qp_locations(df, qpLoc)
         if (!nrow(df)) return(df)
       }
       
@@ -11008,7 +11082,7 @@ server <- function(input, output, session) {
   
   # 2) Filtered data
   filtered_data <- reactive({
-    req(input$sessionType, input$hand, input$zoneLoc, input$inZone, input$teamType)
+    req(input$sessionType, input$hand, input$zoneLoc, input$inZone, input$qpLocations, input$teamType)
     
     is_valid_dates <- function(d) !is.null(d) && length(d) == 2 && all(is.finite(d))
     nnz <- function(x) !is.null(x) && !is.na(x)
@@ -11060,6 +11134,7 @@ server <- function(input, output, session) {
     # Spatial & count
     df <- enforce_zone(df, input$zoneLoc)
     df <- enforce_inzone(df, input$inZone)
+    df <- filter_qp_locations(df, input$qpLocations)
     df <- apply_count_filter(df, input$countFilter)
     
     # Numeric ranges
@@ -11101,7 +11176,7 @@ server <- function(input, output, session) {
   
   # 4) Leaderboard data
   leaderboard_data <- reactive({
-    req(input$sessionType, input$dates, input$hand, input$zoneLoc, input$inZone)
+    req(input$sessionType, input$dates, input$hand, input$zoneLoc, input$inZone, input$qpLocations)
     
     # protect against NULL during app init
     pitch_types <- if (is.null(input$pitchType)) "All" else input$pitchType
@@ -11127,6 +11202,7 @@ server <- function(input, output, session) {
     
     df <- enforce_zone(df, input$zoneLoc)
     df <- enforce_inzone(df, input$inZone)
+    df <- filter_qp_locations(df, input$qpLocations)
     df <- apply_count_filter(df, input$countFilter)
     if (!is.na(input$veloMin)) df <- dplyr::filter(df, RelSpeed >= input$veloMin)
     if (!is.na(input$veloMax)) df <- dplyr::filter(df, RelSpeed <= input$veloMax)
@@ -11353,6 +11429,7 @@ server <- function(input, output, session) {
     # Same zone/count/numeric filters as elsewhere (guarded with exists())
     if (exists("enforce_zone"))       df <- enforce_zone(df, input$zoneLoc)
     if (exists("enforce_inzone"))     df <- enforce_inzone(df, input$inZone)
+    if (exists("filter_qp_locations")) df <- filter_qp_locations(df, input$qpLocations)
     if (exists("apply_count_filter")) df <- apply_count_filter(df, input$countFilter)
     
     if (nnz(input$veloMin)) df <- dplyr::filter(df, RelSpeed         >= input$veloMin)
