@@ -957,6 +957,8 @@ blank_ea_except_all <- function(df) {
   if (!length(pitch_cols)) return(df)
   pitch_vals <- tolower(as.character(df[[pitch_cols[1]]]))
   keep_all <- is.na(pitch_vals) | pitch_vals == "all"
+  # Handle NA values in logical condition
+  keep_all[is.na(keep_all)] <- FALSE
   df$`E+A%` <- as.character(df$`E+A%`)
   df$`E+A%`[!keep_all] <- ""
   df
@@ -999,7 +1001,7 @@ sanitize_for_dt <- function(dfx) {
         }, error = function(e) "")
       }, FUN.VALUE = character(1))),
       # Ensure all columns are proper types for DT
-      dplyr::across(where(is.logical), ~ ifelse(.x, "TRUE", "FALSE")),
+      dplyr::across(where(is.logical), ~ ifelse(is.na(.x), "FALSE", ifelse(.x, "TRUE", "FALSE"))),
       dplyr::across(where(~ is.numeric(.x) && any(is.infinite(.x), na.rm = TRUE)), 
                     ~ ifelse(is.infinite(.x), ifelse(.x > 0, "Inf", "-Inf"), .x))
     )
@@ -1127,7 +1129,18 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
     if (identical(mode, "Usage")) {
       color_modes <- setdiff(color_modes, "Usage")
     }
-    if (enable_colors && mode %in% color_modes && ("Pitch" %in% names(df) || "Player" %in% names(df))) {
+    # Safe condition checking for color mode
+    enable_color_mode <- tryCatch({
+      !is.null(enable_colors) && 
+        !is.na(enable_colors) && 
+        isTRUE(enable_colors) &&
+        !is.null(mode) &&
+        !is.na(mode) &&
+        mode %in% color_modes && 
+        ("Pitch" %in% names(df) || "Player" %in% names(df))
+    }, error = function(e) FALSE)
+    
+    if (enable_color_mode) {
       color_cols <- switch(
         mode,
         "Process" = c("InZone%","Comp%","Strike%","Swing%","FPS%","E+A%","Ctrl+","QP+","Pitching+"),
@@ -1146,8 +1159,34 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
           for (col in available_cols) {
             for (i in seq_len(nrow(df_styled))) {
               cell <- df_styled[[col]][i]
-              if (is.null(cell) || (length(cell) == 1 && is.na(cell)) || !nzchar(as.character(cell))) next
-              pitch_type <- safe_pitch %||% dplyr::coalesce(df_styled$Pitch[i], "all")
+              # Check for null, NA, or empty values safely
+              cell_check <- tryCatch({
+                is.null(cell) || 
+                  (length(cell) == 1 && is.na(cell)) || 
+                  (length(cell) == 1 && !nzchar(as.character(cell)))
+              }, error = function(e) TRUE)
+              
+              if (cell_check) next
+              
+              # Safe pitch type extraction with NA protection
+              pitch_val <- tryCatch({
+                if ("Pitch" %in% names(df_styled) && i <= nrow(df_styled)) {
+                  df_styled$Pitch[i]
+                } else {
+                  NULL
+                }
+              }, error = function(e) NULL)
+              
+              pitch_type <- tryCatch({
+                if (!is.null(safe_pitch)) {
+                  safe_pitch
+                } else if (!is.null(pitch_val) && !is.na(pitch_val) && nzchar(as.character(pitch_val))) {
+                  as.character(pitch_val)
+                } else {
+                  "all"
+                }
+              }, error = function(e) "all")
+              
               colors <- get_color_scale(cell, col, pitch_type)
               df_styled[[col]][i] <- paste0(
                 '<span style="background-color:', colors$bg,
@@ -1213,18 +1252,31 @@ visible_set_for_lb <- function(mode, custom = character(0)) {
 }
 
 get_color_scale <- function(value, column_name, pitch_type) {
-  # normalize pitch type (fallback to "all" when unknown)
-  if (length(pitch_type) == 0 || is.na(pitch_type) || !nzchar(as.character(pitch_type))) {
-    pitch_type <- "all"
-  }
-  pitch_type <- tolower(as.character(pitch_type))
+  # normalize pitch type (fallback to "all" when unknown) - safe checks
+  pitch_type <- tryCatch({
+    if (length(pitch_type) == 0 || is.na(pitch_type) || !nzchar(as.character(pitch_type))) {
+      "all"
+    } else {
+      tolower(as.character(pitch_type))
+    }
+  }, error = function(e) "all")
   
-  # strip percent/extra chars and coerce to numeric for comparisons
-  if (is.character(value)) {
-    value <- gsub("[%\\s]", "", value)
-    value <- suppressWarnings(as.numeric(value))
-  }
-  if (length(value) == 0 || is.na(value) || !is.finite(value)) {
+  # strip percent/extra chars and coerce to numeric for comparisons - safe checks
+  value <- tryCatch({
+    if (is.character(value)) {
+      val <- gsub("[%\\s]", "", value)
+      suppressWarnings(as.numeric(val))
+    } else {
+      as.numeric(value)
+    }
+  }, error = function(e) NA_real_)
+  
+  # Safe value validation
+  value_check <- tryCatch({
+    length(value) == 0 || is.na(value) || !is.finite(value)
+  }, error = function(e) TRUE)
+  
+  if (value_check) {
     return(list(bg = "white", text = "black"))
   }
   
@@ -4589,7 +4641,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
     
     # --- Filtered data for Hitting (LSU only; no Session Type input) ---
     filtered_hit <- reactive({
-      req(is_active(), input$dates, input$hand, input$zoneLoc, input$inZone, input$qpLocations)
+      req(is_active(), input$dates, input$hand, input$zoneLoc, input$inZone)
       pitch_types <- if (is.null(input$pitchType)) "All" else input$pitchType
       
       df <- pd_team() %>% dplyr::filter(Date >= input$dates[1], Date <= input$dates[2])
@@ -4604,7 +4656,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       
       df <- enforce_zone(df, input$zoneLoc)
       df <- enforce_inzone(df, input$inZone)
-      df <- filter_qp_locations(df, input$qpLocations)
+      # Note: No QP Locations filter in hitting suite
       df <- apply_count_filter(df, input$countFilter)
       
       # ---- Apply BIP Result filter (balls in play only) ----
@@ -4932,47 +4984,122 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
     
     # --- Data & Performance table (Results-only custom view for Hitting) ---
     output$dpTable <- DT::renderDT({
-      req(is_active())
-      df <- filtered_hit()
-      validate(need(nrow(df) > 0, "No data for selected filters"))
-      
       tryCatch({
+        req(is_active())
+        df <- filtered_hit()
+        validate(need(nrow(df) > 0, "No data for selected filters"))
+        
         swing_levels <- c("StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay")
         
         # ----- Terminal PA logic (match v1 behavior) -----
-        is_terminal <- (
-          (!is.na(df$PlayResult) & df$PlayResult != "Undefined") |
-            (!is.na(df$KorBB) & df$KorBB %in% c("Strikeout","Walk"))
-        )
+        # Add safety checks for NA values
+        safe_terminal_check <- function(play_result, korbb) {
+          play_ok <- !is.na(play_result) & play_result != "Undefined"
+          korbb_ok <- !is.na(korbb) & korbb %in% c("Strikeout","Walk")
+          return(play_ok | korbb_ok)
+        }
+        
+        is_terminal <- safe_terminal_check(df$PlayResult, df$KorBB)
         term <- df[is_terminal, , drop = FALSE]
         
+        # Ensure we have some terminal data
+        if (nrow(term) == 0) {
+          return(DT::datatable(
+            data.frame(Message = "No completed plate appearances in selected data"),
+            options = list(dom = 't'), rownames = FALSE
+          ))
+        }
+        
         # Pitch totals for Swing%/Whiff%
-        pitch_totals <- df %>%
-          dplyr::group_by(TaggedPitchType) %>%
-          dplyr::summarise(
-            Pitches = dplyr::n(),
-            Swings  = sum(!is.na(PitchCall) & PitchCall %in% swing_levels, na.rm = TRUE),
-            Whiffs  = sum(PitchCall == "StrikeSwinging", na.rm = TRUE),
-            CalledStrikes = sum(PitchCall == "StrikeCalled", na.rm = TRUE),
-            .groups = "drop"
+        pitch_totals <- tryCatch({
+          df %>%
+            dplyr::group_by(TaggedPitchType) %>%
+            dplyr::summarise(
+              Pitches = dplyr::n(),
+              Swings  = sum(!is.na(PitchCall) & PitchCall %in% swing_levels, na.rm = TRUE),
+              Whiffs  = sum(!is.na(PitchCall) & PitchCall == "StrikeSwinging", na.rm = TRUE),
+              CalledStrikes = sum(!is.na(PitchCall) & PitchCall == "StrikeCalled", na.rm = TRUE),
+              .groups = "drop"
+            )
+        }, error = function(e) {
+          # Return minimal structure if grouping fails
+          data.frame(
+            TaggedPitchType = "All",
+            Pitches = nrow(df),
+            Swings = sum(!is.na(df$PitchCall) & df$PitchCall %in% swing_levels, na.rm = TRUE),
+            Whiffs = sum(!is.na(df$PitchCall) & df$PitchCall == "StrikeSwinging", na.rm = TRUE),
+            CalledStrikes = sum(!is.na(df$PitchCall) & df$PitchCall == "StrikeCalled", na.rm = TRUE),
+            stringsAsFactors = FALSE
           )
+        })
         total_pitches <- sum(pitch_totals$Pitches, na.rm = TRUE)
         
         # EV/LA from live balls in play
-        bbe <- df %>%
-          dplyr::filter(grepl("live|game|ab", tolower(SessionType)), PitchCall == "InPlay")
-        evla <- bbe %>%
-          dplyr::group_by(TaggedPitchType) %>%
-          dplyr::summarise(EV = nz_mean(ExitSpeed), LA = nz_mean(Angle), .groups = "drop")
+        bbe <- tryCatch({
+          df %>%
+            dplyr::filter(
+              !is.na(SessionType),
+              grepl("live|game|ab", tolower(SessionType)), 
+              !is.na(PitchCall),
+              PitchCall == "InPlay"
+            )
+        }, error = function(e) {
+          # Return empty data frame if filtering fails
+          df[FALSE, , drop = FALSE]
+        })
+        
+        evla <- tryCatch({
+          if (nrow(bbe) > 0) {
+            bbe %>%
+              dplyr::group_by(TaggedPitchType) %>%
+              dplyr::summarise(
+                EV = nz_mean(ExitSpeed), 
+                LA = nz_mean(Angle), 
+                .groups = "drop"
+              )
+          } else {
+            data.frame(
+              TaggedPitchType = character(0),
+              EV = numeric(0),
+              LA = numeric(0),
+              stringsAsFactors = FALSE
+            )
+          }
+        }, error = function(e) {
+          data.frame(
+            TaggedPitchType = character(0),
+            EV = numeric(0),
+            LA = numeric(0),
+            stringsAsFactors = FALSE
+          )
+        })
         
         # GB%
-        gb <- bbe %>%
-          dplyr::group_by(TaggedPitchType) %>%
-          dplyr::summarise(
-            GBpct = safe_div(sum(TaggedHitType == "GroundBall", na.rm = TRUE),
-                             sum(!is.na(TaggedHitType),         na.rm = TRUE)),
-            .groups = "drop"
+        gb <- tryCatch({
+          if (nrow(bbe) > 0) {
+            bbe %>%
+              dplyr::group_by(TaggedPitchType) %>%
+              dplyr::summarise(
+                GBpct = safe_div(
+                  sum(!is.na(TaggedHitType) & TaggedHitType == "GroundBall", na.rm = TRUE),
+                  sum(!is.na(TaggedHitType), na.rm = TRUE)
+                ),
+                .groups = "drop"
+              )
+          } else {
+            data.frame(
+              TaggedPitchType = character(0),
+              GBpct = numeric(0),
+              stringsAsFactors = FALSE
+            )
+          }
+        }, error = function(e) {
+          data.frame(
+            TaggedPitchType = character(0),
+            GBpct = numeric(0),
+            stringsAsFactors = FALSE
           )
+        })
         
         # Per-pitch-type PA/AB/hit/K/BB tallies (match v1 K/BB logic)
         per_type <- term %>%
@@ -5119,38 +5246,98 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         
         
         # Display formatting
-        pct_cols  <- c("Swing%","Whiff%","CSW%","GB%","K%","BB%","Barrel%")
-        rate_cols <- c("AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP")
-        df_out[pct_cols]  <- lapply(df_out[pct_cols],  function(z) ifelse(is.finite(z), paste0(round(z*100,1), "%"), ""))
-        df_out[rate_cols] <- lapply(df_out[rate_cols], function(z) ifelse(is.finite(z), fmt_avg(z), ""))
-        df_out$EV <- ifelse(is.finite(df_out$EV), round(df_out$EV, 1), "")
-        df_out$LA <- ifelse(is.finite(df_out$LA), round(df_out$LA, 1), "")
+        tryCatch({
+          pct_cols  <- c("Swing%","Whiff%","CSW%","GB%","K%","BB%","Barrel%")
+          rate_cols <- c("AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP")
+          
+          # Only format columns that exist
+          existing_pct <- intersect(pct_cols, names(df_out))
+          existing_rate <- intersect(rate_cols, names(df_out))
+          
+          if (length(existing_pct)) {
+            df_out[existing_pct] <- lapply(df_out[existing_pct], function(z) {
+              ifelse(is.finite(suppressWarnings(as.numeric(z))), 
+                     paste0(round(suppressWarnings(as.numeric(z))*100,1), "%"), "")
+            })
+          }
+          
+          if (length(existing_rate)) {
+            df_out[existing_rate] <- lapply(df_out[existing_rate], function(z) {
+              ifelse(is.finite(suppressWarnings(as.numeric(z))), fmt_avg(as.numeric(z)), "")
+            })
+          }
+          
+          if ("EV" %in% names(df_out)) {
+            df_out$EV <- ifelse(is.finite(suppressWarnings(as.numeric(df_out$EV))), 
+                                round(suppressWarnings(as.numeric(df_out$EV)), 1), "")
+          }
+          if ("LA" %in% names(df_out)) {
+            df_out$LA <- ifelse(is.finite(suppressWarnings(as.numeric(df_out$LA))), 
+                                round(suppressWarnings(as.numeric(df_out$LA)), 1), "")
+          }
+        }, error = function(e) {
+          # If formatting fails, continue with unformatted data
+          message("Formatting error: ", conditionMessage(e))
+        })
         
         # Clean for DT + final guard for All-row % blanks
         df_dt <- if (exists("safe_for_dt")) safe_for_dt(df_out) else df_out
-        is_all <- df_dt$Pitch == "All"
+        
+        # Ensure Pitch column has no NAs to avoid logical errors
+        if (!"Pitch" %in% names(df_dt)) df_dt$Pitch <- "Unknown"
+        df_dt$Pitch[is.na(df_dt$Pitch)] <- "Unknown"
+        
+        is_all <- !is.na(df_dt$Pitch) & df_dt$Pitch == "All"
         for (nm in c("Swing%","Whiff%","CSW%","GB%","K%","BB%")) {
-          z <- df_dt[[nm]]
-          z[is_all & (is.na(z) | trimws(z) == "")] <- "0.0%"
-          df_dt[[nm]] <- z
+          if (nm %in% names(df_dt)) {
+            z <- df_dt[[nm]]
+            z[is_all & (is.na(z) | trimws(as.character(z)) == "")] <- "0.0%"
+            df_dt[[nm]] <- z
+          }
         }
         
         # Visible set: Results vs Custom
         mode   <- input$dpMode
+        if (is.null(mode)) mode <- "Results"
         custom <- input$dpCustomCols; if (is.null(custom)) custom <- character(0)
         base_cols <- c("Pitch","PA","AB","AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP",
                        "Swing%","Whiff%","GB%","K%","BB%","Barrel%","EV","LA")
         visible_set <- if (identical(mode, "Custom")) unique(c("Pitch", custom)) else base_cols
         
+        # Ensure visible_set only contains valid column names
+        valid_visible <- intersect(visible_set, names(df_dt))
+        if (!length(valid_visible)) valid_visible <- "Pitch"
+        
         datatable_with_colvis(
           df_dt,
           lock            = "Pitch",
           remember        = FALSE,
-          default_visible = intersect(visible_set, names(df_dt))
+          default_visible = valid_visible,
+          mode            = NULL,
+          enable_colors   = FALSE  # Disable colors for hitting suite
         )
       }, error = function(e) {
+        # Provide detailed error information for debugging
+        error_msg <- conditionMessage(e)
+        error_details <- paste(
+          "Detailed error in Hitting dpTable:",
+          "Error:", error_msg,
+          "Call stack available in R console",
+          sep = "\n"
+        )
+        
+        # Log the full error for debugging
+        cat("Hitting dpTable error:\n")
+        cat("Message:", error_msg, "\n")
+        cat("Traceback:\n")
+        traceback()
+        
         DT::datatable(
-          data.frame(Error = paste("Hitting table error:", conditionMessage(e))),
+          data.frame(
+            Error_Type = "Table Generation Error",
+            Error_Message = error_msg,
+            Suggestion = "Check console for full error details"
+          ),
           options = list(dom = 't'), rownames = FALSE
         )
       })
@@ -5555,13 +5742,22 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       to_num <- function(x) suppressWarnings(as.numeric(x))
       
       # ---------- SL+ on TAKES from the full dataset ----------
-      takes   <- !is.na(df_all$PitchCall) & df_all$PitchCall %in% c("StrikeCalled","BallCalled", "BallinDirt")
+      # Safe logical operations for takes calculation
+      takes <- tryCatch({
+        pitch_call_safe <- as.character(df_all$PitchCall)
+        (!is.na(pitch_call_safe)) & (pitch_call_safe %in% c("StrikeCalled","BallCalled", "BallinDirt"))
+      }, error = function(e) {
+        rep(FALSE, nrow(df_all))
+      })
       buckets <- inzone_label(df_all$PlateLocSide, df_all$PlateLocHeight)
       
       base_tbl <- dplyr::tibble(
         take   = takes,
         bucket = buckets,
-        is_cs  = df_all$PitchCall == "StrikeCalled"
+        is_cs  = tryCatch({
+          pitch_call_safe <- as.character(df_all$PitchCall)
+          pitch_call_safe == "StrikeCalled"
+        }, error = function(e) rep(FALSE, nrow(df_all)))
       ) %>%
         dplyr::filter(take) %>%
         dplyr::group_by(bucket) %>%
@@ -5585,14 +5781,26 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
         dplyr::group_by(Pitch) %>%
         dplyr::summarise(
           `SL+` = {
-            if (!any(take, na.rm = TRUE)) {
+            any_take <- tryCatch(any(take, na.rm = TRUE), error = function(e) FALSE)
+            if (!any_take) {
               NA_real_
             } else {
-              obs <- mean(PitchCall[take] == "StrikeCalled", na.rm = TRUE)
+              # Safe comparison for PitchCall
+              pitch_call_subset <- tryCatch({
+                as.character(PitchCall[take])
+              }, error = function(e) character(0))
+              
+              obs <- if (length(pitch_call_subset) > 0) {
+                mean(pitch_call_subset == "StrikeCalled", na.rm = TRUE)
+              } else {
+                NA_real_
+              }
+              
               tb  <- table(bucket[take])
               if (length(tb)) {
                 exp <- sum(as.numeric(tb) * vapply(names(tb), rate_for_bucket, numeric(1))) / sum(tb)
-                if (is.finite(exp) && exp > 0) round(100 * obs / exp, 1) else NA_real_
+                exp_check <- tryCatch(is.finite(exp) && exp > 0, error = function(e) FALSE)
+                if (exp_check) round(100 * obs / exp, 1) else NA_real_
               } else NA_real_
             }
           },
@@ -5668,9 +5876,27 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       all_velo <- if (total_throws) round(mean(df_throw$ThrowSpeed_num,   na.rm = TRUE), 1) else NA_real_
       all_xch  <- if (total_throws) round(mean(df_throw$ExchangeTime_num, na.rm = TRUE), 1) else NA_real_
       all_pop  <- if (total_throws) round(mean(df_throw$PopTime_num,      na.rm = TRUE), 2) else NA_real_
-      obs_all  <- if (any(takes, na.rm = TRUE)) mean(df_all$PitchCall[takes] == "StrikeCalled", na.rm = TRUE) else NA_real_
+      obs_all  <- tryCatch({
+        any_takes <- tryCatch(any(takes, na.rm = TRUE), error = function(e) FALSE)
+        if (any_takes) {
+          pitch_call_takes <- as.character(df_all$PitchCall[takes])
+          if (length(pitch_call_takes) > 0) {
+            mean(pitch_call_takes == "StrikeCalled", na.rm = TRUE)
+          } else {
+            NA_real_
+          }
+        } else {
+          NA_real_
+        }
+      }, error = function(e) NA_real_)
       exp_all  <- overall_rate
-      sl_all   <- if (is.finite(obs_all) && is.finite(exp_all) && exp_all > 0) round(100 * obs_all / exp_all, 1) else NA_real_
+      sl_all   <- tryCatch({
+        if (is.finite(obs_all) && is.finite(exp_all) && exp_all > 0) {
+          round(100 * obs_all / exp_all, 1)
+        } else {
+          NA_real_
+        }
+      }, error = function(e) NA_real_)
       
       all_row <- dplyr::tibble(Pitch = "ALL", `#` = total_throws,
                                Velo = all_velo, ExchangeTime = all_xch, PopTime = all_pop, `SL+` = sl_all)
@@ -7309,7 +7535,10 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       }
       
       to_num <- function(x) suppressWarnings(as.numeric(x))
-      takes_all   <- !is.na(df_all$PitchCall) & df_all$PitchCall %in% c("StrikeCalled","BallCalled")
+      takes_all   <- tryCatch({
+        pitch_call_safe <- as.character(df_all$PitchCall)
+        (!is.na(pitch_call_safe)) & (pitch_call_safe %in% c("StrikeCalled","BallCalled"))
+      }, error = function(e) rep(FALSE, nrow(df_all)))
       buckets_all <- inzone_label(df_all$PlateLocSide, df_all$PlateLocHeight)
       
       by_catcher <- split(seq_len(nrow(df_all)), df_all$Catcher)
@@ -7375,7 +7604,8 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
         final,
         lock            = "Player",
         remember        = TRUE,
-        default_visible = intersect(default_visible, names(final))
+        default_visible = intersect(default_visible, names(final)),
+        enable_colors   = FALSE
       )
     }, server = FALSE)
   })
@@ -7769,13 +7999,15 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         visible_set <- c("Player", "IP", "P", "BF", "P/IP", "P/BF", "H", "XBH", "Barrels", "BB", "HBP", "K", "Whiffs")
         
         tryCatch({
+          # Only enable colors for Pitching domain, disable for Hitting and Catching
+          use_colors <- isTRUE(input$lbColors) && input$domain == "Pitching"
           datatable_with_colvis(
             out_tbl,
             lock            = "Player",
             remember        = FALSE,
             default_visible = visible_set,
             mode            = "Raw Data",
-            enable_colors   = isTRUE(input$lbColors)
+            enable_colors   = use_colors
           )
         }, error = function(e) {
           message("lbTable Raw Data error: ", conditionMessage(e))
@@ -8117,7 +8349,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         out,
         lock            = "Player",
         remember        = FALSE,
-        default_visible = intersect(default_visible, names(out))
+        default_visible = intersect(default_visible, names(out)),
+        enable_colors   = FALSE
       )
     }, server = FALSE)
     
@@ -8162,7 +8395,10 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       to_num <- function(x) suppressWarnings(as.numeric(x))
       
       # pre-compute take buckets
-      takes_all   <- !is.na(df_all$PitchCall) & df_all$PitchCall %in% c("StrikeCalled","BallCalled")
+      takes_all   <- tryCatch({
+        pitch_call_safe <- as.character(df_all$PitchCall)
+        (!is.na(pitch_call_safe)) & (pitch_call_safe %in% c("StrikeCalled","BallCalled"))
+      }, error = function(e) rep(FALSE, nrow(df_all)))
       buckets_all <- inzone_label(df_all$PlateLocSide, df_all$PlateLocHeight)
       
       by_catcher <- split(seq_len(nrow(df_all)), df_all$Catcher)  # split by index for reuse
@@ -8246,7 +8482,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         final,
         lock            = "Player",
         remember        = TRUE,
-        default_visible = intersect(default_visible, names(final))
+        default_visible = intersect(default_visible, names(final)),
+        enable_colors   = FALSE
       )
     }, server = FALSE)
     
@@ -8513,19 +8750,6 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
           updateDateRangeInput(session, "cmpB_dates", 
                                start = global_date_range()[1], 
                                end = global_date_range()[2])
-        }
-      })
-      
-      # Update global date range when either comparison date input changes
-      observeEvent(input$cmpA_dates, {
-        if (!is.null(input$cmpA_dates) && length(input$cmpA_dates) == 2) {
-          global_date_range(input$cmpA_dates)
-        }
-      })
-      
-      observeEvent(input$cmpB_dates, {
-        if (!is.null(input$cmpB_dates) && length(input$cmpB_dates) == 2) {
-          global_date_range(input$cmpB_dates)
         }
       })
     }
@@ -10949,16 +11173,30 @@ server <- function(input, output, session) {
   
   # Buttons above Data & Performance table
   output$dpTableButtons <- renderUI({
+    # preserve current selection if it exists; default to "Stuff"
     sel <- isolate(input$dpTableMode)
     if (is.null(sel)) sel <- "Stuff"
     
     tagList(
-      radioButtons(
-        "dpTableMode", label = NULL,
-        choices  = c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Custom"),
-        selected = sel,
-        inline   = TRUE
+      div(style = "display: flex; align-items: center; gap: 15px;",
+          div(style = "flex: 0 0 auto;",
+              selectInput(
+                "dpTableMode", label = NULL,
+                choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data","Custom"),
+                selected = sel,
+                width = "120px"
+              )
+          ),
+          div(style = "flex: 0 0 auto;",
+              checkboxInput(
+                "dpTableColors", 
+                label = "Color-Code", 
+                value = TRUE,
+                width = "80px"
+              )
+          )
       ),
+      # show the picker purely on the client; avoids re-render loops
       conditionalPanel(
         "input.dpTableMode=='Custom'",
         selectizeInput(
@@ -12759,7 +12997,100 @@ server <- function(input, output, session) {
         lock            = "Pitch",
         remember        = FALSE,
         default_visible = intersect(visible_set, names(df_dt)),
-        mode            = mode
+        mode            = mode,
+        enable_colors   = isTRUE(input$dpTableColors)
+      ))
+    }
+    
+    # ---------- RAW DATA TABLE ----------
+    if (identical(mode, "Raw Data")) {
+      # Helper function for innings pitched calculation
+      ip_calculation <- function(pitches_data) {
+        outs <- sum(pitches_data$KorBB == "Strikeout", na.rm = TRUE) + 
+          sum(pitches_data$PlayResult %in% c("Out", "FieldersChoice", "Error"), na.rm = TRUE)
+        innings <- outs / 3
+        whole_innings <- floor(innings)
+        remaining_outs <- outs %% 3
+        if (remaining_outs == 0) {
+          return(paste0(whole_innings, ".0"))
+        } else {
+          return(paste0(whole_innings, ".", remaining_outs))
+        }
+      }
+      
+      raw_per_type <- df %>%
+        dplyr::group_by(TaggedPitchType) %>%
+        dplyr::summarise(
+          IP = ip_calculation(dplyr::cur_data_all()),
+          P = dplyr::n(),
+          BF = sum(Balls == 0 & Strikes == 0, na.rm = TRUE),
+          H = sum(PlayResult %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE),
+          XBH = sum(PlayResult %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE),
+          Barrels = sum(ExitSpeed >= 95 & Angle >= 10 & Angle <= 35, na.rm = TRUE),
+          BB = sum(KorBB == "Walk", na.rm = TRUE),
+          HBP = sum(PlayResult == "HitByPitch", na.rm = TRUE),
+          K = sum(KorBB == "Strikeout", na.rm = TRUE),
+          Whiffs = sum(PitchCall == "StrikeSwinging", na.rm = TRUE),
+          .groups = "drop"
+        ) %>%
+        dplyr::rename(Pitch = TaggedPitchType) %>%
+        dplyr::mutate(Pitch = as.character(Pitch))
+      
+      # All row calculations
+      all_ip <- ip_calculation(df)
+      all_p <- nrow(df)
+      all_bf <- sum(df$Balls == 0 & df$Strikes == 0, na.rm = TRUE)
+      all_h <- sum(df$PlayResult %in% c("Single", "Double", "Triple", "HomeRun"), na.rm = TRUE)
+      all_xbh <- sum(df$PlayResult %in% c("Double", "Triple", "HomeRun"), na.rm = TRUE)
+      all_barrels <- sum(df$ExitSpeed >= 95 & df$Angle >= 10 & df$Angle <= 35, na.rm = TRUE)
+      all_bb <- sum(df$KorBB == "Walk", na.rm = TRUE)
+      all_hbp <- sum(df$PlayResult == "HitByPitch", na.rm = TRUE)
+      all_k <- sum(df$KorBB == "Strikeout", na.rm = TRUE)
+      all_whiffs <- sum(df$PitchCall == "StrikeSwinging", na.rm = TRUE)
+      
+      # Calculate P/IP and P/BF for All row only
+      # Convert IP from "X.Y" format to decimal (X + Y/3)
+      ip_decimal <- if (all_ip != "0.0") {
+        parts <- strsplit(all_ip, "\\.")[[1]]
+        as.numeric(parts[1]) + as.numeric(parts[2])/3
+      } else 0
+      
+      p_per_ip <- if (ip_decimal > 0) as.character(round(all_p / ip_decimal, 1)) else ""
+      p_per_bf <- if (all_bf > 0) as.character(round(all_p / all_bf, 1)) else ""
+      
+      all_row <- tibble::tibble(
+        Pitch = "All",
+        IP = all_ip,
+        P = all_p,
+        BF = all_bf,
+        `P/IP` = p_per_ip,
+        `P/BF` = p_per_bf,
+        H = all_h,
+        XBH = all_xbh,
+        Barrels = all_barrels,
+        BB = all_bb,
+        HBP = all_hbp,
+        K = all_k,
+        Whiffs = all_whiffs
+      )
+      
+      # Add empty P/IP and P/BF columns to per-type data
+      raw_per_type$`P/IP` <- ""
+      raw_per_type$`P/BF` <- ""
+      
+      # Reorder columns to match desired layout
+      raw_per_type <- raw_per_type[, c("Pitch", "IP", "P", "BF", "P/IP", "P/BF", "H", "XBH", "Barrels", "BB", "HBP", "K", "Whiffs")]
+      
+      df_raw <- dplyr::bind_rows(raw_per_type, all_row)
+      
+      visible_set <- names(df_raw)
+      return(datatable_with_colvis(
+        df_raw,
+        lock            = "Pitch",
+        remember        = FALSE,
+        default_visible = visible_set,
+        mode            = mode,
+        enable_colors   = FALSE
       ))
     }
     
@@ -12933,6 +13264,12 @@ server <- function(input, output, session) {
       df_table <- enforce_stuff_order(df_table)
     }
     
+    # Format SpinEff column to percentage with 1 decimal place
+    if ("SpinEff" %in% names(df_table)) {
+      df_table$SpinEff <- ifelse(is.na(df_table$SpinEff) | df_table$SpinEff == "", "", 
+                                 paste0(round(as.numeric(df_table$SpinEff) * 100, 1), "%"))
+    }
+    
     visible_set <- visible_set_for(mode, custom)
     
     # Add error handling wrapper for main summary table
@@ -12956,7 +13293,8 @@ server <- function(input, output, session) {
       lock            = "Pitch",
       remember        = FALSE,
       default_visible = intersect(visible_set, names(df_table)),
-      mode            = mode
+      mode            = mode,
+      enable_colors   = isTRUE(input$dpTableColors)
     )
   })
   
