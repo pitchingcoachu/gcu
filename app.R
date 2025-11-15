@@ -40,24 +40,24 @@ heat_pal_red  <- function(n = HEAT_BINS) colorRampPalette(c("white","pink","red"
 
 # Draw heatmap function
 draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
-                      title = NULL, mark_max = TRUE, breaks = NULL) {
+                      title = NULL, mark_ = TRUE, breaks = NULL) {
   if (!nrow(grid)) return(ggplot() + theme_void())
   
   home <- data.frame(
     x = c(-0.75, 0.75, 0.75, 0.00, -0.75),
     y = c(1.05, 1.05, 1.15, 1.25, 1.15) - 0.5
   )
-  sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
+  sz <- data.frame(xmin = ZONE_LEFT, x = ZONE_RIGHT, ymin = ZONE_BOTTOM, y = ZONE_TOP)
   
   peak_df <- NULL
-  if (mark_max) {
-    i <- which.max(grid$z)
+  if (mark_) {
+    i <- which.(grid$z)
     if (length(i) && is.finite(grid$z[i])) {
       peak_df <- data.frame(px = grid$x[i], py = grid$y[i])
     }
   }
   
-  n_bins <- if (is.null(breaks)) bins else max(1, length(breaks) - 1)
+  n_bins <- if (is.null(breaks)) bins else (1, length(breaks) - 1)
   
   ggplot(grid, aes(x, y, z = z)) +
     {
@@ -68,7 +68,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
     } +
     scale_fill_manual(values = pal_fun(n_bins), guide = "none") +
     geom_polygon(data = home, aes(x, y), fill = NA, color = "black", inherit.aes = FALSE) +
-    geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+    geom_rect(data = sz, aes(xmin = xmin, x = x, ymin = ymin, y = y),
               fill = NA, color = "black", inherit.aes = FALSE) +
     { if (!is.null(peak_df))
       geom_point(data = peak_df, aes(x = px, y = py), inherit.aes = FALSE,
@@ -752,7 +752,7 @@ pa_flags_from_counts <- function(df_local) {
   pa_id[!valid_counts] <- NA_integer_
   last_idx <- rep(NA_integer_, n)
   if (any(!is.na(pa_id))) {
-    last_idx <- ave(seq_len(n), pa_id, FUN = function(idx) rep(max(idx), length(idx)))
+    last_idx <- ave(seq_len(n), pa_id, FUN = function(idx) rep((idx), length(idx)))
   }
   is_last <- seq_len(n) == last_idx
   is_last[is.na(pa_id)] <- FALSE
@@ -1047,7 +1047,7 @@ safe_make_summary <- function(df) {
       Overall = character(0),
       BF = integer(0),
       Velo_Avg = numeric(0),
-      Velo_Max = numeric(0),
+      Velo_ = numeric(0),
       IVB = numeric(0),
       HB = numeric(0),
       ReleaseTilt = character(0),
@@ -1220,14 +1220,14 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
 }
 
 # Default column sets for the table-mode toggle
-stuff_cols        <- c("Pitch","#","Velo","Max","IVB","HB","rTilt","bTilt","SpinEff","Spin","Height","Side","Ext","VAA","HAA","Stuff+")
+stuff_cols        <- c("Pitch","#","Velo","","IVB","HB","rTilt","bTilt","SpinEff","Spin","Height","Side","Ext","VAA","HAA","Stuff+")
 process_cols      <- c("Pitch","#","BF","InZone%","Comp%","Strike%","Swing%","FPS%","E+A%","Ctrl+","QP+","Pitching+")
 results_cols      <- c("Pitch","#","BF","K%","BB%","GB%","Barrel%","Whiff%","CSW%","EV","LA")
 results_cols_live <- c("Pitch","#","BF","K%","BB%","GB%","Whiff%","CSW%","EV","LA","Pitching+")
-bullpen_cols      <- c("Pitch","#","Velo","Max","IVB","HB","Spin","bTilt","Height","Side","Ext","InZone%","Comp%","Ctrl+","Stuff+")
-live_cols         <- c("Pitch","#","Velo","Max","IVB","HB","FPS%","E+A%","InZone%","Strike%","Whiff%","K%","BB%","QP+")
+bullpen_cols      <- c("Pitch","#","Velo","","IVB","HB","Spin","bTilt","Height","Side","Ext","InZone%","Comp%","Ctrl+","Stuff+")
+live_cols         <- c("Pitch","#","Velo","","IVB","HB","FPS%","E+A%","InZone%","Strike%","Whiff%","K%","BB%","QP+")
 usage_cols        <- c("Pitch","#","Usage","0-0","Behind","Even","Ahead","<2K","2K")
-banny_cols        <- c("Pitch","Usage","Strike%","InZone%","Comp%","Velo","Max","IVB","HB","Stuff+","QP+","Pitching+")
+banny_cols        <- c("Pitch","Usage","Strike%","InZone%","Comp%","Velo","","IVB","HB","Stuff+","QP+","Pitching+")
 perf_cols         <- c("Pitch","#","BF","InZone%","Comp%","Strike%","FPS%","E+A%","K%","BB%","Whiff%","CSW%","EV","LA","Ctrl+","QP+","Pitching+")
 
 # ---- unified list for the pickers + a helper to compute visibility
@@ -1520,7 +1520,7 @@ make_session_logs_table <- function(df) {
         FIP      = FIP_all,
         WHIP     = WHIP_all,
         Velo     = .s_nz_mean(d$RelSpeed),
-        Max      = suppressWarnings(max(d$RelSpeed, na.rm = TRUE)),
+              = suppressWarnings((d$RelSpeed, na.rm = TRUE)),
         IVB      = .s_nz_mean(d$InducedVertBreak),
         HB       = .s_nz_mean(d$HorzBreak),
         rTilt    = .s_nz_mean(d$ReleaseTilt),
@@ -1732,7 +1732,7 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
             for (j in seq_len(nrow(custom_seeds))) {
               d <- abs(custom_seeds$r[j] - rc$r) + abs(custom_seeds$c[j] - rc$c)
               di <- ifelse(d >= 3, 4, d + 1)
-              best <- max(best, custom_seeds$w[j] * dec[di])
+              best <- (best, custom_seeds$w[j] * dec[di])
             }
             base_score <- best * 100
           } else {
@@ -1749,8 +1749,8 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
           
           if (outside_zone) {
             # Calculate distance to nearest strike zone edge
-            x_dist <- pmax(0, pmax(ZONE_LEFT - x, x - ZONE_RIGHT))
-            y_dist <- pmax(0, pmax(ZONE_BOTTOM - y, y - ZONE_TOP))
+            x_dist <- p(0, p(ZONE_LEFT - x, x - ZONE_RIGHT))
+            y_dist <- p(0, p(ZONE_BOTTOM - y, y - ZONE_TOP))
             zone_distance <- sqrt(x_dist^2 + y_dist^2)
             
             # Check if we're below the zone (for breaking balls/offspeed in even/ahead)
@@ -1789,7 +1789,7 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
               # Special handling for non-fastball/sinker below zone over expanded plate area
               if (low_over_expanded_plate && is_non_fastball_sinker) {
                 # For ahead counts, low over expanded plate should be light red - force higher minimum score
-                base_score <- pmax(base_score, 60)  # Higher minimum for light red instead of light blue
+                base_score <- p(base_score, 60)  # Higher minimum for light red instead of light blue
                 distance_penalty <- pmin(0.1, 0.01 + zone_distance * 0.05)  # Even smaller penalty
               } else if (below_zone && is_non_fastball_sinker) {
                 # Moderate penalty below zone but outside expanded plate for non-fastball/sinker in ahead counts
@@ -1877,8 +1877,8 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
     # Create strike zone and home plate data for faceting
     strike_zone_all <- do.call(rbind, lapply(pitch_types, function(pt) {
       data.frame(
-        xmin = ZONE_LEFT, xmax = ZONE_RIGHT, 
-        ymin = ZONE_BOTTOM, ymax = ZONE_TOP,
+        xmin = ZONE_LEFT, x = ZONE_RIGHT, 
+        ymin = ZONE_BOTTOM, y = ZONE_TOP,
         pitch_type = pt
       )
     }))
@@ -1909,7 +1909,7 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
                    fill = NA, color = "black", linewidth = 1) +
       # Add strike zone
       geom_rect(data = strike_zone_all, 
-                aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                aes(xmin = xmin, x = x, ymin = ymin, y = y),
                 fill = NA, color = "black", linewidth = 1) +
       # Add pitched balls with interactive tooltips and pitch type colors
       {if (nrow(state_data_with_result) > 0) {
@@ -2068,7 +2068,7 @@ compute_stuff_simple <- function(df, base_type, level) {
   r_vel <- ifelse(
     df2$TaggedPitchType %in% c("Fastball","Sinker"),
     df2$RelSpeed / vel_avg,
-    df2$RelSpeed / pmax(1e-6, base_vel - off_off[df2$TaggedPitchType])
+    df2$RelSpeed / p(1e-6, base_vel - off_off[df2$TaggedPitchType])
   )
   
   # exaggerate velocity deviations:
@@ -2085,7 +2085,7 @@ compute_stuff_simple <- function(df, base_type, level) {
   
   # Invert velocity scoring for ChangeUp & Splitter so larger FB/SI gap is rewarded
   r_vel <- ifelse(df2$TaggedPitchType %in% c("ChangeUp","Splitter"),
-                  1 / pmax(r_vel, 1e-6), r_vel)
+                  1 / p(r_vel, 1e-6), r_vel)
   # ---- Updated r_ivb: endpoint-based for Sweeper off Sinker ----
   r_ivb <- case_when(
     df2$TaggedPitchType == "Fastball" ~
@@ -2126,7 +2126,7 @@ compute_stuff_simple <- function(df, base_type, level) {
       hb_mag  <- abs(df2$HB_adj)
       std_mag <- abs(std_hb)
       # symmetric reward: less HB → std/hb ; more HB → hb/std
-      r <- pmax(hb_mag / std_mag, std_mag / pmax(hb_mag, 1e-6))
+      r <- p(hb_mag / std_mag, std_mag / p(hb_mag, 1e-6))
       # optional deadband (e.g., within 2 in of "standard" HB scores 1.0)
       r <- ifelse(abs(hb_mag - std_mag) < 2, 1, r)
       r
@@ -2234,8 +2234,8 @@ zone9_square <- function(x, y) {
   h <- (COMP_TOP   - COMP_BOTTOM)
   
   # normalized positions in [0,1]
-  gx <- pmax(0, pmin(1, (x[idx] - COMP_LEFT)   / w))
-  gy <- pmax(0, pmin(1, (y[idx] - COMP_BOTTOM) / h))
+  gx <- p(0, pmin(1, (x[idx] - COMP_LEFT)   / w))
+  gy <- p(0, pmin(1, (y[idx] - COMP_BOTTOM) / h))
   
   # columns: LEFT(1)→RIGHT(3)
   col <- ifelse(gx < 1/3, 1L, ifelse(gx < 2/3, 2L, 3L))
@@ -2318,7 +2318,7 @@ qp_weight_for_square <- function(sq, pt, hand, state) {
   for (i in seq_len(nrow(seeds))) {
     d <- abs(seeds$r[i] - rc$r) + abs(seeds$c[i] - rc$c)  # Manhattan distance
     di <- ifelse(d >= 3, 4, d + 1)
-    best <- max(best, seeds$w[i] * dec[di])
+    best <- (best, seeds$w[i] * dec[di])
   }
   best
 }
@@ -2726,8 +2726,8 @@ kde_ratio_grid <- function(x, y, y_is_one, lims = c(-2,2,0,4.5), n = 180, h = NU
     d_all <- MASS::kde2d(x,      y,      n = n, lims = lims, h = h)
     d_pos <- MASS::kde2d(x[y1],  y[y1],  n = n, lims = lims, h = h)
   }
-  z <- (p1 * d_pos$z) / pmax(d_all$z, 1e-12)
-  z <- pmin(pmax(z, 0), 1)  # clamp
+  z <- (p1 * d_pos$z) / p(d_all$z, 1e-12)
+  z <- pmin(p(z, 0), 1)  # clamp
   expand.grid(x = d_all$x, y = d_all$y) |> transform(z = as.vector(z))
 }
 
@@ -2761,24 +2761,24 @@ smooth_mean_grid <- function(x, y, val, lims = c(-2,2,0,4.5), n = 160,
 # Drawing helper (strike zone + plate + filled contours with your palette)
 # replace your current draw_heat() with this version
 draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
-                      title = NULL, mark_max = TRUE, breaks = NULL) {
+                      title = NULL, mark_ = TRUE, breaks = NULL) {
   if (!nrow(grid)) return(ggplot() + theme_void())
   
   home <- data.frame(
     x = c(-0.75, 0.75, 0.75, 0.00, -0.75),
     y = c(1.05, 1.05, 1.15, 1.25, 1.15) - 0.5
   )
-  sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
+  sz <- data.frame(xmin = ZONE_LEFT, x = ZONE_RIGHT, ymin = ZONE_BOTTOM, y = ZONE_TOP)
   
   peak_df <- NULL
-  if (mark_max) {
-    i <- which.max(grid$z)
+  if (mark_) {
+    i <- which.(grid$z)
     if (length(i) && is.finite(grid$z[i])) {
       peak_df <- data.frame(px = grid$x[i], py = grid$y[i])
     }
   }
   
-  n_bins <- if (is.null(breaks)) bins else max(1, length(breaks) - 1)
+  n_bins <- if (is.null(breaks)) bins else (1, length(breaks) - 1)
   
   ggplot(grid, aes(x, y, z = z)) +
     {
@@ -2789,7 +2789,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
     } +
     scale_fill_manual(values = pal_fun(n_bins), guide = "none") +
     geom_polygon(data = home, aes(x, y), fill = NA, color = "black", inherit.aes = FALSE) +
-    geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+    geom_rect(data = sz, aes(xmin = xmin, x = x, ymin = ymin, y = y),
               fill = NA, color = "black", inherit.aes = FALSE) +
     { if (!is.null(peak_df))
       geom_point(data = peak_df, aes(x = px, y = py), inherit.aes = FALSE,
@@ -3041,8 +3041,8 @@ xbin_ref <- pitch_data %>%
                 PitchCall == "InPlay",
                 is.finite(ExitSpeed), is.finite(Angle)) %>%
   dplyr::mutate(
-    EVb = pmin(120, pmax(40, floor(ExitSpeed/5)*5)),
-    LAb = pmin( 50, pmax(-50, floor(Angle    /5)*5))
+    EVb = pmin(120, p(40, floor(ExitSpeed/5)*5)),
+    LAb = pmin( 50, p(-50, floor(Angle    /5)*5))
   ) %>%
   dplyr::group_by(EVb, LAb) %>%
   dplyr::summarise(
@@ -3205,8 +3205,8 @@ compute_process_results <- function(df, mode = "All") {
       dplyr::filter(SessionType == "Live", PitchCall == "InPlay",
                     is.finite(ExitSpeed), is.finite(Angle)) %>%
       dplyr::mutate(
-        EVb = pmin(120, pmax(40, floor(ExitSpeed/5)*5)),
-        LAb = pmin( 50, pmax(-50, floor(Angle    /5)*5))
+        EVb = pmin(120, p(40, floor(ExitSpeed/5)*5)),
+        LAb = pmin( 50, p(-50, floor(Angle    /5)*5))
       ) %>%
       dplyr::left_join(xbin_ref, by = c("EVb","LAb"))
     
@@ -3308,7 +3308,7 @@ nz_mean <- function(x) {
   if (!nrow(df)) {
     return(tibble::tibble(
       PitchType = character(), PitchCount = integer(), Usage = character(),
-      BF = integer(), Velo_Avg = numeric(), Velo_Max = numeric(), IVB = numeric(), HB = numeric(),
+      BF = integer(), Velo_Avg = numeric(), Velo_ = numeric(), IVB = numeric(), HB = numeric(),
       ReleaseTilt = character(), BreakTilt = character(),  # <- now character
       SpinEff = character(), InZonePercent = character(), CompPercent = character(),
       KPercent = character(), BBPercent = character(), FPSPercent = character(),
@@ -3347,7 +3347,7 @@ nz_mean <- function(x) {
       BF_live        = sum(SessionType == "Live" & Balls == 0 & Strikes == 0, na.rm = TRUE),
       
       Velo_Avg       = nz_mean(RelSpeed),
-      Velo_Max       = suppressWarnings(max(RelSpeed, na.rm = TRUE)),
+      Velo_       = suppressWarnings((RelSpeed, na.rm = TRUE)),
       IVB            = nz_mean(InducedVertBreak),
       HB             = nz_mean(HorzBreak),
       ReleaseTilt    = convert_to_clock(nz_mean(ReleaseTilt)),
@@ -3415,7 +3415,7 @@ nz_mean <- function(x) {
     ) %>%
     dplyr::select(
       PitchType, PitchCount, Usage, BF = BF_live,
-      Velo_Avg, Velo_Max, IVB, HB,
+      Velo_Avg, Velo_, IVB, HB,
       ReleaseTilt, BreakTilt, SpinEff, SpinRate,
       RelHeight, RelSide, VertApprAngle, HorzApprAngle, Extension,
       InZonePercent, CompPercent, KPercent, BBPercent, FPSPercent, EAPercent,
@@ -3434,7 +3434,7 @@ make_summary <- function(df) {
       Overall       = character(),
       BF            = integer(),
       Velo_Avg      = numeric(),
-      Velo_Max      = numeric(),
+      Velo_      = numeric(),
       IVB           = numeric(),
       HB            = numeric(),
       ReleaseTilt   = character(),
@@ -3488,7 +3488,7 @@ make_summary <- function(df) {
     dplyr::summarise(
       PitchCount    = dplyr::n(),
       Velo_Avg      = round(nz_mean(RelSpeed), 1),
-      Velo_Max      = round(suppressWarnings(max(as.numeric(RelSpeed), na.rm = TRUE)), 1),
+      Velo_      = round(suppressWarnings((as.numeric(RelSpeed), na.rm = TRUE)), 1),
       IVB           = round(nz_mean(InducedVertBreak), 1),
       HB            = round(nz_mean(HorzBreak), 1),
       ReleaseTilt   = convert_to_clock(nz_mean(ReleaseTilt)),
@@ -3581,7 +3581,7 @@ make_summary <- function(df) {
     ) %>%
     dplyr::select(
       PitchType, PitchCount, Usage, Overall, BF = BF_all,
-      Velo_Avg, Velo_Max, IVB, HB,
+      Velo_Avg, Velo_, IVB, HB,
       ReleaseTilt, BreakTilt, SpinEff, SpinRate,
       RelHeight, RelSide, VertApprAngle, HorzApprAngle, Extension,
       InZonePercent, CompPercent, KPercent, BBPercent, FPSPercent, EAPercent,
@@ -3638,8 +3638,8 @@ pitch_ui <- function(show_header = FALSE) {
         uiOutput("pitcher_ui"),
         dateRangeInput(
           "dates", "Date Range:",
-          start  = if(exists("pitch_data") && nrow(pitch_data) > 0) max(pitch_data$Date, na.rm = TRUE) else Sys.Date(),
-          end    = if(exists("pitch_data") && nrow(pitch_data) > 0) max(pitch_data$Date, na.rm = TRUE) else Sys.Date(),
+          start  = if(exists("pitch_data") && nrow(pitch_data) > 0) (pitch_data$Date, na.rm = TRUE) else Sys.Date(),
+          end    = if(exists("pitch_data") && nrow(pitch_data) > 0) (pitch_data$Date, na.rm = TRUE) else Sys.Date(),
           format = "mm/dd/yyyy"
         ),
         selectInput(
@@ -4033,7 +4033,7 @@ mod_hit_ui <- function(id, show_header = FALSE) {
           selected = "All"
         ),
         dateRangeInput(ns("dates"), "Date Range:",
-                       start = min(pitch_data$Date, na.rm = TRUE),
+                       start = max(pitch_data$Date, na.rm = TRUE),
                        end   = max(pitch_data$Date, na.rm = TRUE),
                        format = "mm/dd/yyyy"),
         selectInput(ns("hand"),       "Pitcher Hand:",  choices = c("All","Left","Right"), selected = "All"),
@@ -5406,7 +5406,7 @@ mod_catch_ui <- function(id, show_header = FALSE) {
           selected = "All"
         ),
         dateRangeInput(ns("dates"), "Date Range:",
-                       start = min(pitch_data$Date, na.rm = TRUE),
+                       start = max(pitch_data$Date, na.rm = TRUE),
                        end   = max(pitch_data$Date, na.rm = TRUE),
                        format = "mm/dd/yyyy"),
         selectInput(ns("hand"), "Pitcher Hand:", choices = c("All","Left","Right"), selected = "All"),
@@ -7644,7 +7644,7 @@ mod_leader_ui <- function(id, show_header = FALSE) {
         # --- Common filters (apply to all domains) ---
         selectInput(ns("sessionType"), "Session Type:", choices = c("All","Bullpen","Live"), selected = "All"),
         dateRangeInput(ns("dates"), "Date Range:",
-                       start = min(pitch_data$Date, na.rm = TRUE),
+                       start = max(pitch_data$Date, na.rm = TRUE),
                        end   = max(pitch_data$Date, na.rm = TRUE),
                        format = "mm/dd/yyyy"),
         selectInput(ns("hand"),       "Pitcher Hand:",  choices = c("All","Left","Right"), selected = "All"),
