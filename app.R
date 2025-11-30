@@ -13664,6 +13664,52 @@ if (!file.exists("credentials.sqlite")) {
 ui <- tagList(
   # --- Custom navbar colors & styling ---
   tags$head(
+    # Persist shinymanager token in localStorage so users stay logged in across visits
+    tags$script(HTML("
+      (function() {
+        var KEY = 'sm_token';
+        var params = new URLSearchParams(window.location.search || '');
+        var current = (params.get('token') || '').replace(/\"/g, '');
+
+        // Save the current token after login
+        if (current) {
+          try { localStorage.setItem(KEY, current); } catch (e) {}
+        } else {
+          // If no token in URL, try to reattach a saved one
+          var saved = null;
+          try { saved = localStorage.getItem(KEY); } catch (e) {}
+          if (saved) {
+            params.set('token', saved);
+            var qs = params.toString();
+            var target = window.location.origin + window.location.pathname + '?' + qs + window.location.hash;
+            if (window.location.search !== '?' + qs) {
+              window.location.replace(target);
+              return;
+            }
+          }
+        }
+
+        // Clear saved token if we land on the login screen with a bad token
+        document.addEventListener('DOMContentLoaded', function() {
+          var onAuthPage = !!document.querySelector('.panel-auth');
+          if (onAuthPage && current) {
+            try { localStorage.removeItem(KEY); } catch (e) {}
+            params.delete('token');
+            var qs = params.toString();
+            var clean = window.location.origin + window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+            window.history.replaceState({}, '', clean);
+          }
+        });
+
+        // Clear saved token when the user clicks logout
+        document.addEventListener('click', function(e) {
+          var btn = e.target.closest('[id=\".shinymanager_logout\"]');
+          if (btn) {
+            try { localStorage.removeItem(KEY); } catch (err) {}
+          }
+        }, true);
+      })();
+    ")),
     tags$style(HTML("
       /* Black navbar */
       .navbar-inverse { background-color:#000000; border-color:#000000; }
@@ -14290,7 +14336,9 @@ server <- function(input, output, session) {
     check_credentials = check_credentials(
       "credentials.sqlite",
       passphrase = "cbu_baseball_2024_secure_passphrase"
-    )
+    ),
+    timeout = 0,       # never auto-logout from inactivity
+    keep_token = TRUE  # keep token in query string so we can persist it client-side
   )
   
   # Get current authenticated user info
