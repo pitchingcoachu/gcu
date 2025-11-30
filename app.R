@@ -130,6 +130,112 @@ get_modifications_export_path <- function() {
   file.path("data", "pitch_type_modifications_export.csv")
 }
 
+# ---- App state (custom tables/reports/targets) persistence helpers ----
+get_state_db_path <- function() {
+  override <- Sys.getenv("APP_STATE_DB_PATH", unset = "")
+  if (nzchar(override)) {
+    path <- path.expand(override)
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    return(path)
+  }
+  # Prefer user data dir to survive code redeploys; fall back to local file
+  user_dir <- tryCatch(tools::R_user_dir("pcu_pitch_dashboard", which = "data"), error = function(...) "")
+  if (nzchar(user_dir)) {
+    dir.create(user_dir, recursive = TRUE, showWarnings = FALSE)
+    return(file.path(user_dir, "app_state.sqlite"))
+  }
+  "app_state.sqlite"
+}
+
+state_db_path <- get_state_db_path()
+
+state_db_connect <- function() {
+  DBI::dbConnect(RSQLite::SQLite(), state_db_path)
+}
+
+init_state_db <- function() {
+  con <- state_db_connect()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  DBI::dbExecute(con, "CREATE TABLE IF NOT EXISTS custom_tables (name TEXT PRIMARY KEY, cols TEXT)")
+  DBI::dbExecute(con, "CREATE TABLE IF NOT EXISTS custom_reports (name TEXT PRIMARY KEY, payload TEXT)")
+  DBI::dbExecute(con, "CREATE TABLE IF NOT EXISTS target_shapes (
+    Pitcher TEXT,
+    PitchType TEXT,
+    IVB_Target REAL,
+    HB_Target REAL,
+    IsCustom INTEGER,
+    PRIMARY KEY (Pitcher, PitchType)
+  )")
+}
+
+# load/save helpers for DB-backed state
+load_custom_tables_db <- function() {
+  con <- state_db_connect()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  if (!DBI::dbExistsTable(con, "custom_tables")) return(list())
+  df <- DBI::dbReadTable(con, "custom_tables")
+  if (!nrow(df)) return(list())
+  res <- lapply(df$cols, function(x) tryCatch(jsonlite::fromJSON(x, simplifyVector = TRUE), error = function(...) list(cols = character(0))))
+  names(res) <- df$name
+  res
+}
+
+save_custom_tables_db <- function(x) {
+  con <- state_db_connect()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  DBI::dbExecute(con, "DELETE FROM custom_tables")
+  if (!length(x)) return(invisible(TRUE))
+  payload <- data.frame(
+    name = names(x),
+    cols = vapply(x, function(v) jsonlite::toJSON(v, auto_unbox = TRUE), character(1)),
+    stringsAsFactors = FALSE
+  )
+  DBI::dbWriteTable(con, "custom_tables", payload, append = TRUE, row.names = FALSE)
+}
+
+load_custom_reports_db <- function() {
+  con <- state_db_connect()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  if (!DBI::dbExistsTable(con, "custom_reports")) return(list())
+  df <- DBI::dbReadTable(con, "custom_reports")
+  if (!nrow(df)) return(list())
+  res <- lapply(df$payload, function(x) tryCatch(jsonlite::fromJSON(x, simplifyVector = TRUE), error = function(...) list()))
+  names(res) <- df$name
+  res
+}
+
+save_custom_reports_db <- function(x) {
+  con <- state_db_connect()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  DBI::dbExecute(con, "DELETE FROM custom_reports")
+  if (!length(x)) return(invisible(TRUE))
+  payload <- data.frame(
+    name = names(x),
+    payload = vapply(x, function(v) jsonlite::toJSON(v, auto_unbox = TRUE), character(1)),
+    stringsAsFactors = FALSE
+  )
+  DBI::dbWriteTable(con, "custom_reports", payload, append = TRUE, row.names = FALSE)
+}
+
+load_target_shapes_db <- function() {
+  con <- state_db_connect()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  if (!DBI::dbExistsTable(con, "target_shapes")) return(NULL)
+  df <- DBI::dbReadTable(con, "target_shapes")
+  if (!nrow(df)) return(NULL)
+  df
+}
+
+save_target_shapes_db <- function(df) {
+  con <- state_db_connect()
+  on.exit(DBI::dbDisconnect(con), add = TRUE)
+  DBI::dbExecute(con, "DELETE FROM target_shapes")
+  if (!nrow(df)) return(invisible(TRUE))
+  DBI::dbWriteTable(con, "target_shapes", df, append = TRUE, row.names = FALSE)
+}
+
+init_state_db()
+
 compute_pitch_key <- function(df) {
   if (!nrow(df)) return(character(0))
   prefer_cols <- c("PitchUID", "PitchGuid", "PitchID", "PitchId", "PitchUIDNext", "b_pitch_guid")
@@ -1300,6 +1406,8 @@ visible_set_for <- function(mode, custom = character(0), session_type = NULL) {
 custom_tables_file <- "custom_tables.json"
 custom_tables <- reactiveVal(list())
 load_custom_tables <- function() {
+  db_ct <- load_custom_tables_db()
+  if (length(db_ct)) return(db_ct)
   if (file.exists(custom_tables_file)) {
     out <- tryCatch(jsonlite::fromJSON(custom_tables_file, simplifyVector = TRUE), error = function(e) NULL)
     if (is.list(out)) return(out)
@@ -1307,7 +1415,11 @@ load_custom_tables <- function() {
   list()
 }
 save_custom_tables <- function(x) {
-  tryCatch(jsonlite::write_json(x, custom_tables_file, auto_unbox = TRUE, pretty = TRUE), error = function(e) {
+  tryCatch({
+    save_custom_tables_db(x)
+    # lightweight file backup for convenience
+    jsonlite::write_json(x, custom_tables_file, auto_unbox = TRUE, pretty = TRUE)
+  }, error = function(e) {
     message("Failed to save custom tables: ", e$message)
   })
 }
@@ -1352,6 +1464,8 @@ visible_set_for_lb <- function(mode, custom = character(0)) {
 # -------------------------
 custom_reports_file <- "custom_reports.json"
 load_custom_reports <- function() {
+  db_cr <- load_custom_reports_db()
+  if (length(db_cr)) return(db_cr)
   if (file.exists(custom_reports_file)) {
     out <- tryCatch(jsonlite::fromJSON(custom_reports_file, simplifyVector = TRUE), error = function(e) NULL)
     if (is.list(out)) return(out)
@@ -1359,7 +1473,10 @@ load_custom_reports <- function() {
   list()
 }
 save_custom_reports <- function(x) {
-  tryCatch(jsonlite::write_json(x, custom_reports_file, auto_unbox = TRUE, pretty = TRUE), error = function(e) {
+  tryCatch({
+    save_custom_reports_db(x)
+    jsonlite::write_json(x, custom_reports_file, auto_unbox = TRUE, pretty = TRUE)
+  }, error = function(e) {
     message("Failed to save custom reports: ", e$message)
   })
 }
@@ -14390,24 +14507,29 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
   target_shapes_global <- target_shapes  # alias for module-wide access
   
   # Load existing target shapes or create empty dataframe
-  if (file.exists(target_shapes_file)) {
-    loaded_shapes <- tryCatch({
-      read.csv(target_shapes_file, stringsAsFactors = FALSE)
-    }, error = function(e) {
-      data.frame(Pitcher = character(), PitchType = character(), 
-                 IVB_Target = numeric(), HB_Target = numeric(), 
-                 IsCustom = logical(), stringsAsFactors = FALSE)
-    })
-    target_shapes(loaded_shapes)
-  } else {
-    target_shapes(data.frame(Pitcher = character(), PitchType = character(), 
-                             IVB_Target = numeric(), HB_Target = numeric(), 
-                             IsCustom = logical(), stringsAsFactors = FALSE))
+  loaded_shapes <- load_target_shapes_db()
+  if (is.null(loaded_shapes)) {
+    if (file.exists(target_shapes_file)) {
+      loaded_shapes <- tryCatch({
+        read.csv(target_shapes_file, stringsAsFactors = FALSE)
+      }, error = function(e) {
+        data.frame(Pitcher = character(), PitchType = character(), 
+                   IVB_Target = numeric(), HB_Target = numeric(), 
+                   IsCustom = logical(), stringsAsFactors = FALSE)
+      })
+    } else {
+      loaded_shapes <- data.frame(Pitcher = character(), PitchType = character(), 
+                                  IVB_Target = numeric(), HB_Target = numeric(), 
+                                  IsCustom = logical(), stringsAsFactors = FALSE)
+    }
   }
+  target_shapes(loaded_shapes)
   
   # Function to save target shapes to CSV
   save_target_shapes <- function() {
     tryCatch({
+      save_target_shapes_db(target_shapes())
+      # simple CSV backup
       write.csv(target_shapes(), target_shapes_file, row.names = FALSE)
     }, error = function(e) {
       message("Error saving target shapes: ", e$message)
