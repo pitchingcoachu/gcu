@@ -54,7 +54,8 @@ essential_packages <- c(
   "tibble",
   "stringr",
   "lubridate",
-  "purrr"
+  "purrr",
+  "shinyjs"
 )
 
 cat("\nInstalling core data manipulation packages...\n")
@@ -75,7 +76,13 @@ app_packages <- c(
   "plotly",
   "RCurl",
   "jsonlite",
-  "ggiraph"   # now treated as required
+  "ggiraph",   # now treated as required
+  "colourpicker",
+  "memoise",
+  "shinymanager",
+  "DBI",
+  "RSQLite",
+  "digest"
 )
 
 
