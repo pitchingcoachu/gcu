@@ -14548,11 +14548,17 @@ server <- function(input, output, session) {
   
   # Initialize authentication
   res_auth <- secure_server(
-    check_credentials = check_credentials(
-      if (is.null(sm_db_config)) "credentials.sqlite" else NULL,
-      db_config = sm_db_config,
-      passphrase = "cbu_baseball_2024_secure_passphrase"
-    ),
+    check_credentials = if (is.null(sm_db_config)) {
+      check_credentials(
+        "credentials.sqlite",
+        passphrase = "cbu_baseball_2024_secure_passphrase"
+      )
+    } else {
+      check_credentials(
+        db = sm_db_config,
+        passphrase = "cbu_baseball_2024_secure_passphrase"
+      )
+    },
     timeout = 0,       # never auto-logout from inactivity
     keep_token = TRUE  # keep token in query string so we can persist it client-side
   )
