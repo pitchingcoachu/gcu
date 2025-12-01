@@ -652,21 +652,27 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     # Normalize date/time fields to avoid parsing errors
     safe_date <- function(x) {
       tryCatch({
-        out <- suppressWarnings(as.Date(as.character(x)))
-        out[is.na(out)] <- NA
+        v <- as.character(x)
+        out <- suppressWarnings(lubridate::ymd(v))
+        if (all(is.na(out))) out <- suppressWarnings(lubridate::mdy(v))
+        if (all(is.na(out))) out <- suppressWarnings(lubridate::dmy(v))
+        out <- as.Date(out)
         out
       }, error = function(...) as.Date(NA))
     }
     safe_dt <- function(x) {
       tryCatch({
-        out <- suppressWarnings(as.POSIXct(as.character(x), tz = "UTC"))
-        out[!is.finite(out)] <- NA
+        v <- as.character(x)
+        out <- suppressWarnings(lubridate::parse_date_time(v, orders = c("ymd HMS", "mdy HMS", "dmy HMS", "ymd HM", "mdy HM", "dmy HM", "ymd", "mdy", "dmy"), tz = "UTC"))
+        out <- as.POSIXct(out, tz = "UTC")
         out
       }, error = function(...) as.POSIXct(NA))
     }
     mods$date <- safe_date(mods$date)
     mods$modified_at <- safe_dt(mods$modified_at)
     mods$created_at <- safe_dt(mods$created_at)
+    dropped <- sum(is.na(mods$date))
+    if (dropped && verbose) message(sprintf("Dropping %d modifications with unparseable dates", dropped))
     mods <- mods[!is.na(mods$date), , drop = FALSE]
     base_data <- ensure_pitch_keys(pitch_data)
     mods <- refresh_missing_pitch_keys(con, mods, base_data)
