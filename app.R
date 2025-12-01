@@ -13880,26 +13880,23 @@ ensure_seed_users <- function(seed_df, db_cfg, sqlite_path) {
   for (i in seq_len(nrow(seed_df))) {
     u <- seed_df$user[i]; pwd <- seed_df$password[i]; adm <- isTRUE(seed_df$admin[i]); em <- seed_df$email[i]
     exists <- FALSE
+    con <- NULL
     if (!is.null(db_cfg)) {
       con <- try(DBI::dbConnect(db_cfg$driver, host = db_cfg$host, user = db_cfg$username,
                                 password = db_cfg$password, dbname = db_cfg$dbname,
                                 port = db_cfg$port), silent = TRUE)
-      if (!inherits(con, "try-error")) {
-        on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
-        tbl <- try(DBI::dbReadTable(con, db_cfg$table), silent = TRUE)
-        if (!inherits(tbl, "try-error") && nrow(tbl)) {
-          exists <- any(tolower(tbl$user) == tolower(u))
-        }
+    } else if (file.exists(sqlite_path)) {
+      con <- try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE)
+    }
+    if (!inherits(con, "try-error") && !is.null(con)) {
+      on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
+      tbl <- try(DBI::dbReadTable(con, if (is.null(db_cfg)) "credentials" else db_cfg$table), silent = TRUE)
+      if (!inherits(tbl, "try-error") && nrow(tbl)) {
+        exists <- any(tolower(tbl$user) == tolower(u))
       }
     } else if (file.exists(sqlite_path)) {
       con <- try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE)
-      if (!inherits(con, "try-error")) {
-        on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
-        tbl <- try(DBI::dbReadTable(con, "credentials"), silent = TRUE)
-        if (!inherits(tbl, "try-error") && nrow(tbl)) {
-          exists <- any(tolower(tbl$user) == tolower(u))
-        }
-      }
+      if (!inherits(con, "try-error")) on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
     }
     if (!exists) {
       try(shinymanager::create_user(
@@ -13915,6 +13912,26 @@ ensure_seed_users <- function(seed_df, db_cfg, sqlite_path) {
 }
 
 ensure_seed_users(initial_credentials, sm_db_config, "credentials.sqlite")
+
+# Enforce admin flags: only these users stay admins
+enforce_admin_flags <- function(admin_users, db_cfg, sqlite_path) {
+  con <- NULL
+  if (!is.null(db_cfg)) {
+    con <- try(DBI::dbConnect(db_cfg$driver, host = db_cfg$host, user = db_cfg$username,
+                              password = db_cfg$password, dbname = db_cfg$dbname,
+                              port = db_cfg$port), silent = TRUE)
+  } else if (file.exists(sqlite_path)) {
+    con <- try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE)
+  }
+  if (inherits(con, "try-error") || is.null(con)) return()
+  on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
+  tbl_name <- if (is.null(db_cfg)) "credentials" else db_cfg$table
+  admin_list <- paste(sprintf("'%s'", tolower(admin_users)), collapse = ",")
+  try(DBI::dbExecute(con, sprintf("UPDATE %s SET admin = 0 WHERE LOWER(user) NOT IN (%s)", tbl_name, admin_list)), silent = TRUE)
+  try(DBI::dbExecute(con, sprintf("UPDATE %s SET admin = 1 WHERE LOWER(user) IN (%s)", tbl_name, admin_list)), silent = TRUE)
+}
+
+enforce_admin_flags(c("jgaynor@pitchingcoachu.com","banni17@yahoo.com"), sm_db_config, "credentials.sqlite")
 
 
 ui <- tagList(
