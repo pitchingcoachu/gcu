@@ -13875,6 +13875,47 @@ if (!is.null(sm_db_config)) {
   message("⚠ IMPORTANT: Change default passwords after first login!")
 }
 
+# Ensure seed users exist (idempotent)
+ensure_seed_users <- function(seed_df, db_cfg, sqlite_path) {
+  for (i in seq_len(nrow(seed_df))) {
+    u <- seed_df$user[i]; pwd <- seed_df$password[i]; adm <- isTRUE(seed_df$admin[i]); em <- seed_df$email[i]
+    exists <- FALSE
+    if (!is.null(db_cfg)) {
+      con <- try(DBI::dbConnect(db_cfg$driver, host = db_cfg$host, user = db_cfg$username,
+                                password = db_cfg$password, dbname = db_cfg$dbname,
+                                port = db_cfg$port), silent = TRUE)
+      if (!inherits(con, "try-error")) {
+        on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
+        tbl <- try(DBI::dbReadTable(con, db_cfg$table), silent = TRUE)
+        if (!inherits(tbl, "try-error") && nrow(tbl)) {
+          exists <- any(tolower(tbl$user) == tolower(u))
+        }
+      }
+    } else if (file.exists(sqlite_path)) {
+      con <- try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE)
+      if (!inherits(con, "try-error")) {
+        on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
+        tbl <- try(DBI::dbReadTable(con, "credentials"), silent = TRUE)
+        if (!inherits(tbl, "try-error") && nrow(tbl)) {
+          exists <- any(tolower(tbl$user) == tolower(u))
+        }
+      }
+    }
+    if (!exists) {
+      try(shinymanager::create_user(
+        user = u,
+        password = pwd,
+        admin = adm,
+        comment = em,
+        db = if (!is.null(db_cfg)) db_cfg else sqlite_path,
+        passphrase = "cbu_baseball_2024_secure_passphrase"
+      ), silent = TRUE)
+    }
+  }
+}
+
+ensure_seed_users(initial_credentials, sm_db_config, "credentials.sqlite")
+
 
 ui <- tagList(
   # --- Custom navbar colors & styling ---
