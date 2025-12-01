@@ -632,6 +632,39 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
 }
 
 # Enhanced: Load and apply modifications from database with better matching
+mod_memo <- memoise::memoise(function(db_path, mtime_sig) {
+  con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
+  if (inherits(con, "error")) return(NULL)
+  on.exit(dbDisconnect(con), add = TRUE)
+  mods <- dbGetQuery(con, "SELECT * FROM modifications ORDER BY created_at")
+  # Normalize date/time fields to avoid parsing errors
+  safe_date <- function(x) {
+    tryCatch({
+      v <- as.character(x)
+      out <- suppressWarnings(lubridate::ymd(v))
+      if (all(is.na(out))) out <- suppressWarnings(lubridate::mdy(v))
+      if (all(is.na(out))) out <- suppressWarnings(lubridate::dmy(v))
+      as.Date(out)
+    }, error = function(...) as.Date(NA))
+  }
+  safe_dt <- function(x) {
+    tryCatch({
+      v <- as.character(x)
+      out <- suppressWarnings(lubridate::parse_date_time(
+        v,
+        orders = c("ymd HMS", "mdy HMS", "dmy HMS", "ymd HM", "mdy HM", "dmy HM", "ymd", "mdy", "dmy"),
+        tz = "UTC"
+      ))
+      as.POSIXct(out, tz = "UTC")
+    }, error = function(...) as.POSIXct(NA))
+  }
+  mods$date <- safe_date(mods$date)
+  mods$modified_at <- safe_dt(mods$modified_at)
+  mods$created_at <- safe_dt(mods$created_at)
+  mods <- mods[!is.na(mods$date), , drop = FALSE]
+  mods
+})
+
 load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
   db_path <- init_modifications_db()
   
@@ -655,33 +688,17 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
   on.exit(dbDisconnect(con), add = TRUE)
   
   tryCatch({
-    # Get all modifications
-    mods <- dbGetQuery(con, "SELECT * FROM modifications ORDER BY created_at")
-    # Normalize date/time fields to avoid parsing errors
-    safe_date <- function(x) {
-      tryCatch({
-        v <- as.character(x)
-        out <- suppressWarnings(lubridate::ymd(v))
-        if (all(is.na(out))) out <- suppressWarnings(lubridate::mdy(v))
-        if (all(is.na(out))) out <- suppressWarnings(lubridate::dmy(v))
-        out <- as.Date(out)
-        out
-      }, error = function(...) as.Date(NA))
+    mtime_sig <- suppressWarnings(as.character(file.info(db_path)$mtime %||% Sys.time()))
+    mods <- mod_memo(db_path, mtime_sig)
+    if (is.null(mods)) {
+      return(list(
+        data = ensure_pitch_keys(pitch_data) %>% mutate(original_row_id = row_number()),
+        applied_count = 0,
+        total_modifications = 0
+      ))
     }
-    safe_dt <- function(x) {
-      tryCatch({
-        v <- as.character(x)
-        out <- suppressWarnings(lubridate::parse_date_time(v, orders = c("ymd HMS", "mdy HMS", "dmy HMS", "ymd HM", "mdy HM", "dmy HM", "ymd", "mdy", "dmy"), tz = "UTC"))
-        out <- as.POSIXct(out, tz = "UTC")
-        out
-      }, error = function(...) as.POSIXct(NA))
-    }
-    mods$date <- safe_date(mods$date)
-    mods$modified_at <- safe_dt(mods$modified_at)
-    mods$created_at <- safe_dt(mods$created_at)
     dropped <- sum(is.na(mods$date))
     if (dropped && verbose) message(sprintf("Dropping %d modifications with unparseable dates", dropped))
-    mods <- mods[!is.na(mods$date), , drop = FALSE]
     base_data <- ensure_pitch_keys(pitch_data)
     mods <- refresh_missing_pitch_keys(con, mods, base_data)
     
