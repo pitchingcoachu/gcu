@@ -188,16 +188,25 @@ state_db_connect <- function() {
 init_state_db <- function() {
   con <- state_db_connect()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
-  DBI::dbExecute(con, "CREATE TABLE IF NOT EXISTS custom_tables (name TEXT PRIMARY KEY, cols TEXT)")
-  DBI::dbExecute(con, "CREATE TABLE IF NOT EXISTS custom_reports (name TEXT PRIMARY KEY, payload TEXT)")
-  DBI::dbExecute(con, "CREATE TABLE IF NOT EXISTS target_shapes (
-    Pitcher TEXT,
-    PitchType TEXT,
+  name_type <- if (identical(state_backend_cfg$type, "mysql")) "VARCHAR(191)" else "TEXT"
+  text_type <- if (identical(state_backend_cfg$type, "mysql")) "LONGTEXT" else "TEXT"
+  DBI::dbExecute(con, sprintf(
+    "CREATE TABLE IF NOT EXISTS custom_tables (name %s PRIMARY KEY, cols %s)",
+    name_type, text_type
+  ))
+  DBI::dbExecute(con, sprintf(
+    "CREATE TABLE IF NOT EXISTS custom_reports (name %s PRIMARY KEY, payload %s)",
+    name_type, text_type
+  ))
+  DBI::dbExecute(con, sprintf(
+    "CREATE TABLE IF NOT EXISTS target_shapes (
+    Pitcher %s,
+    PitchType %s,
     IVB_Target REAL,
     HB_Target REAL,
     IsCustom INTEGER,
     PRIMARY KEY (Pitcher, PitchType)
-  )")
+  )", name_type, name_type))
 }
 
 # load/save helpers for DB-backed state
