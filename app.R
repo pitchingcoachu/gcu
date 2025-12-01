@@ -13842,7 +13842,7 @@ initial_credentials <- data.frame(
     "pcu2025",
     "pcu2025"
   ),
-  admin = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
+  admin = c(TRUE, TRUE),
   email = c(
     "jgaynor@pitchingcoachu.com",
     "banni17@yahoo.com"
