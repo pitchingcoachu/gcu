@@ -13837,18 +13837,21 @@ initial_credentials <- data.frame(
   user = c(
     "jgaynor@pitchingcoachu.com",
     "banni17@yahoo.com",
-    "adam.racine@aol.com"
+    "adam.racine@aol.com",
+    "Njcbaseball08@gmail.com"
   ),
   password = c(
     "pcu2025",
     "pcu2025",
+    "pcu2025",
     "pcu2025"
   ),
-  admin = c(TRUE, TRUE, FALSE),
+  admin = c(TRUE, TRUE, FALSE, FALSE),
   email = c(
     "jgaynor@pitchingcoachu.com",
     "banni17@yahoo.com",
-    "adam.racine@aol.com"
+    "adam.racine@aol.com",
+    "Njcbaseball08@gmail.com"
   ),
   stringsAsFactors = FALSE
 )
