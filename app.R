@@ -13836,16 +13836,19 @@ sm_db_config <- get_auth_db_config()
 initial_credentials <- data.frame(
   user = c(
     "jgaynor@pitchingcoachu.com",
-    "banni17@yahoo.com"
+    "banni17@yahoo.com",
+    "adam.racine@aol.com"
   ),
   password = c(
     "pcu2025",
+    "pcu2025",
     "pcu2025"
   ),
-  admin = c(TRUE, TRUE),
+  admin = c(TRUE, TRUE, FALSE),
   email = c(
     "jgaynor@pitchingcoachu.com",
-    "banni17@yahoo.com"
+    "banni17@yahoo.com",
+    "adam.racine@aol.com"
   ),
   stringsAsFactors = FALSE
 )
