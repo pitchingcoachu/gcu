@@ -651,14 +651,18 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     mods <- dbGetQuery(con, "SELECT * FROM modifications ORDER BY created_at")
     # Normalize date/time fields to avoid parsing errors
     safe_date <- function(x) {
-      out <- suppressWarnings(as.Date(as.character(x)))
-      out[is.na(out)] <- NA
-      out
+      tryCatch({
+        out <- suppressWarnings(as.Date(as.character(x)))
+        out[is.na(out)] <- NA
+        out
+      }, error = function(...) as.Date(NA))
     }
     safe_dt <- function(x) {
-      out <- suppressWarnings(as.POSIXct(as.character(x), tz = "UTC"))
-      out[!is.finite(out)] <- NA
-      out
+      tryCatch({
+        out <- suppressWarnings(as.POSIXct(as.character(x), tz = "UTC"))
+        out[!is.finite(out)] <- NA
+        out
+      }, error = function(...) as.POSIXct(NA))
     }
     mods$date <- safe_date(mods$date)
     mods$modified_at <- safe_dt(mods$modified_at)
