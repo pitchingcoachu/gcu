@@ -12377,6 +12377,12 @@ custom_reports_server <- function(id) {
             local({
               id <- cell_id
               observeEvent(input[[paste0("cell_show_controls_", id)]], {
+                # Persist the toggle immediately in stored state to avoid re-render flicker
+                cells <- isolate(current_cells())
+                cell_state <- cells[[id]] %||% list()
+                cell_state$show_controls <- isTRUE(input[[paste0("cell_show_controls_", id)]])
+                cells[[id]] <- cell_state
+                current_cells(cells)
                 if (isTRUE(input[[paste0("cell_show_controls_", id)]])) {
                   shinyjs::show(paste0("cell_controls_container_", id))
                 } else {
