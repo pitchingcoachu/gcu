@@ -650,9 +650,19 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     # Get all modifications
     mods <- dbGetQuery(con, "SELECT * FROM modifications ORDER BY created_at")
     # Normalize date/time fields to avoid parsing errors
-    mods$date <- suppressWarnings(as.Date(mods$date))
-    mods$modified_at <- suppressWarnings(as.POSIXct(mods$modified_at, tz = "UTC"))
-    mods$created_at <- suppressWarnings(as.POSIXct(mods$created_at, tz = "UTC"))
+    safe_date <- function(x) {
+      out <- suppressWarnings(as.Date(as.character(x)))
+      out[is.na(out)] <- NA
+      out
+    }
+    safe_dt <- function(x) {
+      out <- suppressWarnings(as.POSIXct(as.character(x), tz = "UTC"))
+      out[!is.finite(out)] <- NA
+      out
+    }
+    mods$date <- safe_date(mods$date)
+    mods$modified_at <- safe_dt(mods$modified_at)
+    mods$created_at <- safe_dt(mods$created_at)
     mods <- mods[!is.na(mods$date), , drop = FALSE]
     base_data <- ensure_pitch_keys(pitch_data)
     mods <- refresh_missing_pitch_keys(con, mods, base_data)
