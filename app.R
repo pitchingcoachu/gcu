@@ -13811,23 +13811,7 @@ player_plans_ui <- function() {
 # ==================================
 
 get_auth_db_config <- function() {
-  host <- Sys.getenv("MYSQL_HOST", "")
-  db   <- Sys.getenv("MYSQL_DB", "")
-  user <- Sys.getenv("MYSQL_USER", "")
-  pass <- Sys.getenv("MYSQL_PASSWORD", "")
-  port <- as.integer(Sys.getenv("MYSQL_PORT", "3306"))
-  if (nzchar(host) && nzchar(db) && nzchar(user) && nzchar(pass)) {
-    return(list(
-      driver = RMariaDB::MariaDB(),
-      dbname = db,
-      host = host,
-      username = user,
-      password = pass,
-      port = port,
-      table = "credentials"
-    ))
-  }
-  NULL
+  NULL  # Using SQLite for shinymanager auth to maintain compatibility
 }
 
 sm_db_config <- get_auth_db_config()
@@ -13858,14 +13842,7 @@ initial_credentials <- data.frame(
 
 # Initialize credentials database (MySQL if configured, else SQLite)
 if (!is.null(sm_db_config)) {
-  try({
-    create_db(
-      credentials_data = initial_credentials,
-      db_config = sm_db_config,
-      passphrase = "cbu_baseball_2024_secure_passphrase"
-    )
-    message("✓ Credentials database ready in MySQL")
-  }, silent = TRUE)
+  # MySQL path disabled for now
 } else if (!file.exists("credentials.sqlite")) {
   create_db(
     credentials_data = initial_credentials,
@@ -13883,23 +13860,13 @@ ensure_seed_users <- function(seed_df, db_cfg, sqlite_path) {
   for (i in seq_len(nrow(seed_df))) {
     u <- seed_df$user[i]; pwd <- seed_df$password[i]; adm <- isTRUE(seed_df$admin[i]); em <- seed_df$email[i]
     exists <- FALSE
-    con <- NULL
-    if (!is.null(db_cfg)) {
-      con <- try(DBI::dbConnect(db_cfg$driver, host = db_cfg$host, user = db_cfg$username,
-                                password = db_cfg$password, dbname = db_cfg$dbname,
-                                port = db_cfg$port), silent = TRUE)
-    } else if (file.exists(sqlite_path)) {
-      con <- try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE)
-    }
+    con <- if (file.exists(sqlite_path)) try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE) else NULL
     if (!inherits(con, "try-error") && !is.null(con)) {
       on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
-      tbl <- try(DBI::dbReadTable(con, if (is.null(db_cfg)) "credentials" else db_cfg$table), silent = TRUE)
+      tbl <- try(DBI::dbReadTable(con, "credentials"), silent = TRUE)
       if (!inherits(tbl, "try-error") && nrow(tbl)) {
         exists <- any(tolower(tbl$user) == tolower(u))
       }
-    } else if (file.exists(sqlite_path)) {
-      con <- try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE)
-      if (!inherits(con, "try-error")) on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
     }
     if (!exists) {
       try(shinymanager::create_user(
@@ -13907,7 +13874,7 @@ ensure_seed_users <- function(seed_df, db_cfg, sqlite_path) {
         password = pwd,
         admin = adm,
         comment = em,
-        db = if (!is.null(db_cfg)) db_cfg else sqlite_path,
+        db = sqlite_path,
         passphrase = "cbu_baseball_2024_secure_passphrase"
       ), silent = TRUE)
     }
@@ -13918,20 +13885,12 @@ ensure_seed_users(initial_credentials, sm_db_config, "credentials.sqlite")
 
 # Enforce admin flags: only these users stay admins
 enforce_admin_flags <- function(admin_users, db_cfg, sqlite_path) {
-  con <- NULL
-  if (!is.null(db_cfg)) {
-    con <- try(DBI::dbConnect(db_cfg$driver, host = db_cfg$host, user = db_cfg$username,
-                              password = db_cfg$password, dbname = db_cfg$dbname,
-                              port = db_cfg$port), silent = TRUE)
-  } else if (file.exists(sqlite_path)) {
-    con <- try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE)
-  }
+  con <- if (file.exists(sqlite_path)) try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE) else NULL
   if (inherits(con, "try-error") || is.null(con)) return()
   on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
-  tbl_name <- if (is.null(db_cfg)) "credentials" else db_cfg$table
   admin_list <- paste(sprintf("'%s'", tolower(admin_users)), collapse = ",")
-  try(DBI::dbExecute(con, sprintf("UPDATE %s SET admin = 0 WHERE LOWER(user) NOT IN (%s)", tbl_name, admin_list)), silent = TRUE)
-  try(DBI::dbExecute(con, sprintf("UPDATE %s SET admin = 1 WHERE LOWER(user) IN (%s)", tbl_name, admin_list)), silent = TRUE)
+  try(DBI::dbExecute(con, sprintf("UPDATE credentials SET admin = 0 WHERE LOWER(user) NOT IN (%s)", admin_list)), silent = TRUE)
+  try(DBI::dbExecute(con, sprintf("UPDATE credentials SET admin = 1 WHERE LOWER(user) IN (%s)", admin_list)), silent = TRUE)
 }
 
 enforce_admin_flags(c("jgaynor@pitchingcoachu.com","banni17@yahoo.com"), sm_db_config, "credentials.sqlite")
@@ -14609,17 +14568,10 @@ server <- function(input, output, session) {
   
   # Initialize authentication
   res_auth <- secure_server(
-    check_credentials = if (is.null(sm_db_config)) {
-      check_credentials(
-        "credentials.sqlite",
-        passphrase = "cbu_baseball_2024_secure_passphrase"
-      )
-    } else {
-      check_credentials(
-        db = sm_db_config,
-        passphrase = "cbu_baseball_2024_secure_passphrase"
-      )
-    },
+    check_credentials = check_credentials(
+      "credentials.sqlite",
+      passphrase = "cbu_baseball_2024_secure_passphrase"
+    ),
     timeout = 0,       # never auto-logout from inactivity
     keep_token = TRUE  # keep token in query string so we can persist it client-side
   )
