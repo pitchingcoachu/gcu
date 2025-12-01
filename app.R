@@ -13796,42 +13796,72 @@ player_plans_ui <- function() {
 # == AUTHENTICATION SETUP ==
 # ==================================
 
-# Initialize credentials database if it doesn't exist
-if (!file.exists("credentials.sqlite")) {
-  # Create initial admin users using their actual emails as usernames
-  initial_credentials <- data.frame(
-    user = c(
-      "jgaynor@pitchingcoachu.com",
-      "banni17@yahoo.com",
-      "micaiahtucker@gmail.com",
-      "joshtols21@gmail.com",
-      "james.a.gaynor@gmail.com",
-      "tblank@mariners.com",
-      "admin"
-    ),
-    password = c(
-      "cbu2024",
-      "cbu2024",
-      "cbu2024",
-      "cbu2024",
-      "cbu2024",
-      "cbu2024",
-      "admin123"
-    ),
-    admin = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
-    email = c(
-      "jgaynor@pitchingcoachu.com",
-      "banni17@yahoo.com",
-      "micaiahtucker@gmail.com",
-      "joshtols21@gmail.com",
-      "james.a.gaynor@gmail.com",
-      "tblank@mariners.com",
-      "admin@cbu.edu"
-    ),
-    stringsAsFactors = FALSE
-  )
-  
-  # Create the SQLite database
+get_auth_db_config <- function() {
+  host <- Sys.getenv("MYSQL_HOST", "")
+  db   <- Sys.getenv("MYSQL_DB", "")
+  user <- Sys.getenv("MYSQL_USER", "")
+  pass <- Sys.getenv("MYSQL_PASSWORD", "")
+  port <- as.integer(Sys.getenv("MYSQL_PORT", "3306"))
+  if (nzchar(host) && nzchar(db) && nzchar(user) && nzchar(pass)) {
+    return(list(
+      driver = RMariaDB::MariaDB(),
+      dbname = db,
+      host = host,
+      username = user,
+      password = pass,
+      port = port,
+      table = "credentials"
+    ))
+  }
+  NULL
+}
+
+sm_db_config <- get_auth_db_config()
+
+# Create initial admin users using their actual emails as usernames
+initial_credentials <- data.frame(
+  user = c(
+    "jgaynor@pitchingcoachu.com",
+    "banni17@yahoo.com",
+    "micaiahtucker@gmail.com",
+    "joshtols21@gmail.com",
+    "james.a.gaynor@gmail.com",
+    "tblank@mariners.com",
+    "admin"
+  ),
+  password = c(
+    "cbu2024",
+    "cbu2024",
+    "cbu2024",
+    "cbu2024",
+    "cbu2024",
+    "cbu2024",
+    "admin123"
+  ),
+  admin = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
+  email = c(
+    "jgaynor@pitchingcoachu.com",
+    "banni17@yahoo.com",
+    "micaiahtucker@gmail.com",
+    "joshtols21@gmail.com",
+    "james.a.gaynor@gmail.com",
+    "tblank@mariners.com",
+    "admin@cbu.edu"
+  ),
+  stringsAsFactors = FALSE
+)
+
+# Initialize credentials database (MySQL if configured, else SQLite)
+if (!is.null(sm_db_config)) {
+  try({
+    create_db(
+      credentials_data = initial_credentials,
+      db_config = sm_db_config,
+      passphrase = "cbu_baseball_2024_secure_passphrase"
+    )
+    message("✓ Credentials database ready in MySQL")
+  }, silent = TRUE)
+} else if (!file.exists("credentials.sqlite")) {
   create_db(
     credentials_data = initial_credentials,
     sqlite_path = "credentials.sqlite",
@@ -14517,7 +14547,8 @@ server <- function(input, output, session) {
   # Initialize authentication
   res_auth <- secure_server(
     check_credentials = check_credentials(
-      "credentials.sqlite",
+      if (is.null(sm_db_config)) "credentials.sqlite" else NULL,
+      db_config = sm_db_config,
       passphrase = "cbu_baseball_2024_secure_passphrase"
     ),
     timeout = 0,       # never auto-logout from inactivity
