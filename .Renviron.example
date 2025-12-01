@@ -1,0 +1,9 @@
+# Copy this file to .Renviron (which is gitignored) and fill in real values before deploying.
+
+MYSQL_HOST=pcu-state.c3qwye0w6psf.us-west-1.rds.amazonaws.com
+MYSQL_DB=pitchingcoachu
+MYSQL_USER=pitchingcoachu
+MYSQL_PASSWORD=changeme
+MYSQL_PORT=3306
+# If you upload the RDS CA bundle with your app, set to its path (e.g., global-bundle.pem). Otherwise leave blank.
+MYSQL_SSL_CA=
