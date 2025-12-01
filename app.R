@@ -207,6 +207,14 @@ init_state_db <- function() {
     IsCustom INTEGER,
     PRIMARY KEY (Pitcher, PitchType)
   )", name_type, name_type))
+  DBI::dbExecute(con, sprintf(
+    "CREATE TABLE IF NOT EXISTS player_plans (player %s PRIMARY KEY, payload %s)",
+    name_type, text_type
+  ))
+  DBI::dbExecute(con, sprintf(
+    "CREATE TABLE IF NOT EXISTS completed_goals (player %s PRIMARY KEY, payload %s)",
+    name_type, text_type
+  ))
 }
 
 # load/save helpers for DB-backed state
@@ -21352,33 +21360,86 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
   # Available pitch types from the data
   available_pitch_types <- names(all_colors)
   
-  # Reactive values for persistent storage
-  player_plans_data <- reactiveValues()
-  completed_goals_data <- reactiveValues()
+  # Reactive values for persistent storage (now DB-backed with localStorage fallback)
+  player_plans_data <- reactiveValues(plans = list(), current_player = NULL)
+  completed_goals_data <- reactiveValues(goals = list())
+  plans_initialized <- reactiveVal(FALSE)
   
-  # Initialize player plans storage and load from localStorage
+  # DB helpers for player plans and completed goals
+  load_player_plans_db <- function() {
+    con <- state_db_connect()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+    if (!DBI::dbExistsTable(con, "player_plans")) return(list())
+    df <- DBI::dbReadTable(con, "player_plans")
+    if (!nrow(df)) return(list())
+    out <- lapply(df$payload, function(x) tryCatch(jsonlite::fromJSON(x, simplifyVector = TRUE), error = function(...) list()))
+    names(out) <- df$player
+    out
+  }
+  save_player_plans_db <- function(plans) {
+    con <- state_db_connect()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+    DBI::dbExecute(con, "DELETE FROM player_plans")
+    if (!length(plans)) return(invisible(TRUE))
+    payload <- data.frame(
+      player = names(plans),
+      payload = vapply(plans, function(v) jsonlite::toJSON(v, auto_unbox = TRUE), character(1)),
+      stringsAsFactors = FALSE
+    )
+    DBI::dbWriteTable(con, "player_plans", payload, append = TRUE, row.names = FALSE)
+  }
+  
+  load_completed_goals_db <- function() {
+    con <- state_db_connect()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+    if (!DBI::dbExistsTable(con, "completed_goals")) return(list())
+    df <- DBI::dbReadTable(con, "completed_goals")
+    if (!nrow(df)) return(list())
+    out <- lapply(df$payload, function(x) tryCatch(jsonlite::fromJSON(x, simplifyVector = TRUE), error = function(...) list()))
+    names(out) <- df$player
+    out
+  }
+  save_completed_goals_db <- function(goals) {
+    con <- state_db_connect()
+    on.exit(DBI::dbDisconnect(con), add = TRUE)
+    DBI::dbExecute(con, "DELETE FROM completed_goals")
+    if (!length(goals)) return(invisible(TRUE))
+    payload <- data.frame(
+      player = names(goals),
+      payload = vapply(goals, function(v) jsonlite::toJSON(v, auto_unbox = TRUE), character(1)),
+      stringsAsFactors = FALSE
+    )
+    DBI::dbWriteTable(con, "completed_goals", payload, append = TRUE, row.names = FALSE)
+  }
+  
+  # Initialize player plans storage: try DB first, fall back to localStorage
   observe({
-    if (length(reactiveValuesToList(player_plans_data)) == 0) {
-      player_plans_data$plans <- list()
-      player_plans_data$current_player <- NULL
-      
-      # Load saved plans from localStorage
+    if (plans_initialized()) return()
+    plans_initialized(TRUE)
+    
+    db_plans <- try(load_player_plans_db(), silent = TRUE)
+    if (!inherits(db_plans, "try-error") && length(db_plans)) {
+      player_plans_data$plans <- db_plans
+      cat("Loaded", length(db_plans), "player plans from DB\n")
+    } else {
       session$sendCustomMessage("loadPlayerPlans", list())
     }
     
-    if (length(reactiveValuesToList(completed_goals_data)) == 0) {
-      completed_goals_data$goals <- list()
-      
-      # Load saved completed goals from localStorage
+    db_goals <- try(load_completed_goals_db(), silent = TRUE)
+    if (!inherits(db_goals, "try-error") && length(db_goals)) {
+      completed_goals_data$goals <- db_goals
+      cat("Loaded", length(db_goals), "completed goals from DB\n")
+    } else {
       session$sendCustomMessage("loadCompletedGoals", list())
     }
   })
   
-  # Receive loaded plans from localStorage
+  # Receive loaded plans from localStorage (only if DB empty)
   observeEvent(input$loadedPlayerPlans, {
-    if (!is.null(input$loadedPlayerPlans) && length(input$loadedPlayerPlans) > 0) {
+    if (!is.null(input$loadedPlayerPlans) && length(input$loadedPlayerPlans) > 0 && length(player_plans_data$plans) == 0) {
       player_plans_data$plans <- input$loadedPlayerPlans
       cat("Loaded", length(input$loadedPlayerPlans), "saved plans from localStorage\n")
+      save_player_plans_db(player_plans_data$plans)
       
       # If we have a selected player, refresh their plan immediately
       isolate({
@@ -21429,11 +21490,12 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
     }
   })
   
-  # Receive loaded completed goals from localStorage
+  # Receive loaded completed goals from localStorage (only if DB empty)
   observeEvent(input$loadedCompletedGoals, {
-    if (!is.null(input$loadedCompletedGoals) && length(input$loadedCompletedGoals) > 0) {
+    if (!is.null(input$loadedCompletedGoals) && length(input$loadedCompletedGoals) > 0 && length(completed_goals_data$goals) == 0) {
       completed_goals_data$goals <- input$loadedCompletedGoals
       cat("Loaded", length(input$loadedCompletedGoals), "completed goals from localStorage\n")
+      save_completed_goals_db(completed_goals_data$goals)
     }
   })
   
@@ -21528,6 +21590,8 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
     
     # Save to localStorage
     session$sendCustomMessage("savePlayerPlans", player_plans_data$plans)
+    # Persist to DB
+    try(save_player_plans_db(player_plans_data$plans), silent = TRUE)
     
     cat("Saved plan for player:", player, "\n")
     cat("Goal 1 type:", plan$goal1_type, "\n")
@@ -21722,6 +21786,8 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
     
     # Save to localStorage
     session$sendCustomMessage("saveCompletedGoals", completed_goals_data$goals)
+    # Persist to DB
+    try(save_completed_goals_db(completed_goals_data$goals), silent = TRUE)
     
     cat("Saved completed goal for player:", player, "goal:", goal_num, "\n")
   }
@@ -21731,6 +21797,7 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
     if (!is.null(completed_goals_data$goals) && goal_id %in% names(completed_goals_data$goals)) {
       completed_goals_data$goals[[goal_id]] <- NULL
       session$sendCustomMessage("saveCompletedGoals", completed_goals_data$goals)
+      try(save_completed_goals_db(completed_goals_data$goals), silent = TRUE)
       cat("Deleted completed goal:", goal_id, "\n")
     }
   }
