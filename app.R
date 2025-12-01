@@ -13822,31 +13822,16 @@ sm_db_config <- get_auth_db_config()
 initial_credentials <- data.frame(
   user = c(
     "jgaynor@pitchingcoachu.com",
-    "banni17@yahoo.com",
-    "micaiahtucker@gmail.com",
-    "joshtols21@gmail.com",
-    "james.a.gaynor@gmail.com",
-    "tblank@mariners.com",
-    "admin"
+    "banni17@yahoo.com"
   ),
   password = c(
-    "cbu2024",
-    "cbu2024",
-    "cbu2024",
-    "cbu2024",
-    "cbu2024",
-    "cbu2024",
-    "admin123"
+    "pcu2025",
+    "pcu2025"
   ),
   admin = c(TRUE, TRUE, TRUE, TRUE, TRUE, TRUE, TRUE),
   email = c(
     "jgaynor@pitchingcoachu.com",
-    "banni17@yahoo.com",
-    "micaiahtucker@gmail.com",
-    "joshtols21@gmail.com",
-    "james.a.gaynor@gmail.com",
-    "tblank@mariners.com",
-    "admin@cbu.edu"
+    "banni17@yahoo.com"
   ),
   stringsAsFactors = FALSE
 )
@@ -14955,7 +14940,7 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
     }
   }, ignoreInit = TRUE)
   
-  admin_emails <- c("jgaynor@pitchingcoachu.com", "banni17@yahoo.com", "micaiahtucker@gmail.com", "joshtols21@gmail.com", "james.a.gaynor@gmail.com", "tblank@mariners.com")
+  admin_emails <- c("jgaynor@pitchingcoachu.com", "banni17@yahoo.com")
   # helper to normalize email
   norm_email <- function(x) tolower(trimws(x))
   
