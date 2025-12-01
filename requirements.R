@@ -41,7 +41,8 @@ required_packages <- c(
   "memoise",
   "shinymanager",
   "DBI",
-  "RSQLite"
+  "RSQLite",
+  "RMariaDB"
 )
 
 

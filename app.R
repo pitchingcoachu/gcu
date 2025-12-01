@@ -131,26 +131,58 @@ get_modifications_export_path <- function() {
 }
 
 # ---- App state (custom tables/reports/targets) persistence helpers ----
-get_state_db_path <- function() {
-  override <- Sys.getenv("APP_STATE_DB_PATH", unset = "")
-  if (nzchar(override)) {
-    path <- path.expand(override)
-    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-    return(path)
+state_backend <- function() {
+  host <- Sys.getenv("MYSQL_HOST", "")
+  db   <- Sys.getenv("MYSQL_DB", "")
+  user <- Sys.getenv("MYSQL_USER", "")
+  pass <- Sys.getenv("MYSQL_PASSWORD", "")
+  port <- as.integer(Sys.getenv("MYSQL_PORT", "3306"))
+  ssl_ca <- Sys.getenv("MYSQL_SSL_CA", "")
+  has_mysql <- nzchar(host) && nzchar(db) && nzchar(user) && nzchar(pass)
+  
+  if (has_mysql) {
+    return(list(
+      type = "mysql",
+      connect = function() {
+        RMariaDB::dbConnect(
+          RMariaDB::MariaDB(),
+          host = host,
+          user = user,
+          password = pass,
+          dbname = db,
+          port = port,
+          ssl.ca = if (nzchar(ssl_ca)) ssl_ca else NULL
+        )
+      }
+    ))
   }
-  # Prefer user data dir to survive code redeploys; fall back to local file
-  user_dir <- tryCatch(tools::R_user_dir("pcu_pitch_dashboard", which = "data"), error = function(...) "")
-  if (nzchar(user_dir)) {
-    dir.create(user_dir, recursive = TRUE, showWarnings = FALSE)
-    return(file.path(user_dir, "app_state.sqlite"))
+  
+  # Fallback to local SQLite (persists locally but not across shinyapps redeploys)
+  get_state_db_path <- function() {
+    override <- Sys.getenv("APP_STATE_DB_PATH", unset = "")
+    if (nzchar(override)) {
+      path <- path.expand(override)
+      dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+      return(path)
+    }
+    user_dir <- tryCatch(tools::R_user_dir("pcu_pitch_dashboard", which = "data"), error = function(...) "")
+    if (nzchar(user_dir)) {
+      dir.create(user_dir, recursive = TRUE, showWarnings = FALSE)
+      return(file.path(user_dir, "app_state.sqlite"))
+    }
+    "app_state.sqlite"
   }
-  "app_state.sqlite"
+  state_db_path <- get_state_db_path()
+  list(
+    type = "sqlite",
+    connect = function() DBI::dbConnect(RSQLite::SQLite(), state_db_path)
+  )
 }
 
-state_db_path <- get_state_db_path()
+state_backend_cfg <- state_backend()
 
 state_db_connect <- function() {
-  DBI::dbConnect(RSQLite::SQLite(), state_db_path)
+  state_backend_cfg$connect()
 }
 
 init_state_db <- function() {

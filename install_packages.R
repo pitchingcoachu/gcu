@@ -82,6 +82,7 @@ app_packages <- c(
   "shinymanager",
   "DBI",
   "RSQLite",
+  "RMariaDB",
   "digest"
 )
 
