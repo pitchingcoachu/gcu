@@ -54,6 +54,8 @@ jobs:
         MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
         MYSQL_PORT=3306
         MYSQL_SSL_CA=
+        # Persist shinymanager credentials between deploys
+        CREDENTIALS_SQLITE_PATH=/home/shiny/credentials.sqlite
         EOF
 
     - name: Install R packages
