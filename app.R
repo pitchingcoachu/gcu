@@ -487,6 +487,8 @@ import_modifications_from_export <- function(con, base_data) {
   # Insert new modifications
   tryCatch({
     dbWriteTable(con, "modifications", new_rows, append = TRUE)
+    # Invalidate memoized modifications cache now that DB changed
+    try(memoise::forget(mod_memo), silent = TRUE)
     cat("Imported", nrow(new_rows), "new modifications from export file\n")
   }, error = function(e) {
     warning("Error importing modifications: ", e$message)
@@ -612,6 +614,8 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
     
     # ENHANCED: Always update the export CSV after successful save
     write_modifications_snapshot(con)
+    # Invalidate memoized modifications cache so next load sees updates
+    try(memoise::forget(mod_memo), silent = TRUE)
     
     # Additional backup: create timestamped backup
     export_path <- get_modifications_export_path()
