@@ -12464,8 +12464,12 @@ custom_reports_server <- function(id) {
                 cell_state$show_controls <- isTRUE(input[[paste0("cell_show_controls_", id)]])
                 cells[[id]] <- cell_state
                 current_cells(cells)
-                shinyjs::toggle(ns(paste0("cell_controls_container_", id)), condition = cell_state$show_controls)
-              }, ignoreInit = FALSE, priority = 1000)
+                if (isTRUE(cell_state$show_controls)) {
+                  shinyjs::show(ns(paste0("cell_controls_container_", id)))
+                } else {
+                  shinyjs::hide(ns(paste0("cell_controls_container_", id)))
+                }
+              }, ignoreInit = TRUE, priority = 1000)
             })
             existing <- c(existing, cell_id)
           }
