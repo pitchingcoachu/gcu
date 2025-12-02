@@ -12471,42 +12471,44 @@ custom_reports_server <- function(id) {
                     checkboxInput(ns(paste0("cell_show_controls_", cell_id)), "Show controls", 
                                   value = sel$show_controls %||% TRUE, width = "120px")
                 ),
-                # Use div with id and observeEvent to toggle visibility, preserving input values
-                div(
-                  id = ns(paste0("cell_controls_container_", cell_id)),
-                  selectInput(ns(paste0("cell_type_", cell_id)), "Content:", 
-                              choices = c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart"),
-                              selected = sel$type),
-                  conditionalPanel(
-                    sprintf("input['%s'] == 'Summary Table'", ns(paste0("cell_type_", cell_id))),
-                    tagList(
-                      selectInput(ns(paste0("cell_table_mode_", cell_id)), "Table:", 
-                                  choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data",
-                                              names(custom_tables()), "Custom"),
-                                  selected = sel$table_mode %||% "Stuff"),
-                      selectInput(ns(paste0("cell_filter_", cell_id)), "Split By:", 
-                                  choices = c("Pitch Types","Batter Hand","Pitcher Hand","Count","After Count","Velocity","IVB","HB","Batter"),
-                                  selected = sel$filter),
-                      checkboxInput(ns(paste0("cell_color_", cell_id)), "Color-Code", value = sel$color %||% TRUE)
-                    )
-                  ),
-                  conditionalPanel(
-                    sprintf("input['%s'] == 'Heatmap'", ns(paste0("cell_type_", cell_id))),
-                    selectInput(ns(paste0("cell_heat_stat_", cell_id)), "Heatmap Type:",
-                                choices = c("Frequency","Whiff Rate","Exit Velocity","GB Rate","Contact Rate","Swing Rate"),
-                                selected = sel$heat_stat %||% "Frequency")
-                  ),
-                  # Per-cell filters (collapsed set)
-                  selectizeInput(
-                    ns(paste0("cell_filter_select_", cell_id)),
-                    "Filters to show:",
-                    choices = c("Dates","Session Type","Pitch Types","Batter Hand","Pitcher Hand","Pitch Results","QP Locations",
-                                "Count","After Count","Zone Location","Velo Min/Max","IVB Min/Max","HB Min/Max"),
-                    selected = sel$filter_select %||% c("Dates","Session Type","Pitch Types"),
-                    multiple = TRUE,
-                    options = list(plugins = list("remove_button"))
-                  ),
-                  uiOutput(ns(paste0("cell_filters_", cell_id)))
+                conditionalPanel(
+                  condition = sprintf("input['%s']", ns(paste0("cell_show_controls_", cell_id))),
+                  div(
+                    id = ns(paste0("cell_controls_container_", cell_id)),
+                    selectInput(ns(paste0("cell_type_", cell_id)), "Content:", 
+                                choices = c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart"),
+                                selected = sel$type),
+                    conditionalPanel(
+                      sprintf("input['%s'] == 'Summary Table'", ns(paste0("cell_type_", cell_id))),
+                      tagList(
+                        selectInput(ns(paste0("cell_table_mode_", cell_id)), "Table:", 
+                                    choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data",
+                                                names(custom_tables()), "Custom"),
+                                    selected = sel$table_mode %||% "Stuff"),
+                        selectInput(ns(paste0("cell_filter_", cell_id)), "Split By:", 
+                                    choices = c("Pitch Types","Batter Hand","Pitcher Hand","Count","After Count","Velocity","IVB","HB","Batter"),
+                                    selected = sel$filter),
+                        checkboxInput(ns(paste0("cell_color_", cell_id)), "Color-Code", value = sel$color %||% TRUE)
+                      )
+                    ),
+                    conditionalPanel(
+                      sprintf("input['%s'] == 'Heatmap'", ns(paste0("cell_type_", cell_id))),
+                      selectInput(ns(paste0("cell_heat_stat_", cell_id)), "Heatmap Type:",
+                                  choices = c("Frequency","Whiff Rate","Exit Velocity","GB Rate","Contact Rate","Swing Rate"),
+                                  selected = sel$heat_stat %||% "Frequency")
+                    ),
+                    # Per-cell filters (collapsed set)
+                    selectizeInput(
+                      ns(paste0("cell_filter_select_", cell_id)),
+                      "Filters to show:",
+                      choices = c("Dates","Session Type","Pitch Types","Batter Hand","Pitcher Hand","Pitch Results","QP Locations",
+                                  "Count","After Count","Zone Location","Velo Min/Max","IVB Min/Max","HB Min/Max"),
+                      selected = sel$filter_select %||% c("Dates","Session Type","Pitch Types"),
+                      multiple = TRUE,
+                      options = list(plugins = list("remove_button"))
+                    ),
+                    uiOutput(ns(paste0("cell_filters_", cell_id)))
+                  )
                 ),
                 uiOutput(ns(paste0("cell_output_", cell_id)))
             )
@@ -12519,67 +12521,6 @@ custom_reports_server <- function(id) {
       
       tagList(grid)
     })
-    
-    # Observer to toggle control visibility for each cell (only create once per cell)
-    # Track which cells have observers to avoid recreating them
-    cells_with_observers <- reactiveVal(character(0))
-    
-    observeEvent(list(input$report_rows, input$report_cols), {
-      rows <- as.integer(input$report_rows)
-      cols <- as.integer(input$report_cols)
-      existing <- cells_with_observers()
-      
-      for (r in seq_len(rows)) {
-        for (c in seq_len(cols)) {
-          cell_id <- paste0("r", r, "c", c)
-          
-          # Only create observer if we haven't already created one for this cell
-          if (!cell_id %in% existing) {
-            local({
-              id <- cell_id
-              
-              # Set initial visibility state
-              cells <- isolate(current_cells())
-              cell_state <- cells[[id]] %||% list()
-              show_controls <- cell_state$show_controls %||% TRUE
-              
-              # Use delay to ensure DOM is ready
-              shinyjs::delay(100, {
-                if (show_controls) {
-                  shinyjs::show(id = ns(paste0("cell_controls_container_", id)))
-                } else {
-                  shinyjs::hide(id = ns(paste0("cell_controls_container_", id)))
-                }
-              })
-              
-              # Create observer for future changes
-              observeEvent(input[[paste0("cell_show_controls_", id)]], {
-                cat("Checkbox clicked for cell:", id, "Value:", input[[paste0("cell_show_controls_", id)]], "\n")
-                # Persist the toggle immediately in stored state to avoid re-render flicker
-                cells <- isolate(current_cells())
-                cell_state <- cells[[id]] %||% list()
-                cell_state$show_controls <- isTRUE(input[[paste0("cell_show_controls_", id)]])
-                cells[[id]] <- cell_state
-                current_cells(cells)
-                
-                target_id <- ns(paste0("cell_controls_container_", id))
-                cat("Target element ID:", target_id, "\n")
-                
-                if (isTRUE(cell_state$show_controls)) {
-                  cat("Calling shinyjs::show\n")
-                  shinyjs::show(id = target_id)
-                } else {
-                  cat("Calling shinyjs::hide\n")
-                  shinyjs::hide(id = target_id)
-                }
-              }, ignoreInit = TRUE, priority = 1000)
-            })
-            existing <- c(existing, cell_id)
-          }
-        }
-      }
-      cells_with_observers(existing)
-    }, ignoreInit = TRUE, priority = 100)  # High priority to run before rendering
     
     # Observe cell selections and update stored state (throttle to prevent excessive updates)
     observe({
@@ -12614,7 +12555,6 @@ custom_reports_server <- function(id) {
             filter_select = input[[paste0("cell_filter_select_", id)]] %||% c("Dates","Session Type","Pitch Types")
           )
           # Keep UI in sync with stored state
-          shinyjs::toggle(ns(paste0("cell_controls_container_", id)), condition = cells[[id]]$show_controls)
         }
       }
       current_cells(cells)
