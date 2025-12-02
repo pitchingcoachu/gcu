@@ -526,57 +526,66 @@ upload_media_cloudinary <- function(path) {
 # Initialize modifications database
 init_modifications_db <- function() {
   db_path <- get_modifications_db_path()
-  con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
-  if (inherits(con, "error")) {
-    warning(sprintf("Could not open modifications DB (%s). Pitch edits will only persist in-memory.", conditionMessage(con)))
+  
+  # Wrap entire DB initialization in tryCatch to handle read-only environments
+  con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) {
+    warning(sprintf("Could not connect to modifications DB (%s). Pitch edits will only persist in-memory.", conditionMessage(e)))
+    return(NULL)
+  })
+  
+  if (is.null(con) || inherits(con, "error")) {
     return(db_path)
   }
+  
   on.exit(dbDisconnect(con), add = TRUE)
-  dbExecute(con, "
-    CREATE TABLE IF NOT EXISTS modifications (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      pitcher TEXT NOT NULL,
-      date TEXT NOT NULL,
-      rel_speed REAL,
-      horz_break REAL,
-      induced_vert_break REAL,
-      original_pitch_type TEXT,
-      new_pitch_type TEXT NOT NULL,
-      new_pitcher TEXT,
-      modified_at TEXT NOT NULL,
-      pitch_key TEXT,
-      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-    )
-  ")
-  dbExecute(con, "
-    CREATE INDEX IF NOT EXISTS idx_pitch_lookup ON modifications 
-    (pitcher, date, rel_speed, horz_break, induced_vert_break)
-  ")
-  dbExecute(con, "
-    CREATE INDEX IF NOT EXISTS idx_pitch_key ON modifications (pitch_key)
-  ")
-  # Ensure legacy databases get the new_pitcher column
-  cols <- try(dbListFields(con, "modifications"), silent = TRUE)
-  if (!inherits(cols, "try-error") && !"new_pitcher" %in% cols) {
-    try(dbExecute(con, "ALTER TABLE modifications ADD COLUMN new_pitcher TEXT"), silent = TRUE)
-  }
-  base_data <- get0("pitch_data_pitching", ifnotfound = NULL)
-  import_modifications_from_export(con, base_data)
-  mods <- try(dbGetQuery(con, "SELECT * FROM modifications"), silent = TRUE)
-  db_count <- if (inherits(mods, "try-error")) NA_integer_ else nrow(mods)
-  message(sprintf("Mod DB path: %s | rows: %s", db_path, db_count))
-  if (!inherits(mods, "try-error") && nrow(mods)) {
-    refresh_missing_pitch_keys(con, mods, base_data)
-    write_modifications_snapshot(con)
-    # If the DB has fewer rows than the best available CSV, rebuild from CSV
-    best_csv <- function() {
-      candidates <- unique(c(
-        get_modifications_export_path(),
-        file.path("data", "pitch_type_modifications_export.csv"),
-        file.path("data", "pitch_type_modifications.csv"),
-        "pitch_type_modifications.csv"
-      ))
-      best <- NULL; best_n <- NA_integer_
+  
+  # Wrap all DB operations in tryCatch
+  tryCatch({
+    dbExecute(con, "
+      CREATE TABLE IF NOT EXISTS modifications (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        pitcher TEXT NOT NULL,
+        date TEXT NOT NULL,
+        rel_speed REAL,
+        horz_break REAL,
+        induced_vert_break REAL,
+        original_pitch_type TEXT,
+        new_pitch_type TEXT NOT NULL,
+        new_pitcher TEXT,
+        modified_at TEXT NOT NULL,
+        pitch_key TEXT,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+      )
+    ")
+    dbExecute(con, "
+      CREATE INDEX IF NOT EXISTS idx_pitch_lookup ON modifications 
+      (pitcher, date, rel_speed, horz_break, induced_vert_break)
+    ")
+    dbExecute(con, "
+      CREATE INDEX IF NOT EXISTS idx_pitch_key ON modifications (pitch_key)
+    ")
+    # Ensure legacy databases get the new_pitcher column
+    cols <- try(dbListFields(con, "modifications"), silent = TRUE)
+    if (!inherits(cols, "try-error") && !"new_pitcher" %in% cols) {
+      try(dbExecute(con, "ALTER TABLE modifications ADD COLUMN new_pitcher TEXT"), silent = TRUE)
+    }
+    base_data <- get0("pitch_data_pitching", ifnotfound = NULL)
+    import_modifications_from_export(con, base_data)
+    mods <- try(dbGetQuery(con, "SELECT * FROM modifications"), silent = TRUE)
+    db_count <- if (inherits(mods, "try-error")) NA_integer_ else nrow(mods)
+    message(sprintf("Mod DB path: %s | rows: %s", db_path, db_count))
+    if (!inherits(mods, "try-error") && nrow(mods)) {
+      refresh_missing_pitch_keys(con, mods, base_data)
+      write_modifications_snapshot(con)
+      # If the DB has fewer rows than the best available CSV, rebuild from CSV
+      best_csv <- function() {
+        candidates <- unique(c(
+          get_modifications_export_path(),
+          file.path("data", "pitch_type_modifications_export.csv"),
+          file.path("data", "pitch_type_modifications.csv"),
+          "pitch_type_modifications.csv"
+        ))
+        best <- NULL; best_n <- NA_integer_
       for (p in candidates) {
         if (!file.exists(p)) next
         n <- tryCatch(nrow(readr::read_csv(p, show_col_types = FALSE)), error = function(...) NA_integer_)
@@ -616,7 +625,10 @@ init_modifications_db <- function() {
       }
       # mod_memo is no longer memoized; nothing to forget
     }
-  }
+  }, error = function(e) {
+    warning(sprintf("Error during DB initialization: %s", conditionMessage(e)))
+  })
+  
   db_path
 }
 
@@ -715,6 +727,12 @@ mod_memo <- function(db_path, mtime_sig) {
 }
 
 load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
+  # Quick check: if running on shinyapps.io or in read-only mode, skip DB loading
+  is_readonly <- file.access(".", 2) != 0
+  if (is_readonly && verbose) {
+    message("Running in read-only environment - skipping modifications database")
+  }
+  
   db_path <- init_modifications_db()
   
   if (!file.exists(db_path)) {
