@@ -727,21 +727,27 @@ mod_memo <- function(db_path, mtime_sig) {
 }
 
 load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
-  # Quick check: if running on shinyapps.io or in read-only mode, skip DB loading
-  is_readonly <- file.access(".", 2) != 0
-  if (is_readonly && verbose) {
-    message("Running in read-only environment - skipping modifications database")
+  # Ensure we ALWAYS return valid data, even if everything fails
+  fallback_result <- list(
+    data = pitch_data %>% mutate(original_row_id = row_number()),
+    applied_count = 0,
+    total_modifications = 0
+  )
+  
+  # Quick check: if running on shinyapps.io or in read-only mode, return early
+  is_readonly <- tryCatch(file.access(".", 2) != 0, error = function(e) TRUE)
+  if (is_readonly) {
+    if (verbose) message("Running in read-only environment - skipping modifications database")
+    return(fallback_result)
   }
   
-  db_path <- init_modifications_db()
-  
-  if (!file.exists(db_path)) {
-    return(list(
-      data = pitch_data %>% mutate(original_row_id = row_number()),
-      applied_count = 0,
-      total_modifications = 0
-    ))
-  }
+  # Wrap entire function in tryCatch to ensure we never fail to return data
+  tryCatch({
+    db_path <- init_modifications_db()
+    
+    if (!file.exists(db_path)) {
+      return(fallback_result)
+    }
   
   con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
   if (inherits(con, "error")) {
@@ -865,6 +871,11 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     
   }, finally = {
     dbDisconnect(con)
+  })
+  
+  }, error = function(e) {
+    warning(sprintf("Error loading pitch modifications: %s", conditionMessage(e)))
+    return(fallback_result)
   })
 }
 
