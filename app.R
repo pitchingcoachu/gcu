@@ -21909,13 +21909,13 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
   
   # Auto-save when any goal input changes
   observe({
-    req(input$pp_player_select)
+    req(plans_initialized(), input$pp_player_select)
     
-    # Use a small delay to avoid saving too frequently
-    invalidateLater(1000, session)
+    # Throttle autosave to reduce DB churn
+    invalidateLater(10000, session)
     
-    # Save current plan
-    save_current_plan(input$pp_player_select)
+    # Save current plan (errors here should not break the session)
+    try(save_current_plan(input$pp_player_select), silent = TRUE)
   })
   
   # Additional observers for immediate saving on critical changes
