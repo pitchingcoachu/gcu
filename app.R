@@ -734,10 +734,82 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     total_modifications = 0
   )
   
-  # Quick check: if running on shinyapps.io or in read-only mode, return early
+  # Quick check: if running on shinyapps.io or in read-only mode, load from CSV instead of DB
   is_readonly <- tryCatch(file.access(".", 2) != 0, error = function(e) TRUE)
   if (is_readonly) {
-    if (verbose) message("Running in read-only environment - skipping modifications database")
+    if (verbose) message("Running in read-only environment - loading modifications from CSV")
+    
+    # Try to load from the CSV export file
+    csv_path <- file.path("data", "pitch_type_modifications_export.csv")
+    if (file.exists(csv_path)) {
+      tryCatch({
+        mods_csv <- readr::read_csv(csv_path, show_col_types = FALSE)
+        if (nrow(mods_csv) > 0) {
+          # Parse the modifications and apply them
+          mods_csv <- as.data.frame(mods_csv, stringsAsFactors = FALSE, check.names = FALSE)
+          
+          # Ensure required columns exist
+          if (!"pitch_key" %in% names(mods_csv)) mods_csv$pitch_key <- NA_character_
+          
+          # Parse dates
+          safe_date <- function(x) {
+            tryCatch(as.Date(as.character(x)), error = function(...) as.Date(NA))
+          }
+          mods_csv$date <- safe_date(mods_csv$date)
+          
+          # Apply modifications to pitch_data (reuse existing logic)
+          base_data <- pitch_data %>% mutate(original_row_id = row_number())
+          temp_data <- base_data
+          modifications_applied <- 0
+          
+          for (i in 1:nrow(mods_csv)) {
+            mod <- mods_csv[i, ]
+            
+            # Match by pitch_key if available
+            match_idx <- integer(0)
+            if ("PitchKey" %in% names(temp_data) && !is.na(mod$pitch_key) && nzchar(mod$pitch_key)) {
+              match_idx <- which(temp_data$PitchKey == mod$pitch_key)
+            }
+            
+            # Fallback: match by pitcher, date, and metrics
+            if (!length(match_idx) && !is.na(mod$date)) {
+              match_idx <- which(
+                tolower(trimws(temp_data$Pitcher)) == tolower(trimws(mod$pitcher)) &
+                temp_data$Date == mod$date &
+                abs(as.numeric(temp_data$RelSpeed) - as.numeric(mod$rel_speed)) < 0.5 &
+                abs(as.numeric(temp_data$HorzBreak) - as.numeric(mod$horz_break)) < 0.5 &
+                abs(as.numeric(temp_data$InducedVertBreak) - as.numeric(mod$induced_vert_break)) < 0.5
+              )
+            }
+            
+            if (length(match_idx) > 0) {
+              idx <- match_idx[1]
+              temp_data$TaggedPitchType[idx] <- mod$new_pitch_type
+              if (!is.na(mod$new_pitcher) && nzchar(mod$new_pitcher)) {
+                temp_data$Pitcher[idx] <- mod$new_pitcher
+              }
+              modifications_applied <- modifications_applied + 1
+            }
+          }
+          
+          if (verbose && modifications_applied > 0) {
+            message(sprintf("Applied %d of %d pitch modifications from CSV", 
+                           modifications_applied, nrow(mods_csv)))
+          }
+          
+          return(list(
+            data = temp_data,
+            applied_count = modifications_applied,
+            total_modifications = nrow(mods_csv)
+          ))
+        }
+      }, error = function(e) {
+        warning(sprintf("Could not load modifications from CSV: %s", conditionMessage(e)))
+      })
+    } else {
+      if (verbose) message("No modifications CSV found at: ", csv_path)
+    }
+    
     return(fallback_result)
   }
   
