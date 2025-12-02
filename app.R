@@ -12474,16 +12474,23 @@ custom_reports_server <- function(id) {
               
               # Create observer for future changes
               observeEvent(input[[paste0("cell_show_controls_", id)]], {
+                cat("Checkbox clicked for cell:", id, "Value:", input[[paste0("cell_show_controls_", id)]], "\n")
                 # Persist the toggle immediately in stored state to avoid re-render flicker
                 cells <- isolate(current_cells())
                 cell_state <- cells[[id]] %||% list()
                 cell_state$show_controls <- isTRUE(input[[paste0("cell_show_controls_", id)]])
                 cells[[id]] <- cell_state
                 current_cells(cells)
+                
+                target_id <- ns(paste0("cell_controls_container_", id))
+                cat("Target element ID:", target_id, "\n")
+                
                 if (isTRUE(cell_state$show_controls)) {
-                  shinyjs::show(id = ns(paste0("cell_controls_container_", id)))
+                  cat("Calling shinyjs::show\n")
+                  shinyjs::show(id = target_id)
                 } else {
-                  shinyjs::hide(id = ns(paste0("cell_controls_container_", id)))
+                  cat("Calling shinyjs::hide\n")
+                  shinyjs::hide(id = target_id)
                 }
               }, ignoreInit = TRUE, priority = 1000)
             })
