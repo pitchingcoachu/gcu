@@ -12457,6 +12457,22 @@ custom_reports_server <- function(id) {
           if (!cell_id %in% existing) {
             local({
               id <- cell_id
+              
+              # Set initial visibility state
+              cells <- isolate(current_cells())
+              cell_state <- cells[[id]] %||% list()
+              show_controls <- cell_state$show_controls %||% TRUE
+              
+              # Use delay to ensure DOM is ready
+              shinyjs::delay(100, {
+                if (show_controls) {
+                  shinyjs::show(id = ns(paste0("cell_controls_container_", id)))
+                } else {
+                  shinyjs::hide(id = ns(paste0("cell_controls_container_", id)))
+                }
+              })
+              
+              # Create observer for future changes
               observeEvent(input[[paste0("cell_show_controls_", id)]], {
                 # Persist the toggle immediately in stored state to avoid re-render flicker
                 cells <- isolate(current_cells())
@@ -12465,9 +12481,9 @@ custom_reports_server <- function(id) {
                 cells[[id]] <- cell_state
                 current_cells(cells)
                 if (isTRUE(cell_state$show_controls)) {
-                  shinyjs::show(ns(paste0("cell_controls_container_", id)))
+                  shinyjs::show(id = ns(paste0("cell_controls_container_", id)))
                 } else {
-                  shinyjs::hide(ns(paste0("cell_controls_container_", id)))
+                  shinyjs::hide(id = ns(paste0("cell_controls_container_", id)))
                 }
               }, ignoreInit = TRUE, priority = 1000)
             })
