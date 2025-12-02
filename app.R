@@ -12464,6 +12464,7 @@ custom_reports_server <- function(id) {
                 cell_state$show_controls <- isTRUE(input[[paste0("cell_show_controls_", id)]])
                 cells[[id]] <- cell_state
                 current_cells(cells)
+                shinyjs::toggle(ns(paste0("cell_controls_container_", id)), condition = cell_state$show_controls)
               }, ignoreInit = FALSE, priority = 1000)
             })
             existing <- c(existing, cell_id)
@@ -12497,14 +12498,16 @@ custom_reports_server <- function(id) {
           # Save ALL cell settings, not just type and filter
           cells[[id]] <- list(
             type = input[[paste0("cell_type_", id)]] %||% "",
-                filter = input[[paste0("cell_filter_", id)]] %||% "Pitch Types",
-                title = input[[paste0("cell_title_", id)]] %||% "",
-                show_controls = input[[paste0("cell_show_controls_", id)]] %||% TRUE,
-                table_mode = input[[paste0("cell_table_mode_", id)]] %||% "Stuff",
-                color = input[[paste0("cell_color_", id)]] %||% TRUE,
+            filter = input[[paste0("cell_filter_", id)]] %||% "Pitch Types",
+            title = input[[paste0("cell_title_", id)]] %||% "",
+            show_controls = input[[paste0("cell_show_controls_", id)]] %||% TRUE,
+            table_mode = input[[paste0("cell_table_mode_", id)]] %||% "Stuff",
+            color = input[[paste0("cell_color_", id)]] %||% TRUE,
             heat_stat = input[[paste0("cell_heat_stat_", id)]] %||% "Frequency",
             filter_select = input[[paste0("cell_filter_select_", id)]] %||% c("Dates","Session Type","Pitch Types")
           )
+          # Keep UI in sync with stored state
+          shinyjs::toggle(ns(paste0("cell_controls_container_", id)), condition = cells[[id]]$show_controls)
         }
       }
       current_cells(cells)
