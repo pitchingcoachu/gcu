@@ -487,8 +487,6 @@ import_modifications_from_export <- function(con, base_data) {
   # Insert new modifications
   tryCatch({
     dbWriteTable(con, "modifications", new_rows, append = TRUE)
-    # Invalidate memoized modifications cache now that DB changed
-    try(memoise::forget(mod_memo), silent = TRUE)
     cat("Imported", nrow(new_rows), "new modifications from export file\n")
   }, error = function(e) {
     warning("Error importing modifications: ", e$message)
@@ -616,7 +614,7 @@ init_modifications_db <- function() {
         refresh_missing_pitch_keys(con, mods, base_data)
         write_modifications_snapshot(con)
       }
-      try(memoise::forget(mod_memo), silent = TRUE)
+      # mod_memo is no longer memoized; nothing to forget
     }
   }
   db_path
@@ -664,8 +662,6 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
     
     # ENHANCED: Always update the export CSV after successful save
     write_modifications_snapshot(con)
-    # Invalidate memoized modifications cache so next load sees updates
-    try(memoise::forget(mod_memo), silent = TRUE)
     
     # Additional backup: create timestamped backup
     export_path <- get_modifications_export_path()
@@ -686,7 +682,7 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
 }
 
 # Enhanced: Load and apply modifications from database with better matching
-mod_memo <- memoise::memoise(function(db_path, mtime_sig) {
+mod_memo <- function(db_path, mtime_sig) {
   con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
   if (inherits(con, "error")) return(NULL)
   on.exit(dbDisconnect(con), add = TRUE)
@@ -717,7 +713,7 @@ mod_memo <- memoise::memoise(function(db_path, mtime_sig) {
   mods$created_at <- safe_dt(mods$created_at)
   mods <- mods[!is.na(mods$date), , drop = FALSE]
   mods
-})
+}
 
 load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
   db_path <- init_modifications_db()
