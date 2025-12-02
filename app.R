@@ -568,6 +568,23 @@ init_modifications_db <- function() {
   if (!inherits(mods, "try-error") && nrow(mods)) {
     refresh_missing_pitch_keys(con, mods, base_data)
     write_modifications_snapshot(con)
+    # If the DB has fewer rows than the bundled/export CSV, rebuild from CSV
+    export_path <- get_modifications_export_path()
+    if (file.exists(export_path)) {
+      csv_count <- tryCatch(nrow(readr::read_csv(export_path, show_col_types = FALSE)), error = function(...) NA_integer_)
+      db_count <- nrow(mods)
+      if (is.finite(csv_count) && csv_count > db_count) {
+        try(dbExecute(con, "DELETE FROM modifications"), silent = TRUE)
+        import_modifications_from_export(con, base_data)
+        mods <- try(dbGetQuery(con, "SELECT * FROM modifications"), silent = TRUE)
+        if (!inherits(mods, "try-error")) {
+          refresh_missing_pitch_keys(con, mods, base_data)
+          write_modifications_snapshot(con)
+        }
+        try(memoise::forget(mod_memo), silent = TRUE)
+        message(sprintf("Rebuilt modifications DB from CSV (%d -> %d rows)", db_count, csv_count))
+      }
+    }
   }
   db_path
 }
