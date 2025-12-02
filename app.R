@@ -631,8 +631,6 @@ init_modifications_db <- function() {
       }
       # mod_memo is no longer memoized; nothing to forget
     }
-  }, error = function(e) {
-    warning(sprintf("Error during DB initialization: %s", conditionMessage(e)))
   })
   
   db_path
