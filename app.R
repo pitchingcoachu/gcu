@@ -545,7 +545,7 @@ init_modifications_db <- function() {
   
   on.exit(dbDisconnect(con), add = TRUE)
   
-  # Wrap all DB operations in tryCatch
+  # Execute DB operations with error handling
   tryCatch({
     dbExecute(con, "
       CREATE TABLE IF NOT EXISTS modifications (
@@ -592,15 +592,15 @@ init_modifications_db <- function() {
           "pitch_type_modifications.csv"
         ))
         best <- NULL; best_n <- NA_integer_
-      for (p in candidates) {
-        if (!file.exists(p)) next
-        n <- tryCatch(nrow(readr::read_csv(p, show_col_types = FALSE)), error = function(...) NA_integer_)
-        if (is.finite(n) && (is.na(best_n) || n > best_n)) {
-          best <- p; best_n <- n
+        for (p in candidates) {
+          if (!file.exists(p)) next
+          n <- tryCatch(nrow(readr::read_csv(p, show_col_types = FALSE)), error = function(...) NA_integer_)
+          if (is.finite(n) && (is.na(best_n) || n > best_n)) {
+            best <- p; best_n <- n
+          }
         }
+        list(path = best, n = best_n)
       }
-      list(path = best, n = best_n)
-    }
     csv_info <- best_csv()
     db_count <- nrow(mods)
     if (!is.null(csv_info$path) && is.finite(csv_info$n) && csv_info$n > db_count) {
@@ -631,6 +631,9 @@ init_modifications_db <- function() {
       }
       # mod_memo is no longer memoized; nothing to forget
     }
+    }
+  }, error = function(e) {
+    warning(sprintf("Error during DB initialization: %s", conditionMessage(e)))
   })
   
   db_path
