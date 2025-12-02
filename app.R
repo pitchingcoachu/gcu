@@ -708,10 +708,9 @@ mod_memo <- function(db_path, mtime_sig) {
       as.POSIXct(out, tz = "UTC")
     }, error = function(...) as.POSIXct(NA))
   }
-  mods$date <- safe_date(mods$date)
-  mods$modified_at <- safe_dt(mods$modified_at)
-  mods$created_at <- safe_dt(mods$created_at)
-  mods <- mods[!is.na(mods$date), , drop = FALSE]
+    mods$date <- safe_date(mods$date)
+    mods$modified_at <- safe_dt(mods$modified_at)
+    mods$created_at <- safe_dt(mods$created_at)
   mods
 }
 
