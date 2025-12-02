@@ -108,10 +108,16 @@ get_modifications_db_path <- function() {
     dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
     return(path)
   }
-  if (file.access(".", 2) == 0) return("pitch_modifications.db")
-  alt <- file.path(tools::R_user_dir("pcu_pitch_dashboard", which = "data"), "pitch_modifications.db")
-  dir.create(dirname(alt), recursive = TRUE, showWarnings = FALSE)
-  alt
+  
+  # Check if we have write access to current directory
+  if (file.access(".", 2) == 0) {
+    return("pitch_modifications.db")
+  }
+  
+  # Read-only environment (like shinyapps.io) - use /tmp which is writable
+  tmp_path <- file.path("/tmp", "pitch_modifications.db")
+  message("Using temporary database path: ", tmp_path)
+  return(tmp_path)
 }
 
 get_modifications_export_path <- function() {
@@ -734,88 +740,60 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     total_modifications = 0
   )
   
-  # Quick check: if running on shinyapps.io or in read-only mode, load from CSV instead of DB
-  is_readonly <- tryCatch(file.access(".", 2) != 0, error = function(e) TRUE)
-  if (is_readonly) {
-    if (verbose) message("Running in read-only environment - loading modifications from CSV")
-    
-    # Try to load from the CSV export file
-    csv_path <- file.path("data", "pitch_type_modifications_export.csv")
-    if (file.exists(csv_path)) {
-      tryCatch({
-        mods_csv <- readr::read_csv(csv_path, show_col_types = FALSE)
-        if (nrow(mods_csv) > 0) {
-          # Parse the modifications and apply them
-          mods_csv <- as.data.frame(mods_csv, stringsAsFactors = FALSE, check.names = FALSE)
-          
-          # Ensure required columns exist
-          if (!"pitch_key" %in% names(mods_csv)) mods_csv$pitch_key <- NA_character_
-          
-          # Parse dates
-          safe_date <- function(x) {
-            tryCatch(as.Date(as.character(x)), error = function(...) as.Date(NA))
-          }
-          mods_csv$date <- safe_date(mods_csv$date)
-          
-          # Apply modifications to pitch_data (reuse existing logic)
-          base_data <- pitch_data %>% mutate(original_row_id = row_number())
-          temp_data <- base_data
-          modifications_applied <- 0
-          
-          for (i in 1:nrow(mods_csv)) {
-            mod <- mods_csv[i, ]
-            
-            # Match by pitch_key if available
-            match_idx <- integer(0)
-            if ("PitchKey" %in% names(temp_data) && !is.na(mod$pitch_key) && nzchar(mod$pitch_key)) {
-              match_idx <- which(temp_data$PitchKey == mod$pitch_key)
-            }
-            
-            # Fallback: match by pitcher, date, and metrics
-            if (!length(match_idx) && !is.na(mod$date)) {
-              match_idx <- which(
-                tolower(trimws(temp_data$Pitcher)) == tolower(trimws(mod$pitcher)) &
-                temp_data$Date == mod$date &
-                abs(as.numeric(temp_data$RelSpeed) - as.numeric(mod$rel_speed)) < 0.5 &
-                abs(as.numeric(temp_data$HorzBreak) - as.numeric(mod$horz_break)) < 0.5 &
-                abs(as.numeric(temp_data$InducedVertBreak) - as.numeric(mod$induced_vert_break)) < 0.5
-              )
-            }
-            
-            if (length(match_idx) > 0) {
-              idx <- match_idx[1]
-              temp_data$TaggedPitchType[idx] <- mod$new_pitch_type
-              if (!is.na(mod$new_pitcher) && nzchar(mod$new_pitcher)) {
-                temp_data$Pitcher[idx] <- mod$new_pitcher
-              }
-              modifications_applied <- modifications_applied + 1
-            }
-          }
-          
-          if (verbose && modifications_applied > 0) {
-            message(sprintf("Applied %d of %d pitch modifications from CSV", 
-                           modifications_applied, nrow(mods_csv)))
-          }
-          
-          return(list(
-            data = temp_data,
-            applied_count = modifications_applied,
-            total_modifications = nrow(mods_csv)
-          ))
-        }
-      }, error = function(e) {
-        warning(sprintf("Could not load modifications from CSV: %s", conditionMessage(e)))
-      })
-    } else {
-      if (verbose) message("No modifications CSV found at: ", csv_path)
-    }
-    
-    return(fallback_result)
-  }
-  
   # Wrap entire function in tryCatch to ensure we never fail to return data
   tryCatch({
     db_path <- init_modifications_db()
+    
+    # Check if we're in read-only mode and need to seed DB from CSV
+    is_readonly <- tryCatch(file.access(".", 2) != 0, error = function(e) TRUE)
+    if (is_readonly) {
+      if (verbose) message("Read-only environment detected - seeding temp DB from CSV")
+      
+      # Load modifications from CSV and populate the temp database
+      csv_path <- file.path("data", "pitch_type_modifications_export.csv")
+      if (file.exists(csv_path)) {
+        tryCatch({
+          con <- dbConnect(SQLite(), db_path)
+          on.exit(dbDisconnect(con), add = TRUE)
+          
+          # Check if DB is empty (needs seeding)
+          existing_count <- tryCatch({
+            dbGetQuery(con, "SELECT COUNT(*) as n FROM modifications")$n
+          }, error = function(e) 0)
+          
+          if (existing_count == 0) {
+            # Load and import CSV modifications
+            mods_csv <- readr::read_csv(csv_path, show_col_types = FALSE)
+            if (nrow(mods_csv) > 0) {
+              mods_csv <- as.data.frame(mods_csv, stringsAsFactors = FALSE, check.names = FALSE)
+              
+              # Prepare data for insertion
+              if (!"pitch_key" %in% names(mods_csv)) mods_csv$pitch_key <- NA_character_
+              if (!"new_pitcher" %in% names(mods_csv)) mods_csv$new_pitcher <- NA_character_
+              
+              expected_cols <- c(
+                "pitcher", "date", "rel_speed", "horz_break", "induced_vert_break",
+                "original_pitch_type", "new_pitch_type", "new_pitcher",
+                "modified_at", "pitch_key", "created_at"
+              )
+              
+              for (col in expected_cols) {
+                if (!col %in% names(mods_csv)) mods_csv[[col]] <- NA
+              }
+              
+              import_data <- mods_csv[, expected_cols, drop = FALSE]
+              dbWriteTable(con, "modifications", import_data, append = TRUE)
+              
+              if (verbose) {
+                message(sprintf("Seeded temp DB with %d modifications from CSV", nrow(import_data)))
+              }
+            }
+          }
+        }, error = function(e) {
+          warning(sprintf("Could not seed DB from CSV: %s", conditionMessage(e)))
+        })
+      }
+    }
     
     if (!file.exists(db_path)) {
       return(fallback_result)
