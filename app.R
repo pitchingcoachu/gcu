@@ -565,6 +565,8 @@ init_modifications_db <- function() {
   base_data <- get0("pitch_data_pitching", ifnotfound = NULL)
   import_modifications_from_export(con, base_data)
   mods <- try(dbGetQuery(con, "SELECT * FROM modifications"), silent = TRUE)
+  db_count <- if (inherits(mods, "try-error")) NA_integer_ else nrow(mods)
+  message(sprintf("Mod DB path: %s | rows: %s", db_path, db_count))
   if (!inherits(mods, "try-error") && nrow(mods)) {
     refresh_missing_pitch_keys(con, mods, base_data)
     write_modifications_snapshot(con)
