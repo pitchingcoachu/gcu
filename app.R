@@ -1388,12 +1388,12 @@ safe_compute_process_results <- function(df, mode = "All") {
   })
 }
 
-# Safe wrapper for make_summary with error handling
-safe_make_summary <- function(df) {
+# Safe wrapper for make_summary with error handling (supports alternate grouping)
+safe_make_summary <- function(df, group_col = "TaggedPitchType") {
   tryCatch({
-    make_summary(df)
+    make_summary(df, group_col = group_col)
   }, error = function(e) {
-    message("Error in make_summary: ", conditionMessage(e))
+    message("Error in make_summary (group_col = ", group_col, "): ", conditionMessage(e))
     # Return a minimal data frame with expected structure
     tibble::tibble(
       PitchType = character(0),
@@ -8666,7 +8666,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       custom <- if (!is.null(input$campSummaryCustomCols)) input$campSummaryCustomCols else character(0)
       
       # Use make_summary and then transform to match main Pitching Summary exactly
-      summ <- make_summary(df)
+      summ <- safe_make_summary(df)
       summ <- dplyr::mutate(summ,
                             ReleaseTilt = as.character(ReleaseTilt),
                             BreakTilt   = as.character(BreakTilt)
@@ -11556,7 +11556,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
           .groups = "drop"
         )
       
-      summ <- make_summary(df)
+      summ <- safe_make_summary(df)
       summ <- dplyr::mutate(summ,
                             ReleaseTilt = as.character(ReleaseTilt),
                             BreakTilt   = as.character(BreakTilt)
@@ -17344,7 +17344,7 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
         )
       
       # Base per-split-type summary
-      summ <- make_summary(df, group_col = "SplitColumn")
+      summ <- safe_make_summary(df, group_col = "SplitColumn")
       summ <- dplyr::mutate(summ,
                             ReleaseTilt = as.character(ReleaseTilt),
                             BreakTilt   = as.character(BreakTilt)
@@ -17361,7 +17361,7 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
         for (state in c("Even", "Ahead", "Behind")) {
           state_df <- df %>% dplyr::filter(CountState == state)
           if (nrow(state_df) > 0) {
-            state_summary <- make_summary(state_df, group_col = "SplitColumn")
+            state_summary <- safe_make_summary(state_df, group_col = "SplitColumn")
             if (nrow(state_summary) > 0) {
               # Aggregate all counts in this state into one row
               state_row <- state_summary %>%
@@ -18291,7 +18291,7 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
       )
     
     # Base per-pitch-type summary
-    summ <- make_summary(df, group_col = "SplitColumn")
+    summ <- safe_make_summary(df, group_col = "SplitColumn")
     summ <- dplyr::mutate(summ,
                           ReleaseTilt = as.character(ReleaseTilt),
                           BreakTilt   = as.character(BreakTilt)
