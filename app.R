@@ -6133,6 +6133,13 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       tryCatch({
         req(is_active())
         df <- filtered_hit()
+        if (is.null(df) || !nrow(df)) {
+          return(DT::datatable(
+            data.frame(Message = "No data available for current filters"),
+            options = list(dom = 't'),
+            rownames = FALSE
+          ))
+        }
         
         # Apply Split By transformation
         split_choice <- if (!is.null(input$dpSplitBy)) input$dpSplitBy else "Pitch Types"
