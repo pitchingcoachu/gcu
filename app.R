@@ -568,22 +568,53 @@ init_modifications_db <- function() {
   if (!inherits(mods, "try-error") && nrow(mods)) {
     refresh_missing_pitch_keys(con, mods, base_data)
     write_modifications_snapshot(con)
-    # If the DB has fewer rows than the bundled/export CSV, rebuild from CSV
-    export_path <- get_modifications_export_path()
-    if (file.exists(export_path)) {
-      csv_count <- tryCatch(nrow(readr::read_csv(export_path, show_col_types = FALSE)), error = function(...) NA_integer_)
-      db_count <- nrow(mods)
-      if (is.finite(csv_count) && csv_count > db_count) {
-        try(dbExecute(con, "DELETE FROM modifications"), silent = TRUE)
-        import_modifications_from_export(con, base_data)
-        mods <- try(dbGetQuery(con, "SELECT * FROM modifications"), silent = TRUE)
-        if (!inherits(mods, "try-error")) {
-          refresh_missing_pitch_keys(con, mods, base_data)
-          write_modifications_snapshot(con)
+    # If the DB has fewer rows than the best available CSV, rebuild from CSV
+    best_csv <- function() {
+      candidates <- unique(c(
+        get_modifications_export_path(),
+        file.path("data", "pitch_type_modifications_export.csv"),
+        file.path("data", "pitch_type_modifications.csv"),
+        "pitch_type_modifications.csv"
+      ))
+      best <- NULL; best_n <- NA_integer_
+      for (p in candidates) {
+        if (!file.exists(p)) next
+        n <- tryCatch(nrow(readr::read_csv(p, show_col_types = FALSE)), error = function(...) NA_integer_)
+        if (is.finite(n) && (is.na(best_n) || n > best_n)) {
+          best <- p; best_n <- n
         }
-        try(memoise::forget(mod_memo), silent = TRUE)
-        message(sprintf("Rebuilt modifications DB from CSV (%d -> %d rows)", db_count, csv_count))
       }
+      list(path = best, n = best_n)
+    }
+    csv_info <- best_csv()
+    db_count <- nrow(mods)
+    if (!is.null(csv_info$path) && is.finite(csv_info$n) && csv_info$n > db_count) {
+      message(sprintf("Rebuilding modifications DB from %s (%d -> %d rows)", csv_info$path, db_count, csv_info$n))
+      try(dbExecute(con, "DELETE FROM modifications"), silent = TRUE)
+      mods_csv <- try(readr::read_csv(csv_info$path, show_col_types = FALSE), silent = TRUE)
+      if (!inherits(mods_csv, "try-error") && nrow(mods_csv)) {
+        mods_csv <- as.data.frame(mods_csv, stringsAsFactors = FALSE, check.names = FALSE)
+        if (!"pitch_key" %in% names(mods_csv)) mods_csv$pitch_key <- NA_character_
+        mods_csv <- attach_pitch_keys_to_mods(mods_csv, base_data)
+        new_rows <- mods_csv
+        new_rows$id <- NULL
+        expected_cols <- c(
+          "pitcher", "date", "rel_speed", "horz_break", "induced_vert_break",
+          "original_pitch_type", "new_pitch_type", "new_pitcher",
+          "modified_at", "pitch_key", "created_at"
+        )
+        for (col in expected_cols) {
+          if (!col %in% names(new_rows)) new_rows[[col]] <- NA
+        }
+        new_rows <- new_rows[, expected_cols, drop = FALSE]
+        try(dbWriteTable(con, "modifications", new_rows, append = TRUE), silent = TRUE)
+      }
+      mods <- try(dbGetQuery(con, "SELECT * FROM modifications"), silent = TRUE)
+      if (!inherits(mods, "try-error")) {
+        refresh_missing_pitch_keys(con, mods, base_data)
+        write_modifications_snapshot(con)
+      }
+      try(memoise::forget(mod_memo), silent = TRUE)
     }
   }
   db_path
