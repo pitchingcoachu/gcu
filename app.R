@@ -4677,7 +4677,7 @@ pitch_ui <- function(show_header = FALSE) {
             "HeatMaps",
             sidebarLayout(
               sidebarPanel(
-                selectInput("hmChartType", "Select Chart:", choices = c("Heat","Pitch"), selected = "Heat"),
+                selectInput("hmChartType", "Select Chart:", choices = c("Heat","Pitch","QP+"), selected = "Heat"),
                 conditionalPanel(
                   "input.hmChartType=='Heat'",
                   selectInput(
@@ -4694,6 +4694,10 @@ pitch_ui <- function(show_header = FALSE) {
                   ),
                   uiOutput("hmNote")
                 ),
+                conditionalPanel(
+                  "input.hmChartType=='QP+'",
+                  helpText("Requires batter hand + counts from the same family (Ahead, Even, or Behind).")
+                ),
                 selectInput("locResult", "Pitch Results:", choices = c("All", result_levels),
                             selected = "All", multiple = TRUE),
                 uiOutput("locLegend"),
@@ -4701,7 +4705,8 @@ pitch_ui <- function(show_header = FALSE) {
               ),
               mainPanel(
                 conditionalPanel("input.hmChartType=='Heat'",  plotOutput("heatmapsHeatPlot", height = "500px")),
-                conditionalPanel("input.hmChartType=='Pitch'", ggiraph::girafeOutput("heatmapsPitchPlot", height = "500px"))
+                conditionalPanel("input.hmChartType=='Pitch'", ggiraph::girafeOutput("heatmapsPitchPlot", height = "500px")),
+                conditionalPanel("input.hmChartType=='QP+'",   ggiraph::girafeOutput("heatmapsQPPlot",   height = "500px"))
               )
             )
           ),
@@ -20424,7 +20429,79 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
       )
     )
   })
-  
+
+  # ---------- QP+ single heatmap (pitch overlay) ----------
+  count_families_for_selection <- function(sel) {
+    if (is.null(sel) || !length(sel)) return(character(0))
+    sel <- trimws(sel)
+    sel <- sel[sel != "All" & nzchar(sel)]
+    if (!length(sel)) return(character(0))
+    fams <- character(0)
+    add_family <- function(x) fams <<- c(fams, x)
+    ahead_pairs   <- list(c(0,1), c(0,2), c(1,2))
+    even_pairs    <- list(c(0,0), c(1,1), c(2,2), c(3,2))
+    behind_pairs  <- list(c(1,0), c(2,0), c(3,0), c(3,1), c(2,1))
+    if ("Ahead" %in% sel)   add_family("Ahead")
+    if ("Even" %in% sel)    add_family("Even")
+    if ("Behind" %in% sel)  add_family("Behind")
+    if ("2KNF" %in% sel)    add_family("Ahead")  # treat two-strike no fastball as ahead-family
+    exact <- sel[grepl("^\\d-\\d$", sel)]
+    if (length(exact)) {
+      for (val in exact) {
+        sp <- strsplit(val, "-", fixed = TRUE)[[1]]
+        if (length(sp) == 2) {
+          b <- suppressWarnings(as.integer(sp[1])); s <- suppressWarnings(as.integer(sp[2]))
+          if (any(vapply(ahead_pairs,   function(p) identical(c(b,s), p), logical(1)))) add_family("Ahead")
+          else if (any(vapply(even_pairs,   function(p) identical(c(b,s), p), logical(1)))) add_family("Even")
+          else if (any(vapply(behind_pairs, function(p) identical(c(b,s), p), logical(1)))) add_family("Behind")
+          else add_family("Other")
+        }
+      }
+    }
+    unique(fams)
+  }
+
+  output$heatmapsQPPlot <- ggiraph::renderGirafe({
+    req(input$hmChartType == "QP+")
+    df <- filtered_data(); if (!nrow(df)) return(NULL)
+
+    pitcher_hand <- get_pitcher_handedness()
+    batter_hand  <- input$batterSide
+    fams_sel <- count_families_for_selection(input$countFilter)
+    fams_df <- character(0)
+    if (nrow(df) && all(c("Balls","Strikes") %in% names(df))) {
+      cs <- count_state_vec(df$Balls, df$Strikes)
+      fams_df <- unique(cs[!is.na(cs)])
+    }
+    fams_use <- unique(c(fams_sel, fams_df))
+    pitch_sel <- input$pitchType
+    # Require exactly one pitch type (no "All") so we show a single chart
+    valid_pitch_type <- !is.null(pitch_sel) && length(pitch_sel) == 1 && pitch_sel != "All"
+
+    fams_no_other <- setdiff(fams_use, "Other")
+
+    validate(
+      need(!is.null(pitcher_hand), "Select a pitcher (or pitcher hand) to view QP+."),
+      need(!is.null(batter_hand) && batter_hand != "All", "Select batter handedness to view QP+."),
+      need(valid_pitch_type, "Select exactly one pitch type (not \"All\") for QP+."),
+      need(length(fams_no_other) > 0, "Select counts from Ahead, Even, or Behind to view QP+."),
+      need(length(unique(fams_no_other)) == 1, "Select counts from a single family (Ahead, Even, or Behind).")
+    )
+
+    count_state <- fams_no_other[1]
+    p <- create_qp_locations_plot(df, count_state, pitcher_hand, batter_hand)
+
+    ggiraph::girafe(
+      ggobj = p,
+      width_svg = 12, height_svg = 5,
+      options = list(
+        ggiraph::opts_hover_inv(css = "opacity:0.1;"),
+        ggiraph::opts_hover(css = "stroke-width:2;"),
+        ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css, opacity = 0.9)
+      )
+    )
+  })
+
   
   # ---------- small helpers ----------
   .find_qp_plus_col <- function(df) {
