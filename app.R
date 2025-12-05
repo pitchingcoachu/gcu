@@ -601,36 +601,36 @@ init_modifications_db <- function() {
         }
         list(path = best, n = best_n)
       }
-    csv_info <- best_csv()
-    db_count <- nrow(mods)
-    if (!is.null(csv_info$path) && is.finite(csv_info$n) && csv_info$n > db_count) {
-      message(sprintf("Rebuilding modifications DB from %s (%d -> %d rows)", csv_info$path, db_count, csv_info$n))
-      try(dbExecute(con, "DELETE FROM modifications"), silent = TRUE)
-      mods_csv <- try(readr::read_csv(csv_info$path, show_col_types = FALSE), silent = TRUE)
-      if (!inherits(mods_csv, "try-error") && nrow(mods_csv)) {
-        mods_csv <- as.data.frame(mods_csv, stringsAsFactors = FALSE, check.names = FALSE)
-        if (!"pitch_key" %in% names(mods_csv)) mods_csv$pitch_key <- NA_character_
-        mods_csv <- attach_pitch_keys_to_mods(mods_csv, base_data)
-        new_rows <- mods_csv
-        new_rows$id <- NULL
-        expected_cols <- c(
-          "pitcher", "date", "rel_speed", "horz_break", "induced_vert_break",
-          "original_pitch_type", "new_pitch_type", "new_pitcher",
-          "modified_at", "pitch_key", "created_at"
-        )
-        for (col in expected_cols) {
-          if (!col %in% names(new_rows)) new_rows[[col]] <- NA
+      csv_info <- best_csv()
+      db_count <- nrow(mods)
+      if (!is.null(csv_info$path) && is.finite(csv_info$n) && csv_info$n > db_count) {
+        message(sprintf("Rebuilding modifications DB from %s (%d -> %d rows)", csv_info$path, db_count, csv_info$n))
+        try(dbExecute(con, "DELETE FROM modifications"), silent = TRUE)
+        mods_csv <- try(readr::read_csv(csv_info$path, show_col_types = FALSE), silent = TRUE)
+        if (!inherits(mods_csv, "try-error") && nrow(mods_csv)) {
+          mods_csv <- as.data.frame(mods_csv, stringsAsFactors = FALSE, check.names = FALSE)
+          if (!"pitch_key" %in% names(mods_csv)) mods_csv$pitch_key <- NA_character_
+          mods_csv <- attach_pitch_keys_to_mods(mods_csv, base_data)
+          new_rows <- mods_csv
+          new_rows$id <- NULL
+          expected_cols <- c(
+            "pitcher", "date", "rel_speed", "horz_break", "induced_vert_break",
+            "original_pitch_type", "new_pitch_type", "new_pitcher",
+            "modified_at", "pitch_key", "created_at"
+          )
+          for (col in expected_cols) {
+            if (!col %in% names(new_rows)) new_rows[[col]] <- NA
+          }
+          new_rows <- new_rows[, expected_cols, drop = FALSE]
+          try(dbWriteTable(con, "modifications", new_rows, append = TRUE), silent = TRUE)
         }
-        new_rows <- new_rows[, expected_cols, drop = FALSE]
-        try(dbWriteTable(con, "modifications", new_rows, append = TRUE), silent = TRUE)
+        mods <- try(dbGetQuery(con, "SELECT * FROM modifications"), silent = TRUE)
+        if (!inherits(mods, "try-error")) {
+          refresh_missing_pitch_keys(con, mods, base_data)
+          write_modifications_snapshot(con)
+        }
+        # mod_memo is no longer memoized; nothing to forget
       }
-      mods <- try(dbGetQuery(con, "SELECT * FROM modifications"), silent = TRUE)
-      if (!inherits(mods, "try-error")) {
-        refresh_missing_pitch_keys(con, mods, base_data)
-        write_modifications_snapshot(con)
-      }
-      # mod_memo is no longer memoized; nothing to forget
-    }
     }
   }, error = function(e) {
     warning(sprintf("Error during DB initialization: %s", conditionMessage(e)))
@@ -727,9 +727,9 @@ mod_memo <- function(db_path, mtime_sig) {
       as.POSIXct(out, tz = "UTC")
     }, error = function(...) as.POSIXct(NA))
   }
-    mods$date <- safe_date(mods$date)
-    mods$modified_at <- safe_dt(mods$modified_at)
-    mods$created_at <- safe_dt(mods$created_at)
+  mods$date <- safe_date(mods$date)
+  mods$modified_at <- safe_dt(mods$modified_at)
+  mods$created_at <- safe_dt(mods$created_at)
   mods
 }
 
@@ -799,131 +799,131 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     if (!file.exists(db_path)) {
       return(fallback_result)
     }
-  
-  con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
-  if (inherits(con, "error")) {
-    warning(sprintf("Could not open modifications DB while loading (%s)", conditionMessage(con)))
-    return(list(
-      data = ensure_pitch_keys(pitch_data) %>% mutate(original_row_id = row_number()),
-      applied_count = 0,
-      total_modifications = 0
-    ))
-  }
-  on.exit(dbDisconnect(con), add = TRUE)
-  
-  tryCatch({
-    mtime_sig <- suppressWarnings(as.character(file.info(db_path)$mtime %||% Sys.time()))
-    mods <- mod_memo(db_path, mtime_sig)
-    if (is.null(mods)) {
+    
+    con <- tryCatch(dbConnect(SQLite(), db_path), error = function(e) e)
+    if (inherits(con, "error")) {
+      warning(sprintf("Could not open modifications DB while loading (%s)", conditionMessage(con)))
       return(list(
         data = ensure_pitch_keys(pitch_data) %>% mutate(original_row_id = row_number()),
         applied_count = 0,
         total_modifications = 0
       ))
     }
-    dropped <- sum(is.na(mods$date))
-    if (dropped && verbose) message(sprintf("Dropping %d modifications with unparseable dates", dropped))
-    base_data <- ensure_pitch_keys(pitch_data)
-    mods <- refresh_missing_pitch_keys(con, mods, base_data)
+    on.exit(dbDisconnect(con), add = TRUE)
     
-    if (nrow(mods) == 0) {
-      return(list(
-        data = base_data %>% mutate(original_row_id = row_number()),
-        applied_count = 0,
-        total_modifications = 0
-      ))
-    }
-    
-    temp_data <- base_data %>% mutate(original_row_id = row_number())
-    
-    # Apply modifications with enhanced matching
-    modifications_applied <- 0
-    modifications_not_found <- 0
-    lookup_df <- get0("lookup_table", ifnotfound = NULL)
-    fetch_email <- function(name) {
-      if (is.null(lookup_df) || !"Pitcher" %in% names(lookup_df) || !"Email_lookup" %in% names(lookup_df)) {
-        return(NA_character_)
+    tryCatch({
+      mtime_sig <- suppressWarnings(as.character(file.info(db_path)$mtime %||% Sys.time()))
+      mods <- mod_memo(db_path, mtime_sig)
+      if (is.null(mods)) {
+        return(list(
+          data = ensure_pitch_keys(pitch_data) %>% mutate(original_row_id = row_number()),
+          applied_count = 0,
+          total_modifications = 0
+        ))
       }
-      idx <- which(tolower(lookup_df$Pitcher) == tolower(name))
-      if (length(idx)) {
-        val <- lookup_df$Email_lookup[idx[1]]
-        if (is.na(val) || !nzchar(val)) return(NA_character_)
-        return(val)
-      }
-      NA_character_
-    }
-    
-    for (i in 1:nrow(mods)) {
-      mod <- mods[i, ]
+      dropped <- sum(is.na(mods$date))
+      if (dropped && verbose) message(sprintf("Dropping %d modifications with unparseable dates", dropped))
+      base_data <- ensure_pitch_keys(pitch_data)
+      mods <- refresh_missing_pitch_keys(con, mods, base_data)
       
-      # Primary matching strategy: exact match on multiple fields
-      match_idx <- integer(0)
-      if ("PitchKey" %in% names(temp_data) && !is.na(mod$pitch_key) && nzchar(mod$pitch_key)) {
-        match_idx <- which(temp_data$PitchKey == mod$pitch_key)
-      }
-      if (!length(match_idx)) {
-        match_idx <- which(
-          temp_data$Pitcher == mod$pitcher &
-            temp_data$Date == mod$date &
-            abs(temp_data$RelSpeed - mod$rel_speed) < 0.1 &
-            abs(temp_data$HorzBreak - mod$horz_break) < 0.1 &
-            abs(temp_data$InducedVertBreak - mod$induced_vert_break) < 0.1
-        )
+      if (nrow(mods) == 0) {
+        return(list(
+          data = base_data %>% mutate(original_row_id = row_number()),
+          applied_count = 0,
+          total_modifications = 0
+        ))
       }
       
-      # Fallback matching: if exact match fails, try looser criteria
-      if (length(match_idx) == 0) {
-        match_idx <- which(
-          temp_data$Pitcher == mod$pitcher &
-            temp_data$Date == mod$date &
-            abs(temp_data$RelSpeed - mod$rel_speed) < 0.5  # Slightly looser tolerance
-        )
+      temp_data <- base_data %>% mutate(original_row_id = row_number())
+      
+      # Apply modifications with enhanced matching
+      modifications_applied <- 0
+      modifications_not_found <- 0
+      lookup_df <- get0("lookup_table", ifnotfound = NULL)
+      fetch_email <- function(name) {
+        if (is.null(lookup_df) || !"Pitcher" %in% names(lookup_df) || !"Email_lookup" %in% names(lookup_df)) {
+          return(NA_character_)
+        }
+        idx <- which(tolower(lookup_df$Pitcher) == tolower(name))
+        if (length(idx)) {
+          val <- lookup_df$Email_lookup[idx[1]]
+          if (is.na(val) || !nzchar(val)) return(NA_character_)
+          return(val)
+        }
+        NA_character_
       }
       
-      if (length(match_idx) > 0) {
-        # Apply modification to all matching rows (handles duplicate PitchKey entries)
-        temp_data$TaggedPitchType[match_idx] <- mod$new_pitch_type
-        if (!is.null(mod$new_pitcher) && nzchar(mod$new_pitcher)) {
-          temp_data$Pitcher[match_idx] <- mod$new_pitcher
-          new_email <- fetch_email(mod$new_pitcher)
-          if (!is.na(new_email) && "Email" %in% names(temp_data)) {
-            temp_data$Email[match_idx] <- new_email
+      for (i in 1:nrow(mods)) {
+        mod <- mods[i, ]
+        
+        # Primary matching strategy: exact match on multiple fields
+        match_idx <- integer(0)
+        if ("PitchKey" %in% names(temp_data) && !is.na(mod$pitch_key) && nzchar(mod$pitch_key)) {
+          match_idx <- which(temp_data$PitchKey == mod$pitch_key)
+        }
+        if (!length(match_idx)) {
+          match_idx <- which(
+            temp_data$Pitcher == mod$pitcher &
+              temp_data$Date == mod$date &
+              abs(temp_data$RelSpeed - mod$rel_speed) < 0.1 &
+              abs(temp_data$HorzBreak - mod$horz_break) < 0.1 &
+              abs(temp_data$InducedVertBreak - mod$induced_vert_break) < 0.1
+          )
+        }
+        
+        # Fallback matching: if exact match fails, try looser criteria
+        if (length(match_idx) == 0) {
+          match_idx <- which(
+            temp_data$Pitcher == mod$pitcher &
+              temp_data$Date == mod$date &
+              abs(temp_data$RelSpeed - mod$rel_speed) < 0.5  # Slightly looser tolerance
+          )
+        }
+        
+        if (length(match_idx) > 0) {
+          # Apply modification to all matching rows (handles duplicate PitchKey entries)
+          temp_data$TaggedPitchType[match_idx] <- mod$new_pitch_type
+          if (!is.null(mod$new_pitcher) && nzchar(mod$new_pitcher)) {
+            temp_data$Pitcher[match_idx] <- mod$new_pitcher
+            new_email <- fetch_email(mod$new_pitcher)
+            if (!is.na(new_email) && "Email" %in% names(temp_data)) {
+              temp_data$Email[match_idx] <- new_email
+            }
+          }
+          modifications_applied <- modifications_applied + 1
+          
+          if (verbose) {
+            cat(sprintf("Applied: %s on %s - %s -> %s\n", 
+                        mod$pitcher, mod$date, mod$original_pitch_type, mod$new_pitch_type))
+          }
+        } else {
+          modifications_not_found <- modifications_not_found + 1
+          if (verbose) {
+            cat(sprintf("Could not find pitch to modify: %s on %s (%.1f mph)\n", 
+                        mod$pitcher, mod$date, mod$rel_speed))
           }
         }
-        modifications_applied <- modifications_applied + 1
-        
-        if (verbose) {
-          cat(sprintf("Applied: %s on %s - %s -> %s\n", 
-                      mod$pitcher, mod$date, mod$original_pitch_type, mod$new_pitch_type))
-        }
-      } else {
-        modifications_not_found <- modifications_not_found + 1
-        if (verbose) {
-          cat(sprintf("Could not find pitch to modify: %s on %s (%.1f mph)\n", 
-                      mod$pitcher, mod$date, mod$rel_speed))
+      }
+      
+      if (verbose && modifications_applied > 0) {
+        message(sprintf("Applied %d of %d stored pitch type modifications", 
+                        modifications_applied, nrow(mods)))
+        if (modifications_not_found > 0) {
+          message(sprintf("Warning: %d modifications could not be applied (pitches not found)", 
+                          modifications_not_found))
         }
       }
-    }
+      
+      return(list(
+        data = temp_data,
+        applied_count = modifications_applied,
+        total_modifications = nrow(mods)
+      ))
+      
+    }, finally = {
+      dbDisconnect(con)
+    })
     
-    if (verbose && modifications_applied > 0) {
-      message(sprintf("Applied %d of %d stored pitch type modifications", 
-                      modifications_applied, nrow(mods)))
-      if (modifications_not_found > 0) {
-        message(sprintf("Warning: %d modifications could not be applied (pitches not found)", 
-                        modifications_not_found))
-      }
-    }
-    
-    return(list(
-      data = temp_data,
-      applied_count = modifications_applied,
-      total_modifications = nrow(mods)
-    ))
-    
-  }, finally = {
-    dbDisconnect(con)
-  })
-  
   }, error = function(e) {
     warning(sprintf("Error loading pitch modifications: %s", conditionMessage(e)))
     return(fallback_result)
@@ -5166,8 +5166,8 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         if ("Zone Location" %in% sel) {
           out <- c(out, list(
             selectInput(ns(paste0("cell_zone_", cell_id)), "Zone Location:", choices = c("All",
-                                                                                        "Upper Half","Bottom Half","Left Half","Right Half",
-                                                                                        "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
+                                                                                         "Upper Half","Bottom Half","Left Half","Right Half",
+                                                                                         "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
                         selected = "All", multiple = TRUE)
           ))
         }
@@ -5192,7 +5192,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         if (length(out)) tagList(out) else div("No filters selected")
       })
     }
-
+    
     observe({
       rows <- suppressWarnings(as.integer(input$report_rows))
       cols <- suppressWarnings(as.integer(input$report_cols))
@@ -6217,46 +6217,46 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
     })
     
     # --- “Results” only toggle (UI) ---
-  output$dpButtons <- renderUI({
-    sel <- isolate(input$dpMode); if (is.null(sel)) sel <- "Results"
-    tagList(
-      div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Tables:"),
-      selectInput(
-        ns("dpMode"), label = NULL,
-        choices  = c("Results", "Swing Decisions", "Custom"),
-        selected = sel,
-        width = "200px"
-      ),
-      div(style = "display:inline-block; margin-left:10px;",
-          tags$div(
-            "Split By:",
-            style = "font-weight:bold; font-size:12px; margin-bottom:2px;"
-          ),
-          selectInput(
-            ns("dpSplitBy"), label = NULL,
-            choices = c("Pitch Types", "Pitcher Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Pitcher"),
-            selected = "Pitch Types",
-            width = "140px"
+    output$dpButtons <- renderUI({
+      sel <- isolate(input$dpMode); if (is.null(sel)) sel <- "Results"
+      tagList(
+        div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Tables:"),
+        selectInput(
+          ns("dpMode"), label = NULL,
+          choices  = c("Results", "Swing Decisions", "Custom"),
+          selected = sel,
+          width = "200px"
+        ),
+        div(style = "display:inline-block; margin-left:10px;",
+            tags$div(
+              "Split By:",
+              style = "font-weight:bold; font-size:12px; margin-bottom:2px;"
+            ),
+            selectInput(
+              ns("dpSplitBy"), label = NULL,
+              choices = c("Pitch Types", "Pitcher Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Pitcher"),
+              selected = "Pitch Types",
+              width = "140px"
+            )
+        ),
+        conditionalPanel(
+          sprintf("input['%s']=='Custom'", ns("dpMode")),
+          tagList(
+            selectInput(ns("dpCustomSaved"), "Saved Table:", choices = c("", names(custom_tables())), selected = ""),
+            textInput(ns("dpCustomName"), "Name:", value = ""),
+            selectizeInput(
+              ns("dpCustomCols"), label = "Columns (drag to order):",
+              choices  = c("PA","AB","AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP",
+                           "Swing%","Whiff%","CSW%","GB%","K%","BB%","Barrel%","EV","LA"),
+              multiple = TRUE,
+              options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
+            ),
+            actionButton(ns("dpSaveCustom"), "Save / Update", class = "btn-primary btn-sm"),
+            actionButton(ns("dpDeleteCustom"), "Delete", class = "btn-danger btn-sm")
           )
-      ),
-      conditionalPanel(
-        sprintf("input['%s']=='Custom'", ns("dpMode")),
-        tagList(
-          selectInput(ns("dpCustomSaved"), "Saved Table:", choices = c("", names(custom_tables())), selected = ""),
-          textInput(ns("dpCustomName"), "Name:", value = ""),
-          selectizeInput(
-            ns("dpCustomCols"), label = "Columns (drag to order):",
-            choices  = c("PA","AB","AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP",
-                         "Swing%","Whiff%","CSW%","GB%","K%","BB%","Barrel%","EV","LA"),
-            multiple = TRUE,
-            options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
-          ),
-          actionButton(ns("dpSaveCustom"), "Save / Update", class = "btn-primary btn-sm"),
-          actionButton(ns("dpDeleteCustom"), "Delete", class = "btn-danger btn-sm")
         )
       )
-    )
-  })
+    })
     
     # --- Data & Performance table (Results-only custom view for Hitting) ---
     output$dpTable <- DT::renderDT({
@@ -10164,7 +10164,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
     # ==========================
     # Leaderboard: Catching (PLAYER)
     # ==========================
-  output$lbCatchButtons <- renderUI({
+    output$lbCatchButtons <- renderUI({
       ct_names <- names(custom_tables())
       tagList(
         div(style = "display: flex; align-items: center; gap: 15px;",
@@ -10551,51 +10551,51 @@ mod_comp_ui <- function(id, show_header = FALSE) {
           column(
             12,
             div(style="font-weight:700; text-align:center; margin-bottom:6px;", "Comparison #1 Table"),
-                div(
-                  style = "margin: 8px 0;",
-                  tagList(
-                    div(style = "display: flex; align-items: center; gap: 15px;",
-                        div(style = "flex: 0 0 auto;",
-                            selectInput(
-                              ns("cmpA_tableMode"), label = NULL,
-                              choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data","Custom"),
-                              selected = "Stuff",
-                              width = "120px"
-                            )
-                        ),
-                        div(style = "flex: 0 0 auto;",
-                            checkboxInput(
-                              ns("cmpA_tableColors"), 
-                              label = "Color-Code", 
-                              value = TRUE,
-                              width = "80px"
-                            )
-                        ),
-                        div(style = "flex: 0 0 auto;",
-                            div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Split By:"),
-                            selectInput(
-                              ns("cmpA_splitBy"), label = NULL,
-                              choices = c("Pitch Types", "Batter Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Batter"),
-                              selected = "Pitch Types",
-                              width = "140px"
-                            )
+            div(
+              style = "margin: 8px 0;",
+              tagList(
+                div(style = "display: flex; align-items: center; gap: 15px;",
+                    div(style = "flex: 0 0 auto;",
+                        selectInput(
+                          ns("cmpA_tableMode"), label = NULL,
+                          choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data","Custom"),
+                          selected = "Stuff",
+                          width = "120px"
                         )
                     ),
-                    conditionalPanel(
-                      sprintf("input['%s']=='Custom'", ns("cmpA_tableMode")),
-                      selectInput(ns("cmpA_customSaved"), "Saved Table:", choices = c(""), selected = ""),
-                      textInput(ns("cmpA_customName"), "Name:", value = ""),
-                      selectizeInput(
-                        ns("cmpA_customCols"), label = "Columns (drag to order):",
-                        choices  = setdiff(all_table_cols, "Pitch"),
-                        multiple = TRUE,
-                        options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
-                      ),
-                      actionButton(ns("cmpA_saveCustom"), "Save / Update", class = "btn-primary btn-sm"),
-                      actionButton(ns("cmpA_deleteCustom"), "Delete", class = "btn-danger btn-sm")
+                    div(style = "flex: 0 0 auto;",
+                        checkboxInput(
+                          ns("cmpA_tableColors"), 
+                          label = "Color-Code", 
+                          value = TRUE,
+                          width = "80px"
+                        )
+                    ),
+                    div(style = "flex: 0 0 auto;",
+                        div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Split By:"),
+                        selectInput(
+                          ns("cmpA_splitBy"), label = NULL,
+                          choices = c("Pitch Types", "Batter Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Batter"),
+                          selected = "Pitch Types",
+                          width = "140px"
+                        )
                     )
-                  )
                 ),
+                conditionalPanel(
+                  sprintf("input['%s']=='Custom'", ns("cmpA_tableMode")),
+                  selectInput(ns("cmpA_customSaved"), "Saved Table:", choices = c(""), selected = ""),
+                  textInput(ns("cmpA_customName"), "Name:", value = ""),
+                  selectizeInput(
+                    ns("cmpA_customCols"), label = "Columns (drag to order):",
+                    choices  = setdiff(all_table_cols, "Pitch"),
+                    multiple = TRUE,
+                    options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
+                  ),
+                  actionButton(ns("cmpA_saveCustom"), "Save / Update", class = "btn-primary btn-sm"),
+                  actionButton(ns("cmpA_deleteCustom"), "Delete", class = "btn-danger btn-sm")
+                )
+              )
+            ),
             DT::dataTableOutput(ns("cmpA_table"))
           )
         ),
@@ -10604,51 +10604,51 @@ mod_comp_ui <- function(id, show_header = FALSE) {
           column(
             12,
             div(style="font-weight:700; text-align:center; margin-bottom:6px;", "Comparison #2 Table"),
-                div(
-                  style = "margin: 8px 0;",
-                  tagList(
-                    div(style = "display: flex; align-items: center; gap: 15px;",
-                        div(style = "flex: 0 0 auto;",
-                            selectInput(
-                              ns("cmpB_tableMode"), label = NULL,
-                              choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data","Custom"),
-                              selected = "Stuff",
-                              width = "120px"
-                            )
-                        ),
-                        div(style = "flex: 0 0 auto;",
-                            checkboxInput(
-                              ns("cmpB_tableColors"), 
-                              label = "Color-Code", 
-                              value = TRUE,
-                              width = "80px"
-                            )
-                        ),
-                        div(style = "flex: 0 0 auto;",
-                            div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Split By:"),
-                            selectInput(
-                              ns("cmpB_splitBy"), label = NULL,
-                              choices = c("Pitch Types", "Batter Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Batter"),
-                              selected = "Pitch Types",
-                              width = "140px"
-                            )
+            div(
+              style = "margin: 8px 0;",
+              tagList(
+                div(style = "display: flex; align-items: center; gap: 15px;",
+                    div(style = "flex: 0 0 auto;",
+                        selectInput(
+                          ns("cmpB_tableMode"), label = NULL,
+                          choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data","Custom"),
+                          selected = "Stuff",
+                          width = "120px"
                         )
                     ),
-                    conditionalPanel(
-                      sprintf("input['%s']=='Custom'", ns("cmpB_tableMode")),
-                      selectInput(ns("cmpB_customSaved"), "Saved Table:", choices = c(""), selected = ""),
-                      textInput(ns("cmpB_customName"), "Name:", value = ""),
-                      selectizeInput(
-                        ns("cmpB_customCols"), label = "Columns (drag to order):",
-                        choices  = setdiff(all_table_cols, "Pitch"),
-                        multiple = TRUE,
-                        options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
-                      ),
-                      actionButton(ns("cmpB_saveCustom"), "Save / Update", class = "btn-primary btn-sm"),
-                      actionButton(ns("cmpB_deleteCustom"), "Delete", class = "btn-danger btn-sm")
+                    div(style = "flex: 0 0 auto;",
+                        checkboxInput(
+                          ns("cmpB_tableColors"), 
+                          label = "Color-Code", 
+                          value = TRUE,
+                          width = "80px"
+                        )
+                    ),
+                    div(style = "flex: 0 0 auto;",
+                        div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Split By:"),
+                        selectInput(
+                          ns("cmpB_splitBy"), label = NULL,
+                          choices = c("Pitch Types", "Batter Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Batter"),
+                          selected = "Pitch Types",
+                          width = "140px"
+                        )
                     )
-                  )
                 ),
+                conditionalPanel(
+                  sprintf("input['%s']=='Custom'", ns("cmpB_tableMode")),
+                  selectInput(ns("cmpB_customSaved"), "Saved Table:", choices = c(""), selected = ""),
+                  textInput(ns("cmpB_customName"), "Name:", value = ""),
+                  selectizeInput(
+                    ns("cmpB_customCols"), label = "Columns (drag to order):",
+                    choices  = setdiff(all_table_cols, "Pitch"),
+                    multiple = TRUE,
+                    options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
+                  ),
+                  actionButton(ns("cmpB_saveCustom"), "Save / Update", class = "btn-primary btn-sm"),
+                  actionButton(ns("cmpB_deleteCustom"), "Delete", class = "btn-danger btn-sm")
+                )
+              )
+            ),
             DT::dataTableOutput(ns("cmpB_table"))
           )
         )
@@ -10657,7 +10657,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
   )
 } 
 
-  mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_range = NULL) {
+mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_range = NULL) {
   moduleServer(id, function(input, output, session) {
     
     # Sync custom table lists into comparison (namespaced) controls
@@ -11476,7 +11476,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
         if (split_choice == "Pitch Types" && split_col_name == "Pitch") {
           # Define standard pitch order
           pitch_order <- c("Fastball", "Sinker", "Cutter", "Slider", "Sweeper", 
-                          "Curveball", "ChangeUp", "Splitter", "Knuckleball", "Other")
+                           "Curveball", "ChangeUp", "Splitter", "Knuckleball", "Other")
           raw_per_type <- raw_per_type %>%
             dplyr::mutate(!!rlang::sym(split_col_name) := factor(
               !!rlang::sym(split_col_name), 
@@ -12028,7 +12028,7 @@ correlations_ui <- function() {
 # ----------------------------------------
 # Custom Reports UI / Server (new suite)
 # ----------------------------------------
-  custom_reports_ui <- function(id) {
+custom_reports_ui <- function(id) {
   ns <- NS(id)
   fluidPage(
     shinyjs::useShinyjs(),  # Enable shinyjs
@@ -12040,34 +12040,37 @@ correlations_ui <- function() {
       # Sidebar with toggle button
       column(3, id = ns("sidebar_column"),
              div(style = "position:relative;",
-               actionButton(ns("toggle_sidebar"), "Hide Sidebar", 
-                           class = "btn-sm btn-secondary", 
-                           style = "position:absolute; right:5px; top:5px; z-index:1000;"),
-               h4("Report Setup"),
-               textInput(ns("report_title"), "Report Title", ""),
-               selectInput(ns("report_type"), "Report Type:", choices = c("Pitching","Hitting"), selected = "Pitching"),
-               selectInput(ns("report_scope"), "Scope:", choices = c("Single Player","Multi-Player"), selected = "Single Player"),
-               # Single Player mode - show player selector
-               conditionalPanel(
-                 sprintf("input['%s'] == 'Single Player'", ns("report_scope")),
-                 selectizeInput(ns("report_players"), "Players:", choices = NULL, multiple = TRUE)
-               ),
-               # Multi-Player mode - note about row assignments
-               conditionalPanel(
-                 sprintf("input['%s'] == 'Multi-Player'", ns("report_scope")),
-                 div(style = "background-color:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:10px;",
-                     tags$strong("Multi-Player Mode:"),
-                     tags$br(),
-                     "Each row = 1 player"
+                 actionButton(ns("toggle_sidebar"), "Hide Sidebar", 
+                              class = "btn-sm btn-secondary", 
+                              style = "position:absolute; right:5px; top:5px; z-index:1000;"),
+                 h4("Report Setup"),
+                 textInput(ns("report_title"), "Report Title", ""),
+                 selectInput(ns("report_type"), "Report Type:", choices = c("Pitching","Hitting"), selected = "Pitching"),
+                 selectInput(ns("report_scope"), "Scope:", choices = c("Single Player","Multi-Player"), selected = "Single Player"),
+                 # Single Player mode - show player selector
+                 conditionalPanel(
+                   sprintf("input['%s'] == 'Single Player'", ns("report_scope")),
+                   selectizeInput(ns("report_players"), "Players:", choices = NULL, multiple = TRUE)
                  ),
-                 # Player dropdowns for each possible row (only show up to current row count)
-                 uiOutput(ns("multi_player_selectors"))
-               ),
-               selectInput(ns("report_rows"), "Rows:", choices = 1:15, selected = 1),
-               selectInput(ns("report_cols"), "Columns:", choices = 1:5, selected = 1),
-               selectInput(ns("saved_report"), "Saved Reports:", choices = c(""), selected = ""),
-               actionButton(ns("save_report"), "Save Report", class = "btn-primary btn-sm"),
-               actionButton(ns("delete_report"), "Delete Report", class = "btn-danger btn-sm")
+                 # Multi-Player mode - note about row assignments
+                 conditionalPanel(
+                   sprintf("input['%s'] == 'Multi-Player'", ns("report_scope")),
+                   div(style = "background-color:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:10px;",
+                       tags$strong("Multi-Player Mode:"),
+                       tags$br(),
+                       "Each row = 1 player"
+                   ),
+                   # Player dropdowns for each possible row (only show up to current row count)
+                   uiOutput(ns("multi_player_selectors"))
+                 ),
+                 selectInput(ns("report_rows"), "Rows:", choices = 1:15, selected = 1),
+                 selectInput(ns("report_cols"), "Columns:", choices = 1:5, selected = 1),
+                 selectInput(ns("saved_report"), "Saved Reports:", choices = c(""), selected = ""),
+                 div(style = "display: flex; gap: 5px;",
+                   actionButton(ns("new_report"), "New Report", class = "btn-success btn-sm"),
+                   actionButton(ns("save_report"), "Save Report", class = "btn-primary btn-sm"),
+                   actionButton(ns("delete_report"), "Delete Report", class = "btn-danger btn-sm")
+                 )
              )
       ),
       column(9, id = ns("main_column"),
@@ -12116,9 +12119,6 @@ custom_reports_server <- function(id) {
     
     # Populate players based on type (for Single Player mode)
     observeEvent(input$report_type, {
-      # Clear memoise cache when switching report types
-      memoise::forget(get_cell_data)
-      
       if (input$report_type == "Pitching") {
         players <- sort(unique(stats::na.omit(c(pitch_data_pitching$Pitcher, pitch_data$Pitcher))))
       } else {
@@ -12138,8 +12138,8 @@ custom_reports_server <- function(id) {
       for (r in 1:15) {
         selector_id <- paste0("row_player_", r)
         updateSelectizeInput(session, selector_id,
-                            choices = c("", "All", players),
-                            server = TRUE)
+                             choices = c("", "All", players),
+                             server = TRUE)
       }
     }, ignoreInit = FALSE)
     
@@ -12150,13 +12150,102 @@ custom_reports_server <- function(id) {
       cr <- custom_reports_store()
       if (!nm %in% names(cr)) return()
       rep <- cr[[nm]]
+      
+      # Set loading flag to prevent observe block from overwriting
+      loading_report(TRUE)
+      
+      # FIRST: Update current_cells with saved data (before UI changes)
+      update_reports_grid(rep$cells %||% list())
+      
+      # THEN: Update all UI elements (this will trigger renderUI which reads from current_cells)
       updateTextInput(session, "report_title", value = rep$title %||% "")
       updateSelectInput(session, "report_type", selected = rep$type %||% "Pitching")
       updateSelectInput(session, "report_scope", selected = rep$scope %||% "Single Player")
       updateSelectizeInput(session, "report_players", selected = rep$players %||% character(0))
       updateSelectInput(session, "report_rows", selected = rep$rows %||% 1)
       updateSelectInput(session, "report_cols", selected = rep$cols %||% 1)
-      update_reports_grid(rep$cells %||% list())
+      
+      # After a delay, explicitly update filter inputs and player selectors
+      # This ensures they get the saved values even if the UI already exists
+      later::later(function() {
+        cells <- rep$cells %||% list()
+        rows <- rep$rows %||% 1
+        cols <- rep$cols %||% 1
+        scope <- rep$scope %||% "Single Player"
+        
+        # Update row player inputs in Multi-Player mode
+        if (scope == "Multi-Player") {
+          for (r in seq_len(rows)) {
+            player_val <- cells[[paste0("row_", r, "_player")]]
+            if (!is.null(player_val) && nzchar(player_val)) {
+              updateSelectizeInput(session, paste0("row_player_", r), selected = player_val)
+            }
+          }
+        }
+        
+        # Update filter inputs for each cell
+        for (r in seq_len(rows)) {
+          for (c in seq_len(cols)) {
+            cell_id <- paste0("r", r, "c", c)
+            saved_cell <- cells[[cell_id]]
+            if (!is.null(saved_cell)) {
+              # Update filter inputs if they have saved values
+              if (!is.null(saved_cell$dates) && length(saved_cell$dates) == 2) {
+                updateDateRangeInput(session, paste0("cell_dates_", cell_id), 
+                                    start = saved_cell$dates[1], end = saved_cell$dates[2])
+              }
+              if (!is.null(saved_cell$session) && nzchar(saved_cell$session)) {
+                updateSelectInput(session, paste0("cell_session_", cell_id), selected = saved_cell$session)
+              }
+              if (!is.null(saved_cell$pitch_types) && length(saved_cell$pitch_types) > 0) {
+                updateSelectizeInput(session, paste0("cell_pitch_types_", cell_id), selected = saved_cell$pitch_types)
+              }
+              if (!is.null(saved_cell$batter_side) && nzchar(saved_cell$batter_side)) {
+                updateSelectInput(session, paste0("cell_batter_side_", cell_id), selected = saved_cell$batter_side)
+              }
+              if (!is.null(saved_cell$pitcher_hand) && nzchar(saved_cell$pitcher_hand)) {
+                updateSelectInput(session, paste0("cell_pitcher_hand_", cell_id), selected = saved_cell$pitcher_hand)
+              }
+              if (!is.null(saved_cell$results) && length(saved_cell$results) > 0) {
+                updateSelectInput(session, paste0("cell_results_", cell_id), selected = saved_cell$results)
+              }
+              if (!is.null(saved_cell$qp) && nzchar(saved_cell$qp)) {
+                updateSelectInput(session, paste0("cell_qp_", cell_id), selected = saved_cell$qp)
+              }
+              if (!is.null(saved_cell$count) && length(saved_cell$count) > 0) {
+                updateSelectInput(session, paste0("cell_count_", cell_id), selected = saved_cell$count)
+              }
+              if (!is.null(saved_cell$after_count) && length(saved_cell$after_count) > 0) {
+                updateSelectInput(session, paste0("cell_after_count_", cell_id), selected = saved_cell$after_count)
+              }
+              if (!is.null(saved_cell$zone) && length(saved_cell$zone) > 0) {
+                updateSelectInput(session, paste0("cell_zone_", cell_id), selected = saved_cell$zone)
+              }
+              if (!is.null(saved_cell$velo_min) && !is.na(saved_cell$velo_min)) {
+                updateNumericInput(session, paste0("cell_velo_min_", cell_id), value = saved_cell$velo_min)
+              }
+              if (!is.null(saved_cell$velo_max) && !is.na(saved_cell$velo_max)) {
+                updateNumericInput(session, paste0("cell_velo_max_", cell_id), value = saved_cell$velo_max)
+              }
+              if (!is.null(saved_cell$ivb_min) && !is.na(saved_cell$ivb_min)) {
+                updateNumericInput(session, paste0("cell_ivb_min_", cell_id), value = saved_cell$ivb_min)
+              }
+              if (!is.null(saved_cell$ivb_max) && !is.na(saved_cell$ivb_max)) {
+                updateNumericInput(session, paste0("cell_ivb_max_", cell_id), value = saved_cell$ivb_max)
+              }
+              if (!is.null(saved_cell$hb_min) && !is.na(saved_cell$hb_min)) {
+                updateNumericInput(session, paste0("cell_hb_min_", cell_id), value = saved_cell$hb_min)
+              }
+              if (!is.null(saved_cell$hb_max) && !is.na(saved_cell$hb_max)) {
+                updateNumericInput(session, paste0("cell_hb_max_", cell_id), value = saved_cell$hb_max)
+              }
+            }
+          }
+        }
+        
+        # Clear the loading flag after updates are done
+        loading_report(FALSE)
+      }, delay = 1.5)
     }, ignoreInit = TRUE)
     
     # Render player selectors in sidebar for Multi-Player mode
@@ -12183,7 +12272,7 @@ custom_reports_server <- function(id) {
         )
       })
     })
-
+    
     # Header showing report title + players
     output$report_header <- renderUI({
       title_txt <- trimws(input$report_title)
@@ -12202,24 +12291,9 @@ custom_reports_server <- function(id) {
         }
       }
       
-      # Build player label based on mode
+      # Build player label based on mode - DON'T show player names in Multi-Player
       player_lbl <- if (input$report_scope == "Multi-Player") {
-        rows <- as.integer(input$report_rows)
-        if (is.na(rows) || rows < 1) {
-          "Multi-Player Mode - Assign players in sidebar"
-        } else {
-          # Collect all row players
-          row_players <- sapply(1:rows, function(r) {
-            input[[paste0("row_player_", r)]] %||% ""
-          })
-          row_players <- row_players[nzchar(row_players)]
-          if (length(row_players) > 0) {
-            formatted <- sapply(row_players, format_player_name)
-            paste(formatted, collapse = " | ")
-          } else {
-            "Multi-Player Mode - No players selected"
-          }
-        }
+        NULL  # Don't show player names in Multi-Player mode
       } else {
         # Single Player mode
         players <- input$report_players %||% character(0)
@@ -12234,7 +12308,9 @@ custom_reports_server <- function(id) {
       tagList(
         h3(style = "margin-top:0; margin-bottom:4px; text-align:center;", 
            if (nzchar(title_txt)) title_txt else "Custom Report"),
-        div(style = "font-weight:600; margin-bottom:10px; text-align:center;", player_lbl)
+        if (!is.null(player_lbl)) {
+          div(style = "font-weight:600; margin-bottom:10px; text-align:center;", player_lbl)
+        }
       )
     })
     
@@ -12275,16 +12351,40 @@ custom_reports_server <- function(id) {
       }
     }, ignoreInit = TRUE)
     
+    # New Report - clear everything for fresh start
+    observeEvent(input$new_report, {
+      # Clear all cells
+      current_cells(list())
+      
+      # Reset to defaults
+      updateTextInput(session, "report_title", value = "")
+      updateSelectInput(session, "report_type", selected = "Pitching")
+      updateSelectInput(session, "report_scope", selected = "Single Player")
+      updateSelectizeInput(session, "report_players", selected = character(0))
+      updateSelectInput(session, "report_rows", selected = 1)
+      updateSelectInput(session, "report_cols", selected = 1)
+      updateSelectInput(session, "saved_report", selected = "")
+      
+      showNotification("New report created. Start building!", type = "message")
+    }, ignoreInit = TRUE)
+    
     # Grid state
     current_cells <- reactiveVal(list())
+    loading_report <- reactiveVal(FALSE)  # Flag to prevent observe from overwriting during load
     update_reports_grid <- function(cells_list) {
       current_cells(cells_list)
     }
-
+    
     # Build per-cell filter UI based on "Filters to show"
     output_filters_for_cell <- function(cell_id) {
       renderUI({
-        sel <- input[[paste0("cell_filter_select_", cell_id)]] %||% character(0)
+        # Get saved values from current_cells if available
+        cells <- current_cells()
+        saved_cell <- cells[[cell_id]] %||% list()
+        
+        # Check input first, then saved cell data for filter_select
+        sel <- input[[paste0("cell_filter_select_", cell_id)]] %||% saved_cell$filter_select %||% character(0)
+        
         out <- list()
         if ("Dates" %in% sel) {
           all_dates <- c(pitch_data_pitching$Date, pitch_data$Date)
@@ -12292,16 +12392,24 @@ custom_reports_server <- function(id) {
           d_max <- suppressWarnings(max(all_dates, na.rm = TRUE))
           if (!is.finite(d_min)) d_min <- Sys.Date() - 30
           if (!is.finite(d_max)) d_max <- Sys.Date()
+          
+          # Preserve existing date range - check input first, then saved cell data
+          existing_dates <- input[[paste0("cell_dates_", cell_id)]] %||% saved_cell$dates %||% NULL
+          start_date <- if (!is.null(existing_dates) && length(existing_dates) >= 1) existing_dates[1] else d_max - 30
+          end_date <- if (!is.null(existing_dates) && length(existing_dates) >= 2) existing_dates[2] else d_max
+          
           out <- c(out, list(
             dateRangeInput(ns(paste0("cell_dates_", cell_id)), "Dates:",
-                           start = d_max - 30, end = d_max, min = d_min, max = d_max,
+                           start = start_date, end = end_date, min = d_min, max = d_max,
                            format = "mm/dd/yyyy")
           ))
         }
         if ("Session Type" %in% sel) {
+          existing_session <- input[[paste0("cell_session_", cell_id)]] %||% saved_cell$session %||% NULL
           out <- c(out, list(
             selectInput(ns(paste0("cell_session_", cell_id)), "Session Type:",
-                        choices = c("All","Bullpen","Live"), selected = "All")
+                        choices = c("All","Bullpen","Live"), 
+                        selected = if (!is.null(existing_session)) existing_session else "All")
           ))
         }
         if ("Pitch Types" %in% sel) {
@@ -12310,76 +12418,105 @@ custom_reports_server <- function(id) {
           } else {
             sort(unique(as.character(pitch_data$TaggedPitchType)))
           }
+          existing_types <- input[[paste0("cell_pitch_types_", cell_id)]] %||% saved_cell$pitch_types %||% NULL
           out <- c(out, list(
             selectizeInput(ns(paste0("cell_pitch_types_", cell_id)), "Pitch Types:",
-                           choices = c("All", pts), multiple = TRUE, selected = "All")
+                           choices = c("All", pts), multiple = TRUE, 
+                           selected = if (!is.null(existing_types)) existing_types else "All")
           ))
         }
         if ("Batter Hand" %in% sel) {
+          existing_batter <- input[[paste0("cell_batter_side_", cell_id)]] %||% saved_cell$batter_side %||% NULL
           out <- c(out, list(
             selectInput(ns(paste0("cell_batter_side_", cell_id)), "Batter Hand:",
-                        choices = c("All","Left","Right"), selected = "All")
+                        choices = c("All","Left","Right"), 
+                        selected = if (!is.null(existing_batter)) existing_batter else "All")
           ))
         }
         if ("Pitcher Hand" %in% sel) {
+          existing_pitcher <- input[[paste0("cell_pitcher_hand_", cell_id)]] %||% saved_cell$pitcher_hand %||% NULL
           out <- c(out, list(
             selectInput(ns(paste0("cell_pitcher_hand_", cell_id)), "Pitcher Hand:",
-                        choices = c("All","Left","Right"), selected = "All")
+                        choices = c("All","Left","Right"), 
+                        selected = if (!is.null(existing_pitcher)) existing_pitcher else "All")
           ))
         }
         if ("Pitch Results" %in% sel) {
+          existing_results <- input[[paste0("cell_results_", cell_id)]] %||% saved_cell$results %||% NULL
           out <- c(out, list(
             selectInput(ns(paste0("cell_results_", cell_id)), "Pitch Results:",
-                        choices = c("All", result_levels), selected = "All", multiple = TRUE)
+                        choices = c("All", result_levels), 
+                        selected = if (!is.null(existing_results)) existing_results else "All", 
+                        multiple = TRUE)
           ))
         }
         if ("QP Locations" %in% sel) {
+          existing_qp <- input[[paste0("cell_qp_", cell_id)]] %||% saved_cell$qp %||% NULL
           out <- c(out, list(
             selectInput(ns(paste0("cell_qp_", cell_id)), "QP Locations:",
-                        choices = c("All","Yes","No"), selected = "All")
+                        choices = c("All","Yes","No"), 
+                        selected = if (!is.null(existing_qp)) existing_qp else "All")
           ))
         }
         if ("Count" %in% sel) {
+          existing_count <- input[[paste0("cell_count_", cell_id)]] %||% saved_cell$count %||% NULL
           out <- c(out, list(
             selectInput(ns(paste0("cell_count_", cell_id)), "Count:",
                         choices = c("All","Even","Behind","Ahead","2KNF",
                                     "0-0","0-1","1-0","1-1","2-0","2-1","0-2","1-2","2-2","3-0","3-1","3-2"),
-                        selected = "All", multiple = TRUE)
+                        selected = if (!is.null(existing_count)) existing_count else "All", 
+                        multiple = TRUE)
           ))
         }
         if ("After Count" %in% sel) {
+          existing_after <- input[[paste0("cell_after_count_", cell_id)]] %||% saved_cell$after_count %||% NULL
           out <- c(out, list(
             selectInput(ns(paste0("cell_after_count_", cell_id)), "After Count:",
                         choices = c("All","Even","Behind","Ahead","2KNF",
                                     "0-0","0-1","1-0","1-1","2-0","2-1","0-2","1-2","2-2","3-0","3-1","3-2"),
-                        selected = "All", multiple = TRUE)
+                        selected = if (!is.null(existing_after)) existing_after else "All", 
+                        multiple = TRUE)
           ))
         }
         if ("Zone Location" %in% sel) {
+          existing_zone <- input[[paste0("cell_zone_", cell_id)]] %||% saved_cell$zone %||% NULL
           out <- c(out, list(
             selectInput(ns(paste0("cell_zone_", cell_id)), "Zone Location:",
                         choices = c("All",
                                     "Upper Half","Bottom Half","Left Half","Right Half",
                                     "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
-                        selected = "All", multiple = TRUE)
+                        selected = if (!is.null(existing_zone)) existing_zone else "All", 
+                        multiple = TRUE)
           ))
         }
         if ("Velo Min/Max" %in% sel) {
+          existing_vmin <- input[[paste0("cell_velo_min_", cell_id)]] %||% saved_cell$velo_min %||% NULL
+          existing_vmax <- input[[paste0("cell_velo_max_", cell_id)]] %||% saved_cell$velo_max %||% NULL
           out <- c(out, list(
-            numericInput(ns(paste0("cell_velo_min_", cell_id)), "Velo Min", value = NA),
-            numericInput(ns(paste0("cell_velo_max_", cell_id)), "Velo Max", value = NA)
+            numericInput(ns(paste0("cell_velo_min_", cell_id)), "Velo Min", 
+                        value = if (!is.null(existing_vmin)) existing_vmin else NA),
+            numericInput(ns(paste0("cell_velo_max_", cell_id)), "Velo Max", 
+                        value = if (!is.null(existing_vmax)) existing_vmax else NA)
           ))
         }
         if ("IVB Min/Max" %in% sel) {
+          existing_ivbmin <- input[[paste0("cell_ivb_min_", cell_id)]] %||% saved_cell$ivb_min %||% NULL
+          existing_ivbmax <- input[[paste0("cell_ivb_max_", cell_id)]] %||% saved_cell$ivb_max %||% NULL
           out <- c(out, list(
-            numericInput(ns(paste0("cell_ivb_min_", cell_id)), "IVB Min", value = NA),
-            numericInput(ns(paste0("cell_ivb_max_", cell_id)), "IVB Max", value = NA)
+            numericInput(ns(paste0("cell_ivb_min_", cell_id)), "IVB Min", 
+                        value = if (!is.null(existing_ivbmin)) existing_ivbmin else NA),
+            numericInput(ns(paste0("cell_ivb_max_", cell_id)), "IVB Max", 
+                        value = if (!is.null(existing_ivbmax)) existing_ivbmax else NA)
           ))
         }
         if ("HB Min/Max" %in% sel) {
+          existing_hbmin <- input[[paste0("cell_hb_min_", cell_id)]] %||% saved_cell$hb_min %||% NULL
+          existing_hbmax <- input[[paste0("cell_hb_max_", cell_id)]] %||% saved_cell$hb_max %||% NULL
           out <- c(out, list(
-            numericInput(ns(paste0("cell_hb_min_", cell_id)), "HB Min", value = NA),
-            numericInput(ns(paste0("cell_hb_max_", cell_id)), "HB Max", value = NA)
+            numericInput(ns(paste0("cell_hb_min_", cell_id)), "HB Min", 
+                        value = if (!is.null(existing_hbmin)) existing_hbmin else NA),
+            numericInput(ns(paste0("cell_hb_max_", cell_id)), "HB Max", 
+                        value = if (!is.null(existing_hbmax)) existing_hbmax else NA)
           ))
         }
         if (length(out)) {
@@ -12403,7 +12540,7 @@ custom_reports_server <- function(id) {
       # Don't clear current_cells - just keep existing data
       # This allows cells to persist when adding more rows/cols
     })
-
+    
     # Render filter controls for each cell (only when grid size changes)
     observeEvent(list(input$report_rows, input$report_cols), {
       rows <- suppressWarnings(as.integer(input$report_rows))
@@ -12422,7 +12559,7 @@ custom_reports_server <- function(id) {
     # UI for grid
     output$report_canvas <- renderUI({
       rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
-      cells <- current_cells()
+      cells <- isolate(current_cells())  # Use isolate to prevent re-rendering on cell changes
       is_multi_player <- input$report_scope == "Multi-Player"
       
       # Helper function to format player names from "Last, First" to "First Last"
@@ -12468,19 +12605,31 @@ custom_reports_server <- function(id) {
           width <- if (cols == 1) 8 else if (cols == 2) 6 else if (cols == 3) 4 else if (cols == 4) 3 else 2
           offset <- if (cols == 1 && cn == 1) 2 else 0
           
+          # In Multi-Player mode, rows 2+ use row 1's settings
+          is_controlled_row <- is_multi_player && r > 1
+          
           column(
             width = width, offset = offset,
             div(style = "background-color:white; border:2px solid black; padding:15px; margin-bottom:15px;",
+                # Always create controls to preserve state, but hide them for rows 2+ in Multi-Player mode
+                # Title and show controls toggle
                 div(style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;",
-                    textInput(ns(paste0("cell_title_", cell_id)), label = NULL, placeholder = "Enter chart title...", 
-                              value = sel$title %||% "", width = "60%"),
-                    checkboxInput(ns(paste0("cell_show_controls_", cell_id)), "Show controls", 
-                                  value = sel$show_controls %||% TRUE, width = "120px")
+                    if (!is_controlled_row) {
+                      # Row 1 or Single-Player mode: show checkbox
+                      checkboxInput(ns(paste0("cell_show_controls_", cell_id)), "Show controls", 
+                                    value = sel$show_controls %||% TRUE, width = "120px")
+                    }
                 ),
-                conditionalPanel(
-                  condition = sprintf("input['%s']", ns(paste0("cell_show_controls_", cell_id))),
-                  div(
-                    id = ns(paste0("cell_controls_container_", cell_id)),
+                # Controls container - always render but hide with CSS for rows 2+
+                div(
+                  id = ns(paste0("cell_controls_container_", cell_id)),
+                  style = if (is_controlled_row) "display:none;" else "",  # Hide for rows 2+ using CSS
+                  conditionalPanel(
+                    condition = if (is_controlled_row) "false" else sprintf("input['%s']", ns(paste0("cell_show_controls_", cell_id))),
+                    div(
+                    # Title input - only visible when controls are shown
+                    textInput(ns(paste0("cell_title_", cell_id)), "Chart Title:", 
+                              value = sel$title %||% "", placeholder = "Enter chart title..."),
                     selectInput(ns(paste0("cell_type_", cell_id)), "Content:", 
                                 choices = c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart"),
                                 selected = sel$type),
@@ -12489,10 +12638,10 @@ custom_reports_server <- function(id) {
                       tagList(
                         selectInput(ns(paste0("cell_table_mode_", cell_id)), "Table:", 
                                     choices = if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data",
-                                                names(custom_tables()), "Custom"),
+                                                                                                                                 names(custom_tables()), "Custom"),
                                     selected = {
                                       ch <- if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data",
-                                                names(custom_tables()), "Custom")
+                                                                                                                               names(custom_tables()), "Custom")
                                       if (!is.null(sel$table_mode) && sel$table_mode %in% ch) sel$table_mode else ch[[1]]
                                     }),
                         selectInput(ns(paste0("cell_filter_", cell_id)), "Split By:", 
@@ -12531,8 +12680,16 @@ custom_reports_server <- function(id) {
                       options = list(plugins = list("remove_button"))
                     ),
                     uiOutput(ns(paste0("cell_filters_", cell_id)))
+                    )
                   )
                 ),
+                # Title display - non-reactive div updated via JavaScript
+                div(
+                  id = ns(paste0("cell_title_display_", cell_id)),
+                  style = "text-align:center; margin-bottom:10px; font-weight:bold;",
+                  ""  # Empty initially, updated via JS
+                ),
+                # Cell output - always rendered
                 uiOutput(ns(paste0("cell_output_", cell_id)))
             )
           )
@@ -12547,6 +12704,9 @@ custom_reports_server <- function(id) {
     
     # Observe cell selections and update stored state (throttle to prevent excessive updates)
     observe({
+      # Don't update if we're currently loading a saved report
+      if (loading_report()) return()
+      
       rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
       
       # Validate that rows and cols are valid integers
@@ -12559,38 +12719,68 @@ custom_reports_server <- function(id) {
       # Save row players in Multi-Player mode
       if (input$report_scope == "Multi-Player") {
         for (r in seq_len(rows)) {
-          cells[[paste0("row_", r, "_player")]] <- input[[paste0("row_player_", r)]] %||% ""
+          player_input <- input[[paste0("row_player_", r)]]
+          # Only update if input exists, otherwise preserve existing value
+          if (!is.null(player_input)) {
+            cells[[paste0("row_", r, "_player")]] <- player_input
+          }
         }
       }
       
       for (r in seq_len(rows)) {
         for (c in seq_len(cols)) {
           id <- paste0("r", r, "c", c)
-          # Save ALL cell settings, not just type and filter
+          
+          # Get existing cell data or create new
+          existing_cell <- cells[[id]] %||% list()
+          
+          # Helper function to update value only if input exists, otherwise keep existing
+          update_if_exists <- function(input_val, existing_val, default_val = NULL) {
+            if (!is.null(input_val)) input_val
+            else if (!is.null(existing_val)) existing_val
+            else default_val
+          }
+          
+          # Save ALL cell settings, preserving existing values if inputs don't exist yet
           cells[[id]] <- list(
-            type = input[[paste0("cell_type_", id)]] %||% "",
-            filter = input[[paste0("cell_filter_", id)]] %||% "Pitch Types",
-            title = input[[paste0("cell_title_", id)]] %||% "",
-            show_controls = input[[paste0("cell_show_controls_", id)]] %||% TRUE,
-            table_mode = input[[paste0("cell_table_mode_", id)]] %||% "Stuff",
-            table_custom_cols = input[[paste0("cell_table_custom_cols_", id)]] %||% character(0),
-            color = input[[paste0("cell_color_", id)]] %||% TRUE,
-            heat_stat = input[[paste0("cell_heat_stat_", id)]] %||% "Frequency",
-            filter_select = input[[paste0("cell_filter_select_", id)]] %||% c("Dates","Session Type","Pitch Types")
+            type = update_if_exists(input[[paste0("cell_type_", id)]], existing_cell$type, ""),
+            filter = update_if_exists(input[[paste0("cell_filter_", id)]], existing_cell$filter, "Pitch Types"),
+            title = update_if_exists(input[[paste0("cell_title_", id)]], existing_cell$title, ""),
+            show_controls = update_if_exists(input[[paste0("cell_show_controls_", id)]], existing_cell$show_controls, TRUE),
+            table_mode = update_if_exists(input[[paste0("cell_table_mode_", id)]], existing_cell$table_mode, "Stuff"),
+            table_custom_cols = update_if_exists(input[[paste0("cell_table_custom_cols_", id)]], existing_cell$table_custom_cols, character(0)),
+            color = update_if_exists(input[[paste0("cell_color_", id)]], existing_cell$color, TRUE),
+            heat_stat = update_if_exists(input[[paste0("cell_heat_stat_", id)]], existing_cell$heat_stat, "Frequency"),
+            filter_select = update_if_exists(input[[paste0("cell_filter_select_", id)]], existing_cell$filter_select, c("Dates","Session Type","Pitch Types")),
+            # Save all filter values - preserve existing if input doesn't exist
+            dates = update_if_exists(input[[paste0("cell_dates_", id)]], existing_cell$dates),
+            session = update_if_exists(input[[paste0("cell_session_", id)]], existing_cell$session),
+            pitch_types = update_if_exists(input[[paste0("cell_pitch_types_", id)]], existing_cell$pitch_types),
+            batter_side = update_if_exists(input[[paste0("cell_batter_side_", id)]], existing_cell$batter_side),
+            pitcher_hand = update_if_exists(input[[paste0("cell_pitcher_hand_", id)]], existing_cell$pitcher_hand),
+            results = update_if_exists(input[[paste0("cell_results_", id)]], existing_cell$results),
+            qp = update_if_exists(input[[paste0("cell_qp_", id)]], existing_cell$qp),
+            count = update_if_exists(input[[paste0("cell_count_", id)]], existing_cell$count),
+            after_count = update_if_exists(input[[paste0("cell_after_count_", id)]], existing_cell$after_count),
+            zone = update_if_exists(input[[paste0("cell_zone_", id)]], existing_cell$zone),
+            velo_min = update_if_exists(input[[paste0("cell_velo_min_", id)]], existing_cell$velo_min),
+            velo_max = update_if_exists(input[[paste0("cell_velo_max_", id)]], existing_cell$velo_max),
+            ivb_min = update_if_exists(input[[paste0("cell_ivb_min_", id)]], existing_cell$ivb_min),
+            ivb_max = update_if_exists(input[[paste0("cell_ivb_max_", id)]], existing_cell$ivb_max),
+            hb_min = update_if_exists(input[[paste0("cell_hb_min_", id)]], existing_cell$hb_min),
+            hb_max = update_if_exists(input[[paste0("cell_hb_max_", id)]], existing_cell$hb_max)
           )
           # Keep UI in sync with stored state
         }
       }
       current_cells(cells)
-    }) %>% throttle(1000)  # Throttle to max once per second instead of debounce
+    }) %>% throttle(500)  # Reduced throttle for better responsiveness
     
-    # Helper: get filtered dataset for player(s) for a given cell (with limited caching)
-    # Use cachem with size limit to prevent memory bloat
-    cell_cache <- cachem::cache_mem(max_size = 100 * 1024^2)  # 100 MB cache limit
-    
-    get_cell_data <- memoise::memoise(function(cell_id, players, report_type, dates, session, pitch_types, 
-                                                batter_side, pitcher_hand, results, qp, count, after_count, 
-                                                zone, velo_min, velo_max, ivb_min, ivb_max, hb_min, hb_max) {
+    # Helper: get filtered dataset for player(s) for a given cell
+    # This is now a pure function that will be cached via bindCache in the reactive
+    get_cell_data <- function(cell_id, players, report_type, dates, session, pitch_types, 
+                               batter_side, pitcher_hand, results, qp, count, after_count, 
+                               zone, velo_min, velo_max, ivb_min, ivb_max, hb_min, hb_max) {
       if (is.null(players) || length(players) == 0) return(data.frame())
       
       # Handle "All" selection - get all data for that report type
@@ -12614,11 +12804,9 @@ custom_reports_server <- function(id) {
         }
       }
       
-      # Apply all filters
-      initial_count <- nrow(df)
+      # Apply all filters efficiently
       if (!is.null(dates) && length(dates) == 2) {
         df <- df %>% dplyr::filter(Date >= dates[1], Date <= dates[2])
-        message("After date filter: ", nrow(df), " rows (was ", initial_count, ")")
       }
       if (!is.null(session) && session != "All") df <- df %>% dplyr::filter(SessionType %in% session)
       if (!is.null(pitch_types) && length(pitch_types) && !("All" %in% pitch_types)) df <- df %>% dplyr::filter(TaggedPitchType %in% pitch_types)
@@ -12649,7 +12837,7 @@ custom_reports_server <- function(id) {
       }
       
       df
-    }, cache = cell_cache)  # Use limited cache to prevent memory bloat
+    }
     
     # Wrapper that extracts inputs and calls cached function
     get_cell_data_wrapper <- function(cell_id) {
@@ -12672,33 +12860,61 @@ custom_reports_server <- function(id) {
         return(data.frame())
       }
       
+      # In Multi-Player mode, use Row 1's filters for all rows (but keep each row's own player)
+      # Extract row and column from cell_id
+      row_num <- as.integer(sub("r(\\d+)c.*", "\\1", cell_id))
+      col_num <- as.integer(sub("r\\d+c(\\d+)", "\\1", cell_id))
+      
+      # Determine which cell's filters to use
+      filter_cell_id <- if (input$report_scope == "Multi-Player" && row_num > 1) {
+        # Use row 1, same column for filters
+        paste0("r1c", col_num)
+      } else {
+        # Use this cell's own filters
+        cell_id
+      }
+      
       get_cell_data(
         cell_id = cell_id,
         players = players,
         report_type = input$report_type,
-        dates = input[[paste0("cell_dates_", cell_id)]],
-        session = input[[paste0("cell_session_", cell_id)]] %||% "All",
-        pitch_types = input[[paste0("cell_pitch_types_", cell_id)]],
-        batter_side = input[[paste0("cell_batter_side_", cell_id)]],
-        pitcher_hand = input[[paste0("cell_pitcher_hand_", cell_id)]],
-        results = input[[paste0("cell_results_", cell_id)]],
-        qp = input[[paste0("cell_qp_", cell_id)]],
-        count = input[[paste0("cell_count_", cell_id)]],
-        after_count = input[[paste0("cell_after_count_", cell_id)]],
-        zone = input[[paste0("cell_zone_", cell_id)]],
-        velo_min = input[[paste0("cell_velo_min_", cell_id)]],
-        velo_max = input[[paste0("cell_velo_max_", cell_id)]],
-        ivb_min = input[[paste0("cell_ivb_min_", cell_id)]],
-        ivb_max = input[[paste0("cell_ivb_max_", cell_id)]],
-        hb_min = input[[paste0("cell_hb_min_", cell_id)]],
-        hb_max = input[[paste0("cell_hb_max_", cell_id)]]
+        dates = input[[paste0("cell_dates_", filter_cell_id)]],
+        session = input[[paste0("cell_session_", filter_cell_id)]] %||% "All",
+        pitch_types = input[[paste0("cell_pitch_types_", filter_cell_id)]],
+        batter_side = input[[paste0("cell_batter_side_", filter_cell_id)]],
+        pitcher_hand = input[[paste0("cell_pitcher_hand_", filter_cell_id)]],
+        results = input[[paste0("cell_results_", filter_cell_id)]],
+        qp = input[[paste0("cell_qp_", filter_cell_id)]],
+        count = input[[paste0("cell_count_", filter_cell_id)]],
+        after_count = input[[paste0("cell_after_count_", filter_cell_id)]],
+        zone = input[[paste0("cell_zone_", filter_cell_id)]],
+        velo_min = input[[paste0("cell_velo_min_", filter_cell_id)]],
+        velo_max = input[[paste0("cell_velo_max_", filter_cell_id)]],
+        ivb_min = input[[paste0("cell_ivb_min_", filter_cell_id)]],
+        ivb_max = input[[paste0("cell_ivb_max_", filter_cell_id)]],
+        hb_min = input[[paste0("cell_hb_min_", filter_cell_id)]],
+        hb_max = input[[paste0("cell_hb_max_", filter_cell_id)]]
       )
     }
     
     # Simple visuals
     render_cell <- function(cell_id) {
-      tsel <- input[[paste0("cell_type_", cell_id)]] %||% ""
-      fsel <- input[[paste0("cell_filter_", cell_id)]] %||% "Pitch Types"
+      # In Multi-Player mode, use Row 1's chart type and settings for all rows
+      # Extract row and column from cell_id
+      row_num <- as.integer(sub("r(\\d+)c.*", "\\1", cell_id))
+      col_num <- as.integer(sub("r\\d+c(\\d+)", "\\1", cell_id))
+      
+      # Determine which cell's settings to use
+      settings_cell_id <- if (input$report_scope == "Multi-Player" && row_num > 1) {
+        # Use row 1, same column for settings
+        paste0("r1c", col_num)
+      } else {
+        # Use this cell's own settings
+        cell_id
+      }
+      
+      tsel <- input[[paste0("cell_type_", settings_cell_id)]] %||% ""
+      fsel <- input[[paste0("cell_filter_", settings_cell_id)]] %||% "Pitch Types"
       out_id <- paste0("cell_render_", cell_id)
       tooltip_css_local <- if (exists("tooltip_css", inherits = TRUE)) tooltip_css else
         "color:#fff !important;font-weight:600;padding:6px;border-radius:8px;text-shadow:0 1px 1px rgba(0,0,0,.4);"
@@ -12751,7 +12967,7 @@ custom_reports_server <- function(id) {
               data_id = SplitColumn
             )
           p <- ggplot() +
-        ggiraph::geom_point_interactive(
+            ggiraph::geom_point_interactive(
               data = df_mv,
               aes(HorzBreak, InducedVertBreak, color = SplitColumn, fill = SplitColumn, tooltip = tt, data_id = rid),
               alpha = 0.25, size = 4, shape = 21, stroke = 0.25
@@ -13040,8 +13256,8 @@ custom_reports_server <- function(id) {
           # Debug: log row count before filter
           message("Heatmap - before pitch results filter: ", nrow(df_loc), " rows")
           
-          # Apply Pitch Results filter for heatmap too
-          df_loc <- apply_pitch_results_filter(df_loc, input[[paste0("cell_results_", cell_id)]])
+          # Apply Pitch Results filter for heatmap too (use settings_cell_id for filter)
+          df_loc <- apply_pitch_results_filter(df_loc, input[[paste0("cell_results_", settings_cell_id)]])
           
           # Debug: log row count after filter
           message("Heatmap - after pitch results filter: ", nrow(df_loc), " rows")
@@ -13051,7 +13267,7 @@ custom_reports_server <- function(id) {
           }
           
           # Heatmap type selection
-          hm_stat <- input[[paste0("cell_heat_stat_", cell_id)]] %||% "Frequency"
+          hm_stat <- input[[paste0("cell_heat_stat_", settings_cell_id)]] %||% "Frequency"
           
           # helper for KDE grid
           make_kde_grid <- function(x, y, lims = c(-2,2,0,4.5), n = 180) {
@@ -13112,7 +13328,7 @@ custom_reports_server <- function(id) {
               theme_void()
           } else plt
         })
-        return(plotOutput(ns(out_id), height = "250px"))
+        return(plotOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Summary Table") {
         output[[out_id]] <- DT::renderDataTable({
           # Add tryCatch wrapper for entire table rendering to handle filter transitions
@@ -13122,7 +13338,7 @@ custom_reports_server <- function(id) {
             is_hitting_mode <- !is.null(input$report_type) && input$report_type == "Hitting"
             
             if (is_hitting_mode) {
-              mode_choice <- input[[paste0("cell_table_mode_", cell_id)]] %||% "Results"
+              mode_choice <- input[[paste0("cell_table_mode_", settings_cell_id)]] %||% "Results"
               fmt_avg_local <- function(x) {
                 x <- suppressWarnings(as.numeric(x))
                 s <- ifelse(is.finite(x), sprintf("%.3f", x), "")
@@ -13398,7 +13614,7 @@ custom_reports_server <- function(id) {
                 }
                 df_src <- df_src %>%
                   dplyr::mutate(SplitColumn = dplyr::coalesce(as.character(SplitColumn), "Unknown"))
-
+                
                 inner_half <- 7 / 12
                 mid_x <- (ZONE_LEFT + ZONE_RIGHT) / 2
                 mid_y <- (ZONE_BOTTOM + ZONE_TOP) / 2
@@ -13406,7 +13622,7 @@ custom_reports_server <- function(id) {
                 green_xmax <- mid_x + inner_half
                 green_ymin <- mid_y - inner_half
                 green_ymax <- mid_y + inner_half
-
+                
                 df_sd <- df_src %>%
                   dplyr::mutate(
                     is_swing = !is.na(PitchCall) & PitchCall %in% swing_levels,
@@ -13426,7 +13642,7 @@ custom_reports_server <- function(id) {
                       TRUE ~ 0
                     )
                   )
-
+                
                 summarize_sd <- function(dat) {
                   total_pitches <- nrow(dat)
                   swings <- sum(dat$is_swing, na.rm = TRUE)
@@ -13443,7 +13659,7 @@ custom_reports_server <- function(id) {
                   edge_sw_num <- sum(dat$is_swing & dat$in_zone & !dat$in_green, na.rm = TRUE)
                   edge_sw_den <- sum(dat$in_zone & !dat$in_green, na.rm = TRUE)
                   possd_points <- sum(dat$possd_point, na.rm = TRUE)
-
+                  
                   tibble::tibble(
                     `Swing%` = safe_div_local(swings, total_pitches) * 100,
                     `FPS%` = safe_div_local(fps_num, fps_den) * 100,
@@ -13455,18 +13671,18 @@ custom_reports_server <- function(id) {
                     `PosSD%` = safe_div_local(possd_points, total_pitches) * 100
                   )
                 }
-
+                
                 swing_decision_by_type <- df_sd %>%
                   dplyr::group_by(SplitColumn, .drop = FALSE) %>%
                   dplyr::group_modify(~ summarize_sd(.x)) %>%
                   dplyr::ungroup() %>%
                   dplyr::rename(!!split_col_name := SplitColumn)
-
+                
                 all_row <- summarize_sd(df_sd) %>%
                   dplyr::mutate(!!split_col_name := "All")
-
+                
                 df_swing_decision <- dplyr::bind_rows(swing_decision_by_type, all_row)
-
+                
                 pct_cols_sd <- c("Swing%", "FPS%", "Called%", "Chase%", "GoZoneSw%", "IZswing%", "EdgeSwing%", "PosSD%")
                 for (col in pct_cols_sd) if (col %in% names(df_swing_decision)) {
                   v <- suppressWarnings(as.numeric(df_swing_decision[[col]]))
@@ -13478,7 +13694,7 @@ custom_reports_server <- function(id) {
                   df_swing_decision <- df_swing_decision %>% dplyr::arrange(.data[[split_col_name]])
                   df_swing_decision[[split_col_name]] <- as.character(df_swing_decision[[split_col_name]])
                 }
-
+                
                 datatable_with_colvis(
                   df_swing_decision,
                   lock            = split_col_name,
@@ -13488,11 +13704,11 @@ custom_reports_server <- function(id) {
                   enable_colors   = FALSE
                 )
               }
-
+              
               if (identical(mode_choice, "Swing Decisions")) {
                 return(build_swing_decisions(df_tbl))
               }
-
+              
               results_df <- build_results_table(df_tbl)
               num_cols <- c("PA","AB","AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP",
                             "Swing%","Whiff%","GB%","K%","BB%","Barrel%","EV","LA")
@@ -13512,7 +13728,7 @@ custom_reports_server <- function(id) {
               visible_cols_base <- c(split_col_name, "PA", "AB", "AVG", "SLG", "OBP", "OPS", "xWOBA", "xISO", "BABIP",
                                      "Swing%", "Whiff%", "GB%", "K%", "BB%", "Barrel%", "EV", "LA")
               if (identical(mode_choice, "Custom")) {
-                custom_cols <- input[[paste0("cell_table_custom_cols_", cell_id)]] %||% visible_cols_base[-1]
+                custom_cols <- input[[paste0("cell_table_custom_cols_", settings_cell_id)]] %||% visible_cols_base[-1]
                 custom_cols <- custom_cols[custom_cols %in% visible_cols_base]
                 visible_cols <- unique(c(split_col_name, custom_cols))
               } else {
@@ -13546,11 +13762,11 @@ custom_reports_server <- function(id) {
               if (!nrow(df_tbl)) return(data.frame(Message = "No data"))
               
               # resolve table mode, including saved customs
-              mode_choice <- input[[paste0("cell_table_mode_", cell_id)]] %||% "Stuff"
+              mode_choice <- input[[paste0("cell_table_mode_", settings_cell_id)]] %||% "Stuff"
               res_mode <- resolve_table_mode_global(mode_choice, NULL)
               mode <- res_mode$mode
               custom_cols <- res_mode$cols
-              enable_colors <- isTRUE(input[[paste0("cell_color_", cell_id)]])
+              enable_colors <- isTRUE(input[[paste0("cell_color_", settings_cell_id)]])
               
               # Use the global .dp_like_table function (defined in main server, populated by comparison suite)
               if (exists(".dp_like_table", inherits = TRUE) && is.function(.dp_like_table)) {
@@ -13699,7 +13915,7 @@ custom_reports_server <- function(id) {
             )
           )
         })
-        return(ggiraph::girafeOutput(ns(out_id), height = "400px"))
+        return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
       }
       output[[out_id]] <- renderUI({ div("Unsupported selection") })
       uiOutput(ns(out_id))
@@ -13730,34 +13946,51 @@ custom_reports_server <- function(id) {
               # Use reactive to cache expensive computations
               cell_data <- reactive({
                 # Only re-compute when these specific inputs change
+                # NOTE: Do NOT include cell_title here - it causes re-render on every keystroke
                 input[[paste0("cell_type_", id)]]
                 input[[paste0("cell_filter_", id)]]
                 input[[paste0("cell_table_mode_", id)]]
-                input[[paste0("cell_title_", id)]]
                 
                 # Isolate to prevent reactive dependencies on filters
                 list(
                   type = input[[paste0("cell_type_", id)]],
                   filter = input[[paste0("cell_filter_", id)]],
-                  mode = input[[paste0("cell_table_mode_", id)]],
-                  title = input[[paste0("cell_title_", id)]]
+                  mode = input[[paste0("cell_table_mode_", id)]]
                 )
-              }) %>% debounce(200)  # Reduced to 200ms for better responsiveness
+              }) %>% debounce(300)  # Slightly increased for stability
               
-              output[[paste0("cell_output_", id)]] <- renderUI({
-                # Get cell data
-                cd <- cell_data()
+              # Update title display using delayed shinyjs::html (throttled to prevent focus loss)
+              # In Multi-Player mode, rows 2+ use Row 1's title
+              observe({
+                # Determine which title to use
+                is_multi_player <- input$report_scope == "Multi-Player"
                 
-                # Display title if it exists
-                title_elem <- NULL
-                if (!is.null(cd$title) && nzchar(trimws(cd$title))) {
-                  title_elem <- div(style = "text-align:center; margin-bottom:10px; font-weight:bold;", cd$title)
+                # Extract row and column from cell_id (format: "r1c2")
+                row_num <- as.integer(sub("r(\\d+)c\\d+", "\\1", id))
+                col_num <- as.integer(sub("r\\d+c(\\d+)", "\\1", id))
+                
+                # For rows 2+ in Multi-Player mode, use Row 1's title
+                if (is_multi_player && row_num > 1) {
+                  title_cell_id <- paste0("r1c", col_num)
+                  title_val <- input[[paste0("cell_title_", title_cell_id)]]
+                } else {
+                  title_val <- input[[paste0("cell_title_", id)]]
                 }
                 
-                tagList(
-                  title_elem,
-                  render_cell(id)
-                )
+                shinyjs::delay(50, {
+                  shinyjs::html(
+                    id = paste0("cell_title_display_", id),
+                    html = title_val %||% ""
+                  )
+                })
+              })
+              
+              output[[paste0("cell_output_", id)]] <- renderUI({
+                # Get cell data (triggers on chart type/filter/mode changes only)
+                cd <- cell_data()
+                
+                # Render the chart (title is separate, updated via shinyjs)
+                render_cell(id)
               })
             })
             existing_render <- c(existing_render, cell_id)
@@ -14292,14 +14525,14 @@ ensure_seed_users <- function(seed_df, db_cfg, sqlite_path) {
     u <- seed_df$user[i]; pwd <- seed_df$password[i]; adm <- isTRUE(seed_df$admin[i]); em <- seed_df$email[i]
     exists <- FALSE
     con <- if (file.exists(sqlite_path)) try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE) else NULL
-  if (!inherits(con, "try-error") && !is.null(con)) {
-    on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
-    tbl <- try(DBI::dbReadTable(con, "credentials"), silent = TRUE)
-    if (!inherits(tbl, "try-error") && nrow(tbl)) {
-      exists <- any(tolower(tbl$user) == tolower(u))
+    if (!inherits(con, "try-error") && !is.null(con)) {
+      on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
+      tbl <- try(DBI::dbReadTable(con, "credentials"), silent = TRUE)
+      if (!inherits(tbl, "try-error") && nrow(tbl)) {
+        exists <- any(tolower(tbl$user) == tolower(u))
+      }
     }
-  }
-  if (!exists) {
+    if (!exists) {
       try(shinymanager::create_user(
         user = u,
         password = pwd,
@@ -14510,66 +14743,66 @@ ui <- tagList(
 
 # Wrap UI with beautiful custom authentication
 ui <- secure_app(ui,
-  enable_admin = TRUE,  # Enable admin panel for user management
-  enable_reset_password = TRUE,  # Enable "Forgot Password" functionality
-  
-  # Email configuration for password reset
-  mail_from = Sys.getenv("MAIL_FROM", "noreply@pitchingcoachu.com"),
-  mail_subject = Sys.getenv("MAIL_SUBJECT", "PCU Dashboard - Password Reset Request"),
-  
-  # Custom header for login page - Clean and Professional
-  tags_top = tags$div(
-    class = "login-header",
-    # PCU Logo
-    tags$div(
-      class = "logo-container",
-      tags$img(src = "PCUlogo.png", width = 280,
-               style = "display: block; margin: 0 auto 40px auto;")
-    ),
-    # Main title - CLEAN AND PROFESSIONAL
-    tags$h1(
-      "PCU DASHBOARD",
-      class = "main-title",
-      style = "text-align: center; color: #000000; font-weight: 700; 
+                 enable_admin = TRUE,  # Enable admin panel for user management
+                 enable_reset_password = TRUE,  # Enable "Forgot Password" functionality
+                 
+                 # Email configuration for password reset
+                 mail_from = Sys.getenv("MAIL_FROM", "noreply@pitchingcoachu.com"),
+                 mail_subject = Sys.getenv("MAIL_SUBJECT", "PCU Dashboard - Password Reset Request"),
+                 
+                 # Custom header for login page - Clean and Professional
+                 tags_top = tags$div(
+                   class = "login-header",
+                   # PCU Logo
+                   tags$div(
+                     class = "logo-container",
+                     tags$img(src = "PCUlogo.png", width = 280,
+                              style = "display: block; margin: 0 auto 40px auto;")
+                   ),
+                   # Main title - CLEAN AND PROFESSIONAL
+                   tags$h1(
+                     "PCU DASHBOARD",
+                     class = "main-title",
+                     style = "text-align: center; color: #000000; font-weight: 700; 
                margin: 0 0 25px 0; font-size: 48px; letter-spacing: 4px;
                text-transform: uppercase;
                font-family: 'Helvetica Neue', 'Arial', sans-serif;
                text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);"
-    ),
-    # Simple underline
-    tags$div(
-      class = "title-underline",
-      style = "width: 250px; height: 3px; margin: 0 auto 0 auto;
+                   ),
+                   # Simple underline
+                   tags$div(
+                     class = "title-underline",
+                     style = "width: 250px; height: 3px; margin: 0 auto 0 auto;
                background: #FF1744;
                box-shadow: 0 0 15px rgba(255, 23, 68, 0.5);"
-    )
-  ),
-  
-  # Custom footer for login page
-  tags_bottom = tags$div(
-    tags$div(
-      class = "footer-line",
-      style = "width: 150px; height: 2px; margin: 35px auto 20px auto;
+                   )
+                 ),
+                 
+                 # Custom footer for login page
+                 tags_bottom = tags$div(
+                   tags$div(
+                     class = "footer-line",
+                     style = "width: 150px; height: 2px; margin: 35px auto 20px auto;
                background: linear-gradient(90deg, 
                  transparent 0%, 
                  rgba(220, 20, 60, 0.5) 50%, 
                  transparent 100%);"
-    ),
-    tags$p("Powered by Pitching Coach U", 
-           style = "text-align: center; color: rgba(255, 255, 255, 0.5); 
+                   ),
+                   tags$p("Powered by Pitching Coach U", 
+                          style = "text-align: center; color: rgba(255, 255, 255, 0.5); 
                     margin-top: 12px; font-size: 12px; letter-spacing: 2px;
                     font-weight: 500;"),
-    tags$p("© 2024 • All Rights Reserved", 
-           style = "text-align: center; color: rgba(255, 255, 255, 0.3); 
+                   tags$p("© 2024 • All Rights Reserved", 
+                          style = "text-align: center; color: rgba(255, 255, 255, 0.3); 
                     font-size: 10px; margin-top: 8px; letter-spacing: 1px;")
-  ),
-  
-  # Dark background with subtle pattern
-  background = "linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)",
-  
-  # Custom CSS for sleek, modern look
-  tags_head = tags$head(
-    tags$style(HTML("
+                 ),
+                 
+                 # Dark background with subtle pattern
+                 background = "linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)",
+                 
+                 # Custom CSS for sleek, modern look
+                 tags_head = tags$head(
+                   tags$style(HTML("
       /* Force dark background everywhere on login page */
       html[data-panel='auth'],
       body[data-panel='auth'],
@@ -14948,7 +15181,7 @@ ui <- secure_app(ui,
         transform: translateY(-2px);
       }
     ")),
-    tags$script(HTML("
+                   tags$script(HTML("
       (function() {
         function inject() {
           var form = document.querySelector(\"body[data-panel='auth'] form\") ||
@@ -14990,7 +15223,7 @@ ui <- secure_app(ui,
         });
       })();
     "))
-  )
+                 )
 )
 
 
@@ -15019,17 +15252,17 @@ server <- function(input, output, session) {
     custom_tables()
     update_custom_table_choices(session)
   })
-
-# Helper to resolve table mode (supports saved custom tables)
-resolve_table_mode <- function(mode_in, custom_cols_in) {
-  ct <- custom_tables()
-  if (!is.null(mode_in) && mode_in %in% names(ct)) {
-    cols <- ct[[mode_in]]$cols %||% character(0)
-    return(list(mode = "Custom", cols = cols))
+  
+  # Helper to resolve table mode (supports saved custom tables)
+  resolve_table_mode <- function(mode_in, custom_cols_in) {
+    ct <- custom_tables()
+    if (!is.null(mode_in) && mode_in %in% names(ct)) {
+      cols <- ct[[mode_in]]$cols %||% character(0)
+      return(list(mode = "Custom", cols = cols))
+    }
+    list(mode = mode_in %||% "Stuff", cols = custom_cols_in %||% character(0))
   }
-  list(mode = mode_in %||% "Stuff", cols = custom_cols_in %||% character(0))
-}
-
+  
   # Shared table builder function for Summary/DP/Comparison/Custom Reports
   # This ensures consistent table formatting across all suites
   .dp_like_table <<- function(df, mode, custom_cols, enable_colors = TRUE) {
@@ -15906,7 +16139,7 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
     if (is.null(split_sel)) split_sel <- "Pitch Types"
     
     tagList(
-        div(style = "display: flex; align-items: center; gap: 15px;",
+      div(style = "display: flex; align-items: center; gap: 15px;",
           div(style = "flex: 0 0 auto;",
               div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Tables:"),
               selectInput(
@@ -17936,11 +18169,11 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
   # -----------------------------
   # Data & Performance table (DP)
   # -----------------------------
-    output$summaryTable <- DT::renderDataTable({
-      df <- filtered_data()
-      if (!nrow(df)) {
-        return(DT::datatable(
-          data.frame(Message = "No data for selected filters"),
+  output$summaryTable <- DT::renderDataTable({
+    df <- filtered_data()
+    if (!nrow(df)) {
+      return(DT::datatable(
+        data.frame(Message = "No data for selected filters"),
         options = list(dom = 't'), rownames = FALSE
       ))
     }
@@ -17984,13 +18217,13 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
     }
     FIP_C <- if (exists("FIP_CONST")) get("FIP_CONST") else 3.20
     
-      # prefer DP page controls; fall back to Summary page controls; resolve saved custom tables
+    # prefer DP page controls; fall back to Summary page controls; resolve saved custom tables
     res_mode <- resolve_table_mode_global(
       if (!is.null(input$dpTableMode)) input$dpTableMode else input$summaryTableMode,
       if (!is.null(input$dpCustomCols)) input$dpCustomCols else input$summaryCustomCols
     )
-      mode <- res_mode$mode
-      custom <- res_mode$cols
+    mode <- res_mode$mode
+    custom <- res_mode$cols
     
     # Fallback visible-set helper if your global helper isn't in scope
     if (!exists("visible_set_for")) {
@@ -20429,7 +20662,7 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
       )
     )
   })
-
+  
   # ---------- QP+ single heatmap (pitch overlay) ----------
   count_families_for_selection <- function(sel) {
     if (is.null(sel) || !length(sel)) return(character(0))
@@ -20460,11 +20693,11 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
     }
     unique(fams)
   }
-
+  
   output$heatmapsQPPlot <- ggiraph::renderGirafe({
     req(input$hmChartType == "QP+")
     df <- filtered_data(); if (!nrow(df)) return(NULL)
-
+    
     pitcher_hand <- get_pitcher_handedness()
     batter_hand  <- input$batterSide
     fams_sel <- count_families_for_selection(input$countFilter)
@@ -20477,9 +20710,9 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
     pitch_sel <- input$pitchType
     # Require exactly one pitch type (no "All") so we show a single chart
     valid_pitch_type <- !is.null(pitch_sel) && length(pitch_sel) == 1 && pitch_sel != "All"
-
+    
     fams_no_other <- setdiff(fams_use, "Other")
-
+    
     validate(
       need(!is.null(pitcher_hand), "Select a pitcher (or pitcher hand) to view QP+."),
       need(!is.null(batter_hand) && batter_hand != "All", "Select batter handedness to view QP+."),
@@ -20487,10 +20720,10 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
       need(length(fams_no_other) > 0, "Select counts from Ahead, Even, or Behind to view QP+."),
       need(length(unique(fams_no_other)) == 1, "Select counts from a single family (Ahead, Even, or Behind).")
     )
-
+    
     count_state <- fams_no_other[1]
     p <- create_qp_locations_plot(df, count_state, pitcher_hand, batter_hand)
-
+    
     ggiraph::girafe(
       ggobj = p,
       width_svg = 12, height_svg = 5,
@@ -20501,7 +20734,7 @@ resolve_table_mode <- function(mode_in, custom_cols_in) {
       )
     )
   })
-
+  
   
   # ---------- small helpers ----------
   .find_qp_plus_col <- function(df) {
