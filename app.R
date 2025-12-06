@@ -12177,7 +12177,7 @@ custom_reports_server <- function(id) {
         if (scope == "Multi-Player") {
           for (r in seq_len(rows)) {
             player_val <- cells[[paste0("row_", r, "_player")]]
-            if (!is.null(player_val) && !is.na(player_val) && nzchar(as.character(player_val))) {
+            if (!is.null(player_val) && length(player_val) == 1 && !is.na(player_val) && player_val != "") {
               updateSelectizeInput(session, paste0("row_player_", r), selected = player_val)
             }
           }
@@ -12194,22 +12194,22 @@ custom_reports_server <- function(id) {
                 updateDateRangeInput(session, paste0("cell_dates_", cell_id), 
                                     start = saved_cell$dates[1], end = saved_cell$dates[2])
               }
-              if (!is.null(saved_cell$session) && !is.na(saved_cell$session) && nzchar(as.character(saved_cell$session))) {
+              if (!is.null(saved_cell$session) && length(saved_cell$session) == 1 && !is.na(saved_cell$session) && saved_cell$session != "") {
                 updateSelectInput(session, paste0("cell_session_", cell_id), selected = saved_cell$session)
               }
               if (!is.null(saved_cell$pitch_types) && length(saved_cell$pitch_types) > 0) {
                 updateSelectizeInput(session, paste0("cell_pitch_types_", cell_id), selected = saved_cell$pitch_types)
               }
-              if (!is.null(saved_cell$batter_side) && !is.na(saved_cell$batter_side) && nzchar(as.character(saved_cell$batter_side))) {
+              if (!is.null(saved_cell$batter_side) && length(saved_cell$batter_side) == 1 && !is.na(saved_cell$batter_side) && saved_cell$batter_side != "") {
                 updateSelectInput(session, paste0("cell_batter_side_", cell_id), selected = saved_cell$batter_side)
               }
-              if (!is.null(saved_cell$pitcher_hand) && !is.na(saved_cell$pitcher_hand) && nzchar(as.character(saved_cell$pitcher_hand))) {
+              if (!is.null(saved_cell$pitcher_hand) && length(saved_cell$pitcher_hand) == 1 && !is.na(saved_cell$pitcher_hand) && saved_cell$pitcher_hand != "") {
                 updateSelectInput(session, paste0("cell_pitcher_hand_", cell_id), selected = saved_cell$pitcher_hand)
               }
               if (!is.null(saved_cell$results) && length(saved_cell$results) > 0) {
                 updateSelectInput(session, paste0("cell_results_", cell_id), selected = saved_cell$results)
               }
-              if (!is.null(saved_cell$qp) && !is.na(saved_cell$qp) && nzchar(as.character(saved_cell$qp))) {
+              if (!is.null(saved_cell$qp) && length(saved_cell$qp) == 1 && !is.na(saved_cell$qp) && saved_cell$qp != "") {
                 updateSelectInput(session, paste0("cell_qp_", cell_id), selected = saved_cell$qp)
               }
               if (!is.null(saved_cell$count) && length(saved_cell$count) > 0) {
@@ -12221,22 +12221,22 @@ custom_reports_server <- function(id) {
               if (!is.null(saved_cell$zone) && length(saved_cell$zone) > 0) {
                 updateSelectInput(session, paste0("cell_zone_", cell_id), selected = saved_cell$zone)
               }
-              if (!is.null(saved_cell$velo_min) && !is.na(saved_cell$velo_min)) {
+              if (!is.null(saved_cell$velo_min) && length(saved_cell$velo_min) == 1 && !is.na(saved_cell$velo_min)) {
                 updateNumericInput(session, paste0("cell_velo_min_", cell_id), value = saved_cell$velo_min)
               }
-              if (!is.null(saved_cell$velo_max) && !is.na(saved_cell$velo_max)) {
+              if (!is.null(saved_cell$velo_max) && length(saved_cell$velo_max) == 1 && !is.na(saved_cell$velo_max)) {
                 updateNumericInput(session, paste0("cell_velo_max_", cell_id), value = saved_cell$velo_max)
               }
-              if (!is.null(saved_cell$ivb_min) && !is.na(saved_cell$ivb_min)) {
+              if (!is.null(saved_cell$ivb_min) && length(saved_cell$ivb_min) == 1 && !is.na(saved_cell$ivb_min)) {
                 updateNumericInput(session, paste0("cell_ivb_min_", cell_id), value = saved_cell$ivb_min)
               }
-              if (!is.null(saved_cell$ivb_max) && !is.na(saved_cell$ivb_max)) {
+              if (!is.null(saved_cell$ivb_max) && length(saved_cell$ivb_max) == 1 && !is.na(saved_cell$ivb_max)) {
                 updateNumericInput(session, paste0("cell_ivb_max_", cell_id), value = saved_cell$ivb_max)
               }
-              if (!is.null(saved_cell$hb_min) && !is.na(saved_cell$hb_min)) {
+              if (!is.null(saved_cell$hb_min) && length(saved_cell$hb_min) == 1 && !is.na(saved_cell$hb_min)) {
                 updateNumericInput(session, paste0("cell_hb_min_", cell_id), value = saved_cell$hb_min)
               }
-              if (!is.null(saved_cell$hb_max) && !is.na(saved_cell$hb_max)) {
+              if (!is.null(saved_cell$hb_max) && length(saved_cell$hb_max) == 1 && !is.na(saved_cell$hb_max)) {
                 updateNumericInput(session, paste0("cell_hb_max_", cell_id), value = saved_cell$hb_max)
               }
             }
