@@ -12173,16 +12173,12 @@ custom_reports_server <- function(id) {
         cols <- rep$cols %||% 1
         scope <- rep$scope %||% "Single Player"
         
-        # FIRST: Restore show_controls checkbox states
-        # This ensures filter controls are visible before we try to update them
+        # FIRST: Always show controls when loading a report
+        # This ensures filter controls are visible so we can update them
         for (r in seq_len(rows)) {
           for (c in seq_len(cols)) {
             cell_id <- paste0("r", r, "c", c)
-            saved_cell <- cells[[cell_id]]
-            if (!is.null(saved_cell) && !is.null(saved_cell$show_controls)) {
-              updateCheckboxInput(session, paste0("cell_show_controls_", cell_id), 
-                                value = saved_cell$show_controls)
-            }
+            updateCheckboxInput(session, paste0("cell_show_controls_", cell_id), value = TRUE)
           }
         }
         
