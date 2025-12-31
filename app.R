@@ -24,6 +24,16 @@ options(shiny.maxRequestSize = 50 * 1024^2)
 # Optional team scoping: blank = no filter
 if (!exists("TEAM_CODE", inherits = TRUE)) TEAM_CODE <- ""
 
+# School scoping helpers
+GLOBAL_SCOPE <- "GLOBAL"
+current_school <- function() {
+  sc <- Sys.getenv("TEAM_CODE", unset = TEAM_CODE)
+  if (is.null(sc) || !nzchar(sc)) sc <- TEAM_CODE
+  if (is.null(sc) || !nzchar(sc)) sc <- "GCU"
+  toupper(sc)
+}
+allowed_school_codes <- function() unique(c(current_school(), GLOBAL_SCOPE))
+
 # ---- Heatmap constants and functions for Player Plans ----
 HEAT_BINS <- 10  # Increased from 6 for smoother gradients like TruMedia
 HEAT_EV_THRESHOLD <- 90
@@ -814,13 +824,19 @@ init_state_db <- function() {
   on.exit(DBI::dbDisconnect(con), add = TRUE)
   name_type <- if (identical(state_backend_cfg$type, "mysql")) "VARCHAR(191)" else "TEXT"
   text_type <- if (identical(state_backend_cfg$type, "mysql")) "LONGTEXT" else "TEXT"
+  ensure_school_column <- function(tbl) {
+    cols <- try(DBI::dbListFields(con, tbl), silent = TRUE)
+    if (!inherits(cols, "try-error") && length(cols) && !"school_code" %in% cols) {
+      try(DBI::dbExecute(con, sprintf("ALTER TABLE %s ADD COLUMN school_code %s", tbl, name_type)), silent = TRUE)
+    }
+  }
   DBI::dbExecute(con, sprintf(
-    "CREATE TABLE IF NOT EXISTS custom_tables (name %s PRIMARY KEY, cols %s)",
-    name_type, text_type
+    "CREATE TABLE IF NOT EXISTS custom_tables (name %s PRIMARY KEY, cols %s, school_code %s)",
+    name_type, text_type, name_type
   ))
   DBI::dbExecute(con, sprintf(
-    "CREATE TABLE IF NOT EXISTS custom_reports (name %s PRIMARY KEY, payload %s)",
-    name_type, text_type
+    "CREATE TABLE IF NOT EXISTS custom_reports (name %s PRIMARY KEY, payload %s, school_code %s)",
+    name_type, text_type, name_type
   ))
   DBI::dbExecute(con, sprintf(
     "CREATE TABLE IF NOT EXISTS target_shapes (
@@ -829,16 +845,22 @@ init_state_db <- function() {
     IVB_Target REAL,
     HB_Target REAL,
     IsCustom INTEGER,
+    school_code %s,
     PRIMARY KEY (Pitcher, PitchType)
-  )", name_type, name_type))
+  )", name_type, name_type, name_type))
   DBI::dbExecute(con, sprintf(
-    "CREATE TABLE IF NOT EXISTS player_plans (player %s PRIMARY KEY, payload %s)",
-    name_type, text_type
+    "CREATE TABLE IF NOT EXISTS player_plans (player %s PRIMARY KEY, payload %s, school_code %s)",
+    name_type, text_type, name_type
   ))
   DBI::dbExecute(con, sprintf(
-    "CREATE TABLE IF NOT EXISTS completed_goals (player %s PRIMARY KEY, payload %s)",
-    name_type, text_type
+    "CREATE TABLE IF NOT EXISTS completed_goals (player %s PRIMARY KEY, payload %s, school_code %s)",
+    name_type, text_type, name_type
   ))
+  ensure_school_column("custom_tables")
+  ensure_school_column("custom_reports")
+  ensure_school_column("target_shapes")
+  ensure_school_column("player_plans")
+  ensure_school_column("completed_goals")
 }
 
 # load/save helpers for DB-backed state
@@ -847,8 +869,16 @@ load_custom_tables_db <- function() {
   on.exit(DBI::dbDisconnect(con), add = TRUE)
   if (!DBI::dbExistsTable(con, "custom_tables")) return(list())
   df <- DBI::dbReadTable(con, "custom_tables")
+  if ("school_code" %in% names(df)) {
+    df <- df[df$school_code %in% allowed_school_codes(), , drop = FALSE]
+    df <- df[order(df$school_code == current_school()), , drop = FALSE]
+  }
   if (!nrow(df)) return(list())
-  res <- lapply(df$cols, function(x) tryCatch(jsonlite::fromJSON(x, simplifyVector = TRUE), error = function(...) list(cols = character(0))))
+  res <- lapply(seq_len(nrow(df)), function(i) {
+    item <- tryCatch(jsonlite::fromJSON(df$cols[[i]], simplifyVector = TRUE), error = function(...) list(cols = character(0)))
+    item$school_code <- df$school_code[[i]] %||% current_school()
+    item
+  })
   names(res) <- df$name
   res
 }
@@ -861,6 +891,7 @@ save_custom_tables_db <- function(x) {
   payload <- data.frame(
     name = names(x),
     cols = vapply(x, function(v) jsonlite::toJSON(v, auto_unbox = TRUE), character(1)),
+    school_code = vapply(x, function(v) v$school_code %||% current_school(), character(1)),
     stringsAsFactors = FALSE
   )
   DBI::dbWriteTable(con, "custom_tables", payload, append = TRUE, row.names = FALSE)
@@ -871,8 +902,16 @@ load_custom_reports_db <- function() {
   on.exit(DBI::dbDisconnect(con), add = TRUE)
   if (!DBI::dbExistsTable(con, "custom_reports")) return(list())
   df <- DBI::dbReadTable(con, "custom_reports")
+  if ("school_code" %in% names(df)) {
+    df <- df[df$school_code %in% allowed_school_codes(), , drop = FALSE]
+    df <- df[order(df$school_code == current_school()), , drop = FALSE]
+  }
   if (!nrow(df)) return(list())
-  res <- lapply(df$payload, function(x) tryCatch(jsonlite::fromJSON(x, simplifyVector = TRUE), error = function(...) list()))
+  res <- lapply(seq_len(nrow(df)), function(i) {
+    item <- tryCatch(jsonlite::fromJSON(df$payload[[i]], simplifyVector = TRUE), error = function(...) list())
+    item$school_code <- df$school_code[[i]] %||% current_school()
+    item
+  })
   names(res) <- df$name
   res
 }
@@ -885,6 +924,7 @@ save_custom_reports_db <- function(x) {
   payload <- data.frame(
     name = names(x),
     payload = vapply(x, function(v) jsonlite::toJSON(v, auto_unbox = TRUE), character(1)),
+    school_code = vapply(x, function(v) v$school_code %||% current_school(), character(1)),
     stringsAsFactors = FALSE
   )
   DBI::dbWriteTable(con, "custom_reports", payload, append = TRUE, row.names = FALSE)
@@ -895,6 +935,10 @@ load_target_shapes_db <- function() {
   on.exit(DBI::dbDisconnect(con), add = TRUE)
   if (!DBI::dbExistsTable(con, "target_shapes")) return(NULL)
   df <- DBI::dbReadTable(con, "target_shapes")
+  if ("school_code" %in% names(df)) {
+    df <- df[df$school_code %in% allowed_school_codes(), , drop = FALSE]
+    df <- df[order(df$school_code == current_school()), , drop = FALSE]
+  }
   if (!nrow(df)) return(NULL)
   df
 }
@@ -904,6 +948,11 @@ save_target_shapes_db <- function(df) {
   on.exit(DBI::dbDisconnect(con), add = TRUE)
   DBI::dbExecute(con, "DELETE FROM target_shapes")
   if (!nrow(df)) return(invisible(TRUE))
+  if (!"school_code" %in% names(df)) {
+    df$school_code <- current_school()
+  } else {
+    df$school_code[is.na(df$school_code) | !nzchar(df$school_code)] <- current_school()
+  }
   DBI::dbWriteTable(con, "target_shapes", df, append = TRUE, row.names = FALSE)
 }
 
@@ -2255,11 +2304,22 @@ load_custom_tables <- function() {
   if (length(db_ct)) return(db_ct)
   if (file.exists(custom_tables_file)) {
     out <- tryCatch(jsonlite::fromJSON(custom_tables_file, simplifyVector = TRUE), error = function(e) NULL)
-    if (is.list(out)) return(out)
+    if (is.list(out)) {
+      out <- lapply(out, function(v) {
+        if (is.null(v$school_code)) v$school_code <- current_school()
+        v
+      })
+      out <- out[vapply(out, function(v) v$school_code %in% allowed_school_codes(), logical(1))]
+      return(out)
+    }
   }
   list()
 }
 save_custom_tables <- function(x) {
+  x <- lapply(x, function(v) {
+    if (is.null(v$school_code)) v$school_code <- current_school()
+    v
+  })
   tryCatch({
     save_custom_tables_db(x)
     # lightweight file backup for convenience
@@ -2313,11 +2373,22 @@ load_custom_reports <- function() {
   if (length(db_cr)) return(db_cr)
   if (file.exists(custom_reports_file)) {
     out <- tryCatch(jsonlite::fromJSON(custom_reports_file, simplifyVector = TRUE), error = function(e) NULL)
-    if (is.list(out)) return(out)
+    if (is.list(out)) {
+      out <- lapply(out, function(v) {
+        if (is.null(v$school_code)) v$school_code <- current_school()
+        v
+      })
+      out <- out[vapply(out, function(v) v$school_code %in% allowed_school_codes(), logical(1))]
+      return(out)
+    }
   }
   list()
 }
 save_custom_reports <- function(x) {
+  x <- lapply(x, function(v) {
+    if (is.null(v$school_code)) v$school_code <- current_school()
+    v
+  })
   tryCatch({
     save_custom_reports_db(x)
     jsonlite::write_json(x, custom_reports_file, auto_unbox = TRUE, pretty = TRUE)
@@ -13890,6 +13961,7 @@ custom_reports_ui <- function(id) {
                  selectInput(ns("report_rows"), "Rows:", choices = 1:15, selected = 1),
                  selectInput(ns("report_cols"), "Columns:", choices = 1:5, selected = 1),
                  selectInput(ns("saved_report"), "Saved Reports:", choices = c(""), selected = ""),
+                 uiOutput(ns("report_global_toggle")),
                  div(style = "display: flex; gap: 5px;",
                    actionButton(ns("new_report"), "New Report", class = "btn-success btn-sm"),
                    actionButton(ns("save_report"), "Save Report", class = "btn-primary btn-sm"),
@@ -13908,6 +13980,17 @@ custom_reports_ui <- function(id) {
 custom_reports_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
+    is_admin_fun <- get0("is_admin", mode = "function", inherits = TRUE)
+    is_admin_local <- reactive({
+      if (is.null(is_admin_fun)) return(FALSE)
+      val <- try(is_admin_fun(), silent = TRUE)
+      if (inherits(val, "try-error")) FALSE else isTRUE(val)
+    })
+    
+    output$report_global_toggle <- renderUI({
+      if (!isTRUE(is_admin_local())) return(NULL)
+      checkboxInput(ns("report_global"), "Share with all schools (admin)", value = FALSE)
+    })
     
     # Sidebar toggle
     sidebar_visible <- reactiveVal(TRUE)
@@ -13974,6 +14057,9 @@ custom_reports_server <- function(id) {
       cr <- custom_reports_store()
       if (!nm %in% names(cr)) return()
       rep <- cr[[nm]]
+      if (isTRUE(is_admin_local())) {
+        updateCheckboxInput(session, "report_global", value = identical(rep$school_code, GLOBAL_SCOPE))
+      }
       
       # Set loading flag to prevent observe block from overwriting
       loading_report(TRUE)
@@ -14156,6 +14242,7 @@ custom_reports_server <- function(id) {
         return()
       }
       cells <- isolate(current_cells())
+      scope <- if (isTRUE(is_admin_local()) && isTRUE(input$report_global)) GLOBAL_SCOPE else current_school()
       rep <- list(
         title = nm,
         type = input$report_type,
@@ -14163,7 +14250,8 @@ custom_reports_server <- function(id) {
         players = input$report_players,
         rows = as.integer(input$report_rows),
         cols = as.integer(input$report_cols),
-        cells = cells
+        cells = cells,
+        school_code = scope
       )
       cr <- custom_reports_store()
       cr[[nm]] <- rep
@@ -14198,6 +14286,7 @@ custom_reports_server <- function(id) {
       updateSelectInput(session, "report_rows", selected = 1)
       updateSelectInput(session, "report_cols", selected = 1)
       updateSelectInput(session, "saved_report", selected = "")
+      if (isTRUE(is_admin_local())) updateCheckboxInput(session, "report_global", value = FALSE)
       
       showNotification("New report created. Start building!", type = "message")
     }, ignoreInit = TRUE)
@@ -18294,6 +18383,9 @@ server <- function(input, output, session) {
             multiple = TRUE,
             options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
           ),
+          if (isTRUE(is_admin())) {
+            checkboxInput("summaryCustomGlobal", "Share with all schools (admin)", value = FALSE)
+          },
           actionButton("summarySaveCustom", "Save / Update", class = "btn-primary btn-sm"),
           actionButton("summaryDeleteCustom", "Delete", class = "btn-danger btn-sm")
         )
@@ -18352,6 +18444,9 @@ server <- function(input, output, session) {
             multiple = TRUE,
             options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
           ),
+          if (isTRUE(is_admin())) {
+            checkboxInput("dpCustomGlobal", "Share with all schools (admin)", value = FALSE)
+          },
           actionButton("dpSaveCustom", "Save / Update", class = "btn-primary btn-sm"),
           actionButton("dpDeleteCustom", "Delete", class = "btn-danger btn-sm")
         )
@@ -20595,8 +20690,9 @@ server <- function(input, output, session) {
       showNotification("Please enter a name and choose at least one column.", type = "warning")
       return()
     }
+    scope <- if (isTRUE(is_admin()) && isTRUE(input$summaryCustomGlobal)) GLOBAL_SCOPE else current_school()
     ct <- custom_tables()
-    ct[[nm]] <- list(cols = cols)
+    ct[[nm]] <- list(cols = cols, school_code = scope)
     custom_tables(ct); save_custom_tables(ct); update_custom_table_choices(session)
     updateSelectInput(session, "summaryCustomSaved", choices = c("", names(ct)), selected = nm)
     showNotification(paste("Saved custom table", nm), type = "message")
@@ -20629,8 +20725,9 @@ server <- function(input, output, session) {
       showNotification("Please enter a name and choose at least one column.", type = "warning")
       return()
     }
+    scope <- if (isTRUE(is_admin()) && isTRUE(input$dpCustomGlobal)) GLOBAL_SCOPE else current_school()
     ct <- custom_tables()
-    ct[[nm]] <- list(cols = cols)
+    ct[[nm]] <- list(cols = cols, school_code = scope)
     custom_tables(ct); save_custom_tables(ct); update_custom_table_choices(session)
     updateSelectInput(session, "dpCustomSaved", choices = c("", names(ct)), selected = nm)
     showNotification(paste("Saved custom table", nm), type = "message")
@@ -24808,8 +24905,16 @@ server <- function(input, output, session) {
     on.exit(DBI::dbDisconnect(con), add = TRUE)
     if (!DBI::dbExistsTable(con, "player_plans")) return(list())
     df <- DBI::dbReadTable(con, "player_plans")
+    if ("school_code" %in% names(df)) {
+      df <- df[df$school_code %in% allowed_school_codes(), , drop = FALSE]
+      df <- df[order(df$school_code == current_school()), , drop = FALSE]
+    }
     if (!nrow(df)) return(list())
-    out <- lapply(df$payload, function(x) tryCatch(jsonlite::fromJSON(x, simplifyVector = TRUE), error = function(...) list()))
+    out <- lapply(seq_len(nrow(df)), function(i) {
+      pl <- tryCatch(jsonlite::fromJSON(df$payload[[i]], simplifyVector = TRUE), error = function(...) list())
+      pl$school_code <- df$school_code[[i]] %||% current_school()
+      pl
+    })
     names(out) <- df$player
     out
   }
@@ -24821,6 +24926,7 @@ server <- function(input, output, session) {
     payload <- data.frame(
       player = names(plans),
       payload = vapply(plans, function(v) jsonlite::toJSON(v, auto_unbox = TRUE), character(1)),
+      school_code = vapply(plans, function(v) v$school_code %||% current_school(), character(1)),
       stringsAsFactors = FALSE
     )
     DBI::dbWriteTable(con, "player_plans", payload, append = TRUE, row.names = FALSE)
@@ -24831,8 +24937,16 @@ server <- function(input, output, session) {
     on.exit(DBI::dbDisconnect(con), add = TRUE)
     if (!DBI::dbExistsTable(con, "completed_goals")) return(list())
     df <- DBI::dbReadTable(con, "completed_goals")
+    if ("school_code" %in% names(df)) {
+      df <- df[df$school_code %in% allowed_school_codes(), , drop = FALSE]
+      df <- df[order(df$school_code == current_school()), , drop = FALSE]
+    }
     if (!nrow(df)) return(list())
-    out <- lapply(df$payload, function(x) tryCatch(jsonlite::fromJSON(x, simplifyVector = TRUE), error = function(...) list()))
+    out <- lapply(seq_len(nrow(df)), function(i) {
+      cg <- tryCatch(jsonlite::fromJSON(df$payload[[i]], simplifyVector = TRUE), error = function(...) list())
+      cg$school_code <- df$school_code[[i]] %||% current_school()
+      cg
+    })
     names(out) <- df$player
     out
   }
@@ -24844,6 +24958,7 @@ server <- function(input, output, session) {
     payload <- data.frame(
       player = names(goals),
       payload = vapply(goals, function(v) jsonlite::toJSON(v, auto_unbox = TRUE), character(1)),
+      school_code = vapply(goals, function(v) v$school_code %||% current_school(), character(1)),
       stringsAsFactors = FALSE
     )
     DBI::dbWriteTable(con, "completed_goals", payload, append = TRUE, row.names = FALSE)
@@ -24963,7 +25078,8 @@ server <- function(input, output, session) {
         goal3_batter_hand = "All", goal3_chart_view = "Trend Chart",
         goal3_target_direction = "", goal3_target_value = "",
         goal1_notes = "", goal2_notes = "", goal3_notes = "",
-        general_notes = ""
+        general_notes = "",
+        school_code = current_school()
       )
       cat("Created new default plan for player:", player, "\n")
     } else {
@@ -25020,7 +25136,8 @@ server <- function(input, output, session) {
       goal1_notes = input$pp_goal1_notes %||% "",
       goal2_notes = input$pp_goal2_notes %||% "",
       goal3_notes = input$pp_goal3_notes %||% "",
-      general_notes = input$pp_general_notes %||% ""
+      general_notes = input$pp_general_notes %||% "",
+      school_code = current_school()
     )
     
     player_plans_data$plans[[player]] <- plan
