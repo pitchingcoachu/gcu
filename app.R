@@ -139,8 +139,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
     theme_void() + 
     theme(legend.position = "none",
           plot.title = element_text(face = "bold", hjust = 0.5),
-          plot.background = element_rect(fill = "white", color = NA),
-          panel.background = element_rect(fill = "white", color = NA)) +
+          plot.background = element_rect(fill = "transparent", color = NA),
+          panel.background = element_rect(fill = "transparent", color = NA)) +
     labs(title = title)
   
   # If show_scale, add gradient bar on top
@@ -186,8 +186,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
         axis.text.x = element_text(size = 10, face = "bold", margin = margin(t = 3)),
         axis.title.x = element_text(face = "bold", size = 11, margin = margin(t = 8)),
         plot.margin = margin(5, 0, 10, 0),
-        plot.background = element_rect(fill = "white", color = NA),
-        panel.background = element_rect(fill = "white", color = NA),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        panel.background = element_rect(fill = "transparent", color = NA),
         aspect.ratio = 0.15  # Make scale bar much narrower
       ) +
       labs(x = scale_label)
@@ -223,8 +223,8 @@ draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
     theme_void() + 
     theme(legend.position = "none",
           plot.title = element_text(face = "bold", hjust = 0.5),
-          plot.background = element_rect(fill = "white", color = NA),
-          panel.background = element_rect(fill = "white", color = NA)) +
+          plot.background = element_rect(fill = "transparent", color = NA),
+          panel.background = element_rect(fill = "transparent", color = NA)) +
     labs(title = title)
   
   # If show_scale, add gradient bar on top
@@ -260,8 +260,8 @@ draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
         axis.text.x = element_text(size = 10, face = "bold", margin = margin(t = 3)),
         axis.title.x = element_text(face = "bold", size = 11, margin = margin(t = 8)),
         plot.margin = margin(5, 0, 10, 0),
-        plot.background = element_rect(fill = "white", color = NA),
-        panel.background = element_rect(fill = "white", color = NA),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        panel.background = element_rect(fill = "transparent", color = NA),
         aspect.ratio = 0.15
       ) +
       labs(x = scale_label)
@@ -7147,7 +7147,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       }
       
       render_heatmap_stat(df, stat)
-    })
+    }, bg = "transparent")
     
     # ---- HeatMaps → Pitch (interactive scatter) ----
     output$heatmapsPitchPlot <- ggiraph::renderGirafe({
@@ -9230,7 +9230,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
         labs(title = "Called-Strike%", x = NULL, y = NULL) +
         theme_void() +
         theme(plot.title = element_text(face = "bold", hjust = 0.5))
-    })
+    }, bg = "transparent")
     
     
     # ---- HeatMaps: Pitch (interactive scatter) ----
@@ -12405,8 +12405,8 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
     .heat_plot <- function(df, stat) {
       render_heatmap_stat(df, stat)
     }
-    output$cmpA_heat <- renderPlot({ .heat_plot(.filtered_panel("A"), input$cmpA_hmStat) })
-    output$cmpB_heat <- renderPlot({ .heat_plot(.filtered_panel("B"), input$cmpB_hmStat) })
+    output$cmpA_heat <- renderPlot({ .heat_plot(.filtered_panel("A"), input$cmpA_hmStat) }, bg = "transparent")
+    output$cmpB_heat <- renderPlot({ .heat_plot(.filtered_panel("B"), input$cmpB_hmStat) }, bg = "transparent")
     
     .pitch_girafe <- function(df, sel_results) {
       if (!nrow(df)) return(NULL)
@@ -13927,51 +13927,54 @@ custom_reports_ui <- function(id) {
   ns <- NS(id)
   fluidPage(
     shinyjs::useShinyjs(),  # Enable shinyjs
-    # Floating show sidebar button (only visible when sidebar is hidden)
-    div(id = ns("show_sidebar_btn"), style = "display:none; position:fixed; top:10px; left:10px; z-index:2000;",
-        actionButton(ns("show_sidebar"), "Show Sidebar", class = "btn-primary btn-sm")
-    ),
-    fluidRow(
-      # Sidebar with toggle button
-      column(3, id = ns("sidebar_column"),
-             div(style = "position:relative;",
-                 actionButton(ns("toggle_sidebar"), "Hide Sidebar", 
-                              class = "btn-sm btn-secondary", 
-                              style = "position:absolute; right:5px; top:5px; z-index:1000;"),
-                 h4("Report Setup"),
-                 textInput(ns("report_title"), "Report Title", ""),
-                 selectInput(ns("report_type"), "Report Type:", choices = c("Pitching","Hitting"), selected = "Pitching"),
-                 selectInput(ns("report_scope"), "Scope:", choices = c("Single Player","Multi-Player"), selected = "Single Player"),
-                 # Single Player mode - show player selector
-                 conditionalPanel(
-                   sprintf("input['%s'] == 'Single Player'", ns("report_scope")),
-                   selectizeInput(ns("report_players"), "Players:", choices = NULL, multiple = TRUE)
-                 ),
-                 # Multi-Player mode - note about row assignments
-                 conditionalPanel(
-                   sprintf("input['%s'] == 'Multi-Player'", ns("report_scope")),
-                   div(style = "background-color:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:10px;",
-                       tags$strong("Multi-Player Mode:"),
-                       tags$br(),
-                       "Each row = 1 player"
-                   ),
-                   # Player dropdowns for each possible row (only show up to current row count)
-                   uiOutput(ns("multi_player_selectors"))
-                 ),
-                 selectInput(ns("report_rows"), "Rows:", choices = 1:15, selected = 1),
-                 selectInput(ns("report_cols"), "Columns:", choices = 1:5, selected = 1),
-                 selectInput(ns("saved_report"), "Saved Reports:", choices = c(""), selected = ""),
-                 uiOutput(ns("report_global_toggle")),
-                 div(style = "display: flex; gap: 5px;",
-                   actionButton(ns("new_report"), "New Report", class = "btn-success btn-sm"),
-                   actionButton(ns("save_report"), "Save Report", class = "btn-primary btn-sm"),
-                   actionButton(ns("delete_report"), "Delete Report", class = "btn-danger btn-sm")
-                 )
-             )
+    div(
+      class = "creports-root",
+      # Floating show sidebar button (only visible when sidebar is hidden)
+      div(id = ns("show_sidebar_btn"), style = "display:none; position:fixed; top:10px; left:10px; z-index:2000;",
+          actionButton(ns("show_sidebar"), "Show Sidebar", class = "btn-primary btn-sm")
       ),
-      column(9, id = ns("main_column"),
-             uiOutput(ns("report_header")),
-             uiOutput(ns("report_canvas"))
+      fluidRow(
+        # Sidebar with toggle button
+        column(3, id = ns("sidebar_column"),
+               div(style = "position:relative;",
+                   actionButton(ns("toggle_sidebar"), "Hide Sidebar", 
+                                class = "btn-sm btn-secondary", 
+                                style = "position:absolute; right:5px; top:5px; z-index:1000;"),
+                   h4("Report Setup"),
+                   textInput(ns("report_title"), "Report Title", ""),
+                   selectInput(ns("report_type"), "Report Type:", choices = c("Pitching","Hitting"), selected = "Pitching"),
+                   selectInput(ns("report_scope"), "Scope:", choices = c("Single Player","Multi-Player"), selected = "Single Player"),
+                   # Single Player mode - show player selector
+                   conditionalPanel(
+                     sprintf("input['%s'] == 'Single Player'", ns("report_scope")),
+                     selectizeInput(ns("report_players"), "Players:", choices = NULL, multiple = TRUE)
+                   ),
+                   # Multi-Player mode - note about row assignments
+                   conditionalPanel(
+                     sprintf("input['%s'] == 'Multi-Player'", ns("report_scope")),
+                     div(style = "background-color:#f0f0f0; padding:10px; border-radius:5px; margin-bottom:10px;",
+                         tags$strong("Multi-Player Mode:"),
+                         tags$br(),
+                         "Each row = 1 player"
+                     ),
+                     # Player dropdowns for each possible row (only show up to current row count)
+                     uiOutput(ns("multi_player_selectors"))
+                   ),
+                   selectInput(ns("report_rows"), "Rows:", choices = 1:15, selected = 1),
+                   selectInput(ns("report_cols"), "Columns:", choices = 1:5, selected = 1),
+                   selectInput(ns("saved_report"), "Saved Reports:", choices = c(""), selected = ""),
+                   uiOutput(ns("report_global_toggle")),
+                   div(style = "display: flex; gap: 5px;",
+                     actionButton(ns("new_report"), "New Report", class = "btn-success btn-sm"),
+                     actionButton(ns("save_report"), "Save Report", class = "btn-primary btn-sm"),
+                     actionButton(ns("delete_report"), "Delete Report", class = "btn-danger btn-sm")
+                   )
+               )
+        ),
+        column(9, id = ns("main_column"),
+               uiOutput(ns("report_header")),
+               uiOutput(ns("report_canvas"))
+        )
       )
     )
   )
@@ -14533,7 +14536,7 @@ custom_reports_server <- function(id) {
           
           column(
             width = width, offset = offset,
-            div(style = "background-color:white; border:2px solid black; padding:15px; margin-bottom:15px;",
+            div(class = "creport-cell",
                 # Always create controls to preserve state, but hide them for rows 2+ in Multi-Player mode
                 # Title and show controls toggle
                 div(style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;",
@@ -16021,7 +16024,9 @@ player_plans_ui <- function() {
       "))
     ),
     
-    sidebarLayout(
+    div(
+      class = "pp-root",
+      sidebarLayout(
       sidebarPanel(
         width = 3,
         h4("Player Plans"),
@@ -16368,10 +16373,10 @@ player_plans_ui <- function() {
             )
         ) # Close player-plans-content div
       )
-    ),
-    
-    # JavaScript for localStorage persistence
-    tags$script(HTML("
+      ),
+      
+      # JavaScript for localStorage persistence
+      tags$script(HTML("
       // Save player plans to localStorage
       Shiny.addCustomMessageHandler('savePlayerPlans', function(plans) {
         try {
@@ -16425,15 +16430,16 @@ player_plans_ui <- function() {
       });
     ")),
     
-    # Add custom CSS for the modal
-    tags$style(HTML("
+      # Add custom CSS for the modal
+      tags$style(HTML("
       .modal-dialog {
         max-width: 800px;
       }
       .goal-completion-checkbox {
         margin-top: 5px;
       }
-    "))
+      "))
+    )
   )
 }
 # ==================================
@@ -16538,6 +16544,20 @@ enforce_admin_flags(c("jgaynor@pitchingcoachu.com","banni17@yahoo.com"), sm_db_c
 ui <- tagList(
   # --- Custom navbar colors & styling ---
   tags$head(
+    tags$script(HTML("
+      document.addEventListener('DOMContentLoaded', function() {
+        var checkbox = document.querySelector('.dark-toggle input#dark_mode');
+        if (!checkbox) return;
+        var sync = function() {
+          var state = !!checkbox.checked;
+          if (window.Shiny && Shiny.setInputValue) {
+            Shiny.setInputValue('dark_mode', state, {priority: 'event'});
+          }
+        };
+        checkbox.addEventListener('change', sync);
+        sync();
+      });
+    ")),
     # Persist shinymanager token in localStorage so users stay logged in across visits
     tags$script(HTML("
       (function() {
@@ -16923,6 +16943,265 @@ ui <- tagList(
       ::-webkit-scrollbar-thumb:hover {
         background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
       }
+
+      /* ===== DARK MODE OVERRIDES ===== */
+      body.theme-dark {
+        background: radial-gradient(circle at 20% 20%, #0d1224 0%, #0a0f1d 45%, #060910 100%);
+        color: #e5e7eb;
+      }
+      body.theme-dark .navbar-inverse {
+        background: linear-gradient(135deg, #0b0f19 0%, #0f172a 100%);
+        box-shadow: 0 6px 24px rgba(0,0,0,0.5);
+      }
+      body.theme-dark .navbar-inverse .navbar-brand .brand-title {
+        background: linear-gradient(135deg, #c084fc 0%, #a78bfa 100%);
+        -webkit-background-clip: text;
+        -webkit-text-fill-color: transparent;
+        background-clip: text;
+      }
+      body.theme-dark .navbar-inverse .navbar-nav > li > a {
+        color: rgba(229, 231, 235, 0.9) !important;
+      }
+      body.theme-dark .navbar-inverse .navbar-nav > li > a:hover,
+      body.theme-dark .navbar-inverse .navbar-nav > li > a:focus {
+        color: #ffffff !important;
+        background: rgba(255,255,255,0.08);
+        box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+      }
+      body.theme-dark .navbar-inverse .navbar-nav > .active > a,
+      body.theme-dark .navbar-inverse .navbar-nav > .active > a:hover,
+      body.theme-dark .navbar-inverse .navbar-nav > .active > a:focus {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        box-shadow: 0 6px 18px rgba(102,126,234,0.45);
+      }
+      body.theme-dark .container-fluid {
+        background: transparent !important;
+      }
+      body.theme-dark .well,
+      body.theme-dark .panel {
+        background: rgba(15,23,42,0.9) !important;
+        border: 1px solid #1f2937 !important;
+        box-shadow: 0 6px 24px rgba(0,0,0,0.45);
+        color: #e5e7eb !important;
+      }
+      body.theme-dark .panel-default > .panel-heading {
+        background: linear-gradient(135deg, #111827 0%, #0b1220 100%) !important;
+        color: #e5e7eb !important;
+        border: none !important;
+      }
+      body.theme-dark .form-control,
+      body.theme-dark .selectize-input {
+        background: #0f172a !important;
+        color: #e5e7eb !important;
+        border: 1px solid #1f2937 !important;
+        box-shadow: none !important;
+      }
+      body.theme-dark .form-control:focus,
+      body.theme-dark .selectize-input.focus {
+        border-color: #764ba2 !important;
+        box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.25) !important;
+      }
+      body.theme-dark .form-group label {
+        color: #e5e7eb !important;
+      }
+      body.theme-dark .btn-default {
+        background: #0f172a !important;
+        color: #e5e7eb !important;
+        border: 1px solid #1f2937 !important;
+      }
+      body.theme-dark .btn-primary {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: #fff !important;
+        box-shadow: 0 4px 14px rgba(102,126,234,0.35);
+      }
+      body.theme-dark .dataTables_wrapper {
+        background: rgba(15,23,42,0.9) !important;
+        color: #e5e7eb !important;
+      }
+      body.theme-dark .dataTable tbody tr:hover {
+        background: rgba(102,126,234,0.08) !important;
+        box-shadow: 0 2px 10px rgba(0,0,0,0.35) !important;
+      }
+      body.theme-dark .shiny-plot-output,
+      body.theme-dark .plotly,
+      body.theme-dark .html-widget {
+        background: transparent !important;
+        box-shadow: 0 2px 16px rgba(0,0,0,0.35);
+      }
+      /* Wipe embedded white rects in svg/png */
+      body.theme-dark svg rect[fill='#FFFFFF'],
+      body.theme-dark svg rect[fill='#ffffff'],
+      body.theme-dark svg rect[fill='#fff'] {
+        fill: transparent !important;
+        stroke: none !important;
+      }
+      body.theme-dark #summary_heatZonePlot,
+      body.theme-dark #summary_heatZonePlot canvas,
+      body.theme-dark #summary_heatZonePlot img,
+      body.theme-dark #summary_legend,
+      body.theme-dark #summary_legend canvas,
+      body.theme-dark #summary_legend img {
+        background: transparent !important;
+      }
+      body.theme-dark #heatmapsHeatPlot,
+      body.theme-dark #heatmapsHeatPlot canvas,
+      body.theme-dark #heatmapsHeatPlot img,
+      body.theme-dark #cmpA_heat,
+      body.theme-dark #cmpA_heat canvas,
+      body.theme-dark #cmpA_heat img,
+      body.theme-dark #cmpB_heat,
+      body.theme-dark #cmpB_heat canvas,
+      body.theme-dark #cmpB_heat img {
+        background: transparent !important;
+      }
+      /* Toggle switch styling */
+      .dark-toggle { display:flex; align-items:center; gap:10px; }
+      .dark-toggle .switch-label { display:flex; align-items:center; gap:10px; margin:0; cursor:pointer; }
+      .dark-toggle input#dark_mode { display:none; }
+      .dark-toggle .switch-track {
+        position: relative; width: 50px; height: 26px;
+        background: #4b5563; border-radius: 13px; transition: background 0.2s ease;
+        box-shadow: inset 0 0 4px rgba(0,0,0,0.35);
+      }
+      .dark-toggle .switch-thumb {
+        position: absolute; top: 3px; left: 3px; width: 20px; height: 20px;
+        background: #fff; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+        transition: transform 0.2s ease;
+      }
+      .dark-toggle input#dark_mode:checked + .switch-track { background: #764ba2; }
+      .dark-toggle input#dark_mode:checked + .switch-track .switch-thumb { transform: translateX(24px); }
+      .dark-toggle .switch-text { font-weight:600; color:#e5e7eb; }
+      
+      /* Dropdowns (selectize + native) – scoped to dark mode; purple highlight for selected item */
+      body.theme-dark .selectize-input,
+      body.theme-dark .selectize-control.single .selectize-input,
+      body.theme-dark select.form-control {
+        background: #0f172a !important;
+        color: #e5e7eb !important;
+        border: 1px solid #1f2937 !important;
+        box-shadow: none !important;
+      }
+      body.theme-dark .selectize-input input { color: #e5e7eb !important; }
+      body.theme-dark .selectize-input > .item {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: #fff !important;
+        border-radius: 6px;
+        padding: 2px 6px;
+      }
+      body.theme-dark .selectize-dropdown {
+        background: #0f172a !important;
+        color: #e5e7eb !important;
+        border-color: #1f2937 !important;
+      }
+      body.theme-dark .selectize-dropdown .option { color: #e5e7eb !important; }
+      body.theme-dark .selectize-dropdown .option:hover,
+      body.theme-dark .selectize-dropdown .option.active {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        color: #fff !important;
+      }
+      
+      /* Custom Reports cell container */
+      .creport-cell {
+        background: #ffffff;
+        border: 2px solid #000;
+        padding: 15px;
+        margin-bottom: 15px;
+        border-radius: 6px;
+      }
+      body.theme-dark .creport-cell {
+        background: rgba(15,23,42,0.9) !important;
+        border: 1px solid #1f2937 !important;
+        box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+        color: #e5e7eb;
+      }
+      body.theme-dark .creport-cell h4,
+      body.theme-dark .creport-cell h5,
+      body.theme-dark .creport-cell label,
+      body.theme-dark .creport-cell input,
+      body.theme-dark .creport-cell select,
+      body.theme-dark .creport-cell .form-control {
+        color: #e5e7eb !important;
+        background-color: #0f172a !important;
+        border-color: #1f2937 !important;
+      }
+      
+      /* Player Plans & Custom Reports root containers */
+      .pp-root, .creports-root { background: transparent !important; }
+      .pp-root .container-fluid,
+      .creports-root .container-fluid {
+        background: transparent !important;
+      }
+      /* Dark-mode forcing for Custom Reports layout */
+      body.theme-dark .creports-root .panel,
+      body.theme-dark .creports-root .well,
+      body.theme-dark .creports-root .form-group,
+      body.theme-dark .creports-root .tab-content,
+      body.theme-dark .creports-root .tab-pane,
+      body.theme-dark .creports-root .row,
+      body.theme-dark .creports-root .col-sm-3,
+      body.theme-dark .creports-root .col-sm-9 {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+      body.theme-dark .creports-root .form-control {
+        background: #0f172a !important;
+        color: #e5e7eb !important;
+        border: 1px solid #1f2937 !important;
+      }
+      body.theme-dark .creports-root .girafe_container svg,
+      body.theme-dark .creports-root canvas {
+        background: transparent !important;
+      }
+      body.theme-dark #creports-sidebar_column .well,
+      body.theme-dark #creports-main_column .well {
+        background: radial-gradient(circle at top left, #1f2937 0%, #0f172a 60%, #0b0f19 100%) !important;
+        border-left: 4px solid #764ba2 !important;
+        color: #e5e7eb !important;
+      }
+      body.theme-dark #creports-main_column .panel,
+      body.theme-dark #creports-sidebar_column .panel {
+        background: #0f172a !important;
+        color: #e5e7eb !important;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+      }
+      
+      /* Player Plans container dark mode */
+      body.theme-dark .pp-root {
+        background: transparent !important;
+      }
+      body.theme-dark .pp-root .goal-container {
+        background: rgba(15,23,42,0.85) !important;
+        border: 1px solid #1f2937 !important;
+        box-shadow: 0 4px 20px rgba(0,0,0,0.35);
+        color: #e5e7eb;
+      }
+      body.theme-dark .pp-root .goal-description {
+        background: rgba(17,24,39,0.9) !important;
+        border-color: #1f2937 !important;
+        color: #e5e7eb !important;
+      }
+      body.theme-dark .pp-root .panel,
+      body.theme-dark .pp-root .well {
+        background: rgba(15,23,42,0.9) !important;
+        color: #e5e7eb !important;
+        box-shadow: 0 2px 12px rgba(0,0,0,0.35);
+      }
+      body.theme-dark .pp-root .girafe_container svg,
+      body.theme-dark .pp-root canvas {
+        background: transparent !important;
+      }
+      
+      /* Legend readability in dark mode */
+      body.theme-dark g.legend text,
+      body.theme-dark [aria-label='legend'] text {
+        fill: #ffffff !important;
+      }
+      body.theme-dark g.legend rect,
+      body.theme-dark [aria-label='legend'] rect {
+        fill: transparent !important;
+        stroke: transparent !important;
+      }
     "))
   ),
   
@@ -16951,6 +17230,8 @@ ui <- tagList(
     });
   ")),
   
+  shinyjs::useShinyjs(),
+  
   tags$style(HTML("
     /* Custom note button - already styled in main CSS */
     #openNote.btn-note {
@@ -16968,6 +17249,21 @@ ui <- tagList(
       outline: none;
     }
   ")),
+
+  # --- Floating dark mode toggle (top-left, all pages) ---
+  absolutePanel(
+    style = "background:rgba(0,0,0,0.4); border-radius:12px; padding:8px 12px; color:#fff; z-index:2000;",
+    tags$div(
+      class = "dark-toggle",
+      tags$label(
+        class = "switch-label",
+        tags$input(id = "dark_mode", type = "checkbox"),
+        tags$span(class = "switch-track", tags$span(class = "switch-thumb")),
+        tags$span(class = "switch-text", "Dark mode")
+      )
+    ),
+    top = 80, left = 12, width = 170, fixed = TRUE, draggable = FALSE
+  ),
   
   # --- Floating "Add Note" button (top-right, all pages) ---
   absolutePanel(
@@ -17514,6 +17810,15 @@ server <- function(input, output, session) {
     custom_tables()
     update_custom_table_choices(session)
   })
+  
+  # Theme toggle (light/dark)
+  observeEvent(input$dark_mode, {
+    if (isTRUE(input$dark_mode)) {
+      shinyjs::addClass(selector = "body", class = "theme-dark")
+    } else {
+      shinyjs::removeClass(selector = "body", class = "theme-dark")
+    }
+  }, ignoreInit = TRUE)
   
   # Helper to resolve table mode (supports saved custom tables)
   resolve_table_mode <- function(mode_in, custom_cols_in) {
@@ -19429,7 +19734,7 @@ server <- function(input, output, session) {
     if (identical(stat, "Exit Velocity")) stat <- "EV"
     
     render_heatmap_stat(df, stat)
-  })
+  }, bg = "transparent")
   
   
   output$summary_legend <- renderPlot({
@@ -23364,7 +23669,7 @@ server <- function(input, output, session) {
     
     stat <- input$hmStat
     render_heatmap_stat(df, stat)
-  })
+  }, bg = "transparent")
   
   # ---------- PITCH (point chart; respects Pitch Results filter) ----------
   output$heatmapsPitchPlot <- ggiraph::renderGirafe({
