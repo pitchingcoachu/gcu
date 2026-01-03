@@ -3141,12 +3141,7 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
     state_data <- tryCatch({
       qp_raw <- compute_qp_points(state_data)
       qp_scaled <- round(qp_raw * 200, 1)
-      if ("QP+" %in% names(state_data)) {
-        state_data %>%
-          dplyr::mutate(`QP+` = dplyr::coalesce(suppressWarnings(as.numeric(`QP+`)), qp_scaled))
-      } else {
-        state_data %>% dplyr::mutate(`QP+` = qp_scaled)
-      }
+      state_data %>% dplyr::mutate(`QP+` = qp_scaled)
     }, error = function(e) state_data)
     
     # Add pitch data with results and colors (includes QP+ for hover)
@@ -3187,6 +3182,7 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
       scale_fill_gradient2(
         low = "blue", mid = "white", high = "red",
         midpoint = 100, name = "QP+",
+        limits = c(0, 200),
         guide = "none"
       ) +
       # Add home plate
