@@ -2208,7 +2208,7 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
         "Live"    = c("InZone%","Strike%","FPS%","E+A%","QP+","Ctrl+","Pitching+","K%","BB%","Whiff%"),
         "Results" = c("Whiff%","K%","BB%","CSW%","GB%","Barrel%","EV"),
         "Bullpen" = c("InZone%","Comp%","Ctrl+","Stuff+"),
-        "Banny"   = c("Strike%","InZone%","Comp%","Stuff+","QP+","Pitching+"),
+        "Banny"   = c("Strike%","QP%","InZone%","Comp%","Stuff+","QP+","Pitching+"),
         character(0)
       )
       available_cols <- intersect(color_cols, names(df))
@@ -2289,7 +2289,7 @@ results_cols_live <- c("Pitch","#","BF","K%","BB%","GB%","Whiff%","CSW%","EV","L
 bullpen_cols      <- c("Pitch","#","Velo","Max","IVB","HB","Spin","bTilt","Height","Side","Ext","InZone%","Comp%","Ctrl+","Stuff+")
 live_cols         <- c("Pitch","#","Velo","Max","IVB","HB","FPS%","E+A%","InZone%","Strike%","Whiff%","K%","BB%","QP+")
 usage_cols        <- c("Pitch","#","Usage","0-0","Behind","Even","Ahead","<2K","2K")
-banny_cols        <- c("Pitch","Usage","Strike%","InZone%","Comp%","Velo","Max","IVB","HB","Stuff+","QP+","Pitching+")
+banny_cols        <- c("Pitch","Usage","Strike%","QP%","InZone%","Comp%","Velo","Max","IVB","HB","Stuff+","QP+","Pitching+")
 perf_cols         <- c("Pitch","#","BF","RV/100","InZone%","Comp%","Strike%","FPS%","E+A%","K%","BB%","Whiff%","CSW%","EV","LA","Ctrl+","QP+","Pitching+")
 
 # ---- unified list for the pickers + a helper to compute visibility
@@ -2873,6 +2873,7 @@ make_hover_tt <- function(df) {
     "<br>IVB: " , ifelse(is.na(df$InducedVertBreak), "", sprintf("%.1f in", df$InducedVertBreak)),
     "<br>HB: "  , ifelse(is.na(df$HorzBreak), "", sprintf("%.1f in", df$HorzBreak)),
     "<br>Stuff+: ", ifelse(is.na(df$`Stuff+`), "", sprintf("%.1f", df$`Stuff+`)),
+    "<br>QP+: ", ifelse(is.na(df$`QP+`), "", sprintf("%.1f", df$`QP+`)),
     "<br>In Zone: ", inzone_label(df$PlateLocSide, df$PlateLocHeight)
   )
 }
@@ -3136,7 +3137,19 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
       create_qp_heatmap_data(pt, pitcher_hand, batter_hand, count_state)
     }))
     
-    # Add pitch data with results and colors
+    # Ensure per-pitch QP+ (scaled to 0-200) is present for tooltips
+    state_data <- tryCatch({
+      qp_raw <- compute_qp_points(state_data)
+      qp_scaled <- round(qp_raw * 200, 1)
+      if ("QP+" %in% names(state_data)) {
+        state_data %>%
+          dplyr::mutate(`QP+` = dplyr::coalesce(suppressWarnings(as.numeric(`QP+`)), qp_scaled))
+      } else {
+        state_data %>% dplyr::mutate(`QP+` = qp_scaled)
+      }
+    }, error = function(e) state_data)
+    
+    # Add pitch data with results and colors (includes QP+ for hover)
     state_data_with_result <- state_data %>%
       dplyr::mutate(
         Result = compute_result(PitchCall, PlayResult),
