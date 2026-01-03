@@ -3008,10 +3008,10 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
               di <- ifelse(d >= 3, 4, d + 1)
               best <- max(best, custom_seeds$w[j] * dec[di])
             }
-            base_score <- best * 100
+            base_score <- best * 200
           } else {
             # Use original calculation
-            base_score <- qp_weight_for_square(sq, pt, p_hand, state) * 100
+            base_score <- qp_weight_for_square(sq, pt, p_hand, state) * 200
           }
         }
         
@@ -3063,7 +3063,7 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
               # Special handling for non-fastball/sinker below zone over expanded plate area
               if (low_over_expanded_plate && is_non_fastball_sinker) {
                 # For ahead counts, low over expanded plate should be light red - force higher minimum score
-                base_score <- pmax(base_score, 60)  # Higher minimum for light red instead of light blue
+                base_score <- pmax(base_score, 120)  # Higher minimum for light red instead of light blue (scale 0-200)
                 distance_penalty <- pmin(0.1, 0.01 + zone_distance * 0.05)  # Even smaller penalty
               } else if (below_zone && is_non_fastball_sinker) {
                 # Moderate penalty below zone but outside expanded plate for non-fastball/sinker in ahead counts
@@ -3186,7 +3186,7 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
       # Blue to red color scale for QP+
       scale_fill_gradient2(
         low = "blue", mid = "white", high = "red",
-        midpoint = 50, name = "QP+",
+        midpoint = 100, name = "QP+",
         guide = "none"
       ) +
       # Add home plate
