@@ -2489,7 +2489,7 @@ get_process_thresholds <- function(column_name, pitch_type) {
   }
   if (column_name == "FPS%") return(list(poor = 55, avg = 60, great = 65))
   if (column_name == "E+A%" && pitch_type == "all") return(list(poor = 65, avg = 70, great = 75))
-  if (column_name == "QP%") return(list(poor = 60, avg = 70, great = 80))
+  if (column_name == "QP%") return(list(poor = 38, avg = 48, great = 58))
   if (column_name == "Ctrl+") return(list(poor = 75, avg = 85, great = 95))
   if (column_name == "QP+") return(list(poor = 75, avg = 90, great = 105))
   if (column_name == "Pitching+") return(list(poor = 80, avg = 95, great = 110))
@@ -2648,15 +2648,39 @@ fill_all_qp_pct <- function(df_table, src_df) {
   if (!("QP%" %in% names(df_table))) return(df_table)
   
   idx <- rep(FALSE, nrow(df_table))
+  
+  # Look across common split columns first
   for (col in c("Pitch","PitchType","SplitColumn","Player")) {
     if (col %in% names(df_table)) {
-      idx <- idx | tolower(as.character(df_table[[col]])) == "all"
+      val <- tolower(as.character(df_table[[col]]))
+      clean <- gsub("[^a-z0-9]+", "", val)
+      idx <- idx | val == "all" | grepl("^all\\b", val) | grepl("^all", clean) | clean == "overall"
     }
+  }
+  
+  # If still none, scan all character columns for an "all"-like label
+  if (!any(idx)) {
+    char_cols <- vapply(df_table, is.character, logical(1))
+    if (any(char_cols)) {
+      vals <- apply(df_table[, char_cols, drop = FALSE], 2, function(v) tolower(as.character(v)))
+      if (is.vector(vals)) vals <- matrix(vals, ncol = 1)
+      clean_vals <- apply(vals, 2, function(v) gsub("[^a-z0-9]+", "", v))
+      idx <- apply(vals, 1, function(row) any(grepl("^all", row) | row %in% c("all","all players","all pitchers","all pitch types","(all pitch types)"))) |
+        apply(clean_vals, 1, function(row) any(grepl("^all", row) | row == "overall"))
+    }
+  }
+  
+  missing_qp <- which(is.na(df_table$`QP%`) | df_table$`QP%` == "")
+  if (!any(idx) && length(missing_qp) == 1) {
+    idx[missing_qp] <- TRUE
+  }
+  if (!any(idx) && length(missing_qp) > 1) {
+    idx[missing_qp] <- TRUE
   }
   if (!any(idx)) return(df_table)
   
   qp_val <- safe_pct(
-    sum((compute_qp_points(src_df) * 200) >= 50, na.rm = TRUE),
+    sum((compute_qp_points(src_df) * 200) >= 100, na.rm = TRUE),
     nrow(src_df)
   )
   df_table$`QP%`[idx] <- qp_val
@@ -2760,7 +2784,7 @@ make_session_logs_table <- function(df) {
       # QP+ scalar — use your real one if available; else NA
       qp_points <- compute_qp_points(d)
       qp_all <- if (!is.null(get0("safe_qp_scalar"))) get0("safe_qp_scalar")(d) else NA_real_
-      qp_pct <- .s_fmt_pct1(sum((qp_points * 200) >= 50, na.rm = TRUE), nrow(d))
+      qp_pct <- .s_fmt_pct1(sum((qp_points * 200) >= 100, na.rm = TRUE), nrow(d))
       pitc_all <- round(.s_nz_mean(c(stuff_all, qp_all)), 1)
       
       tibble::tibble(
@@ -2979,118 +3003,6 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
                theme_void())
     }
     
-    # Function to create QP+ heatmap data for the competitive zone
-    create_qp_heatmap_data <- function(pt, p_hand, b_hand, state) {
-      # Create a larger grid that extends beyond the competitive zone for better color range
-      x_seq <- seq(COMP_LEFT - 0.3, COMP_RIGHT + 0.3, length.out = 18)
-      y_seq <- seq(COMP_BOTTOM - 0.3, COMP_TOP + 0.3, length.out = 18)
-      grid_data <- expand.grid(x = x_seq, y = y_seq)
-      
-      # Calculate QP+ scores for each grid point
-      grid_data$qp_score <- sapply(seq_len(nrow(grid_data)), function(i) {
-        x <- grid_data$x[i]
-        y <- grid_data$y[i]
-        sq <- zone9_square(x, y)
-        
-        # Start with base QP+ score, but apply count-specific modifications
-        if (is.na(sq)) {
-          base_score <- 0  # Outside competitive zone
-        } else {
-          # Get custom seeds for count-specific adjustments
-          custom_seeds <- get_custom_seeds_for_count(pt, p_hand, state)
-          if (!is.null(custom_seeds)) {
-            # Use custom calculation with count-specific seeds
-            rc <- sq_to_rc(sq)
-            dec <- qp_decay(state)
-            best <- 0
-            for (j in seq_len(nrow(custom_seeds))) {
-              d <- abs(custom_seeds$r[j] - rc$r) + abs(custom_seeds$c[j] - rc$c)
-              di <- ifelse(d >= 3, 4, d + 1)
-              best <- max(best, custom_seeds$w[j] * dec[di])
-            }
-            base_score <- best * 200
-          } else {
-            # Use original calculation
-            base_score <- qp_weight_for_square(sq, pt, p_hand, state) * 200
-          }
-        }
-        
-        # Apply penalties for out-of-zone locations based on count state
-        if (state %in% c("Behind", "Even", "Ahead")) {
-          # Check if location is outside the strike zone
-          outside_zone <- (x < ZONE_LEFT || x > ZONE_RIGHT || 
-                             y < ZONE_BOTTOM || y > ZONE_TOP)
-          
-          if (outside_zone) {
-            # Calculate distance to nearest strike zone edge
-            x_dist <- pmax(0, pmax(ZONE_LEFT - x, x - ZONE_RIGHT))
-            y_dist <- pmax(0, pmax(ZONE_BOTTOM - y, y - ZONE_TOP))
-            zone_distance <- sqrt(x_dist^2 + y_dist^2)
-            
-            # Check if we're below the zone (for breaking balls/offspeed in even/ahead)
-            below_zone <- y < ZONE_BOTTOM
-            over_plate <- x >= ZONE_LEFT && x <= ZONE_RIGHT
-            # Expand to 1 square left and right of plate
-            plate_width <- ZONE_RIGHT - ZONE_LEFT
-            expanded_plate <- x >= (ZONE_LEFT - plate_width/3) && x <= (ZONE_RIGHT + plate_width/3)
-            very_low_over_plate <- below_zone && over_plate && y >= (ZONE_BOTTOM - 0.4)
-            low_over_expanded_plate <- below_zone && expanded_plate  # Any low area over expanded plate area
-            is_non_fastball_sinker <- pt %in% c("Cutter", "Slider", "Sweeper", "Curveball", "ChangeUp", "Splitter")
-            
-            # Apply count-specific penalties for out-of-zone locations
-            if (state == "Behind") {
-              # Most aggressive penalty for all pitches
-              distance_penalty <- pmin(0.9, 0.5 + zone_distance * 0.8)
-              if (zone_distance > 0.5) {
-                distance_penalty <- pmin(0.95, 0.7 + zone_distance * 1.2)
-              }
-            } else if (state == "Even") {
-              # Moderate penalty, but reduced for non-fastball/sinker below zone
-              if (below_zone && is_non_fastball_sinker) {
-                # Less penalty below zone for non-fastball/sinker in even counts
-                distance_penalty <- pmin(0.6, 0.15 + zone_distance * 0.4)
-                if (zone_distance > 0.5) {
-                  distance_penalty <- pmin(0.75, 0.25 + zone_distance * 0.5)
-                }
-              } else {
-                # Standard even count penalty
-                distance_penalty <- pmin(0.75, 0.3 + zone_distance * 0.6)
-                if (zone_distance > 0.5) {
-                  distance_penalty <- pmin(0.85, 0.5 + zone_distance * 0.8)
-                }
-              }
-            } else { # Ahead
-              # Special handling for non-fastball/sinker below zone over expanded plate area
-              if (low_over_expanded_plate && is_non_fastball_sinker) {
-                # For ahead counts, low over expanded plate should be light red - force higher minimum score
-                base_score <- pmax(base_score, 120)  # Higher minimum for light red instead of light blue (scale 0-200)
-                distance_penalty <- pmin(0.1, 0.01 + zone_distance * 0.05)  # Even smaller penalty
-              } else if (below_zone && is_non_fastball_sinker) {
-                # Moderate penalty below zone but outside expanded plate for non-fastball/sinker in ahead counts
-                distance_penalty <- pmin(0.6, 0.2 + zone_distance * 0.4)
-                if (zone_distance > 0.5) {
-                  distance_penalty <- pmin(0.75, 0.3 + zone_distance * 0.5)
-                }
-              } else {
-                # Standard ahead count penalty
-                distance_penalty <- pmin(0.6, 0.2 + zone_distance * 0.4)
-                if (zone_distance > 0.5) {
-                  distance_penalty <- pmin(0.75, 0.4 + zone_distance * 0.6)
-                }
-              }
-            }
-            
-            base_score <- base_score * (1 - distance_penalty)
-          }
-        }
-        
-        return(base_score)
-      })
-      
-      grid_data$pitch_type <- pt
-      return(grid_data)
-    }
-    
     # Helper function to get custom seeds for count-specific adjustments
     get_custom_seeds_for_count <- function(pt, hand, state) {
       pt <- as.character(pt)
@@ -3132,6 +3044,115 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
       return(NULL)
     }
     
+    # Shared scorer so tiles and pitch tooltips stay in sync (includes out-of-zone penalties)
+    score_location <- function(x, y, pt, p_hand, state, session_type = NULL) {
+      # Only score live pitches when we have session metadata
+      if (!is.null(session_type) && !is.na(session_type) && session_type != "Live") {
+        return(NA_real_)
+      }
+      if (is.na(x) || is.na(y) || is.na(pt)) return(NA_real_)
+      
+      sq <- zone9_square(x, y)
+      
+      # Start with base QP+ score (0-200 scale)
+      if (is.na(sq)) {
+        base_score <- 0  # Outside competitive zone
+      } else {
+        custom_seeds <- get_custom_seeds_for_count(pt, p_hand, state)
+        if (!is.null(custom_seeds)) {
+          # Count-specific seed weighting
+          rc <- sq_to_rc(sq)
+          dec <- qp_decay(state)
+          best <- 0
+          for (j in seq_len(nrow(custom_seeds))) {
+            d  <- abs(custom_seeds$r[j] - rc$r) + abs(custom_seeds$c[j] - rc$c)
+            di <- ifelse(d >= 3, 4, d + 1)
+            best <- max(best, custom_seeds$w[j] * dec[di])
+          }
+          base_score <- best * 200
+        } else {
+          # Default weighting
+          base_score <- qp_weight_for_square(sq, pt, p_hand, state) * 200
+        }
+      }
+      
+      # Apply count/state penalties for out-of-zone locations
+      if (state %in% c("Behind", "Even", "Ahead")) {
+        outside_zone <- (x < ZONE_LEFT || x > ZONE_RIGHT ||
+                           y < ZONE_BOTTOM || y > ZONE_TOP)
+        
+        if (outside_zone) {
+          # Distance to the nearest part of the strike zone
+          x_dist <- pmax(0, pmax(ZONE_LEFT - x, x - ZONE_RIGHT))
+          y_dist <- pmax(0, pmax(ZONE_BOTTOM - y, y - ZONE_TOP))
+          zone_distance <- sqrt(x_dist^2 + y_dist^2)
+          
+          below_zone <- y < ZONE_BOTTOM
+          over_plate <- x >= ZONE_LEFT && x <= ZONE_RIGHT
+          plate_width <- ZONE_RIGHT - ZONE_LEFT
+          expanded_plate <- x >= (ZONE_LEFT - plate_width/3) && x <= (ZONE_RIGHT + plate_width/3)
+          very_low_over_plate <- below_zone && over_plate && y >= (ZONE_BOTTOM - 0.4)
+          low_over_expanded_plate <- below_zone && expanded_plate
+          is_non_fastball_sinker <- pt %in% c("Cutter", "Slider", "Sweeper", "Curveball", "ChangeUp", "Splitter")
+          
+          if (state == "Behind") {
+            distance_penalty <- pmin(0.9, 0.5 + zone_distance * 0.8)
+            if (zone_distance > 0.5) {
+              distance_penalty <- pmin(0.95, 0.7 + zone_distance * 1.2)
+            }
+          } else if (state == "Even") {
+            if (below_zone && is_non_fastball_sinker) {
+              distance_penalty <- pmin(0.6, 0.15 + zone_distance * 0.4)
+              if (zone_distance > 0.5) {
+                distance_penalty <- pmin(0.75, 0.25 + zone_distance * 0.5)
+              }
+            } else {
+              distance_penalty <- pmin(0.75, 0.3 + zone_distance * 0.6)
+              if (zone_distance > 0.5) {
+                distance_penalty <- pmin(0.85, 0.5 + zone_distance * 0.8)
+              }
+            }
+          } else { # Ahead
+            if (low_over_expanded_plate && is_non_fastball_sinker) {
+              base_score <- pmax(base_score, 120)
+              distance_penalty <- pmin(0.1, 0.01 + zone_distance * 0.05)
+            } else if (below_zone && is_non_fastball_sinker) {
+              distance_penalty <- pmin(0.6, 0.2 + zone_distance * 0.4)
+              if (zone_distance > 0.5) {
+                distance_penalty <- pmin(0.75, 0.3 + zone_distance * 0.5)
+              }
+            } else {
+              distance_penalty <- pmin(0.6, 0.2 + zone_distance * 0.4)
+              if (zone_distance > 0.5) {
+                distance_penalty <- pmin(0.75, 0.4 + zone_distance * 0.6)
+              }
+            }
+          }
+          
+          base_score <- base_score * (1 - distance_penalty)
+        }
+      }
+      
+      base_score
+    }
+    
+    # Function to create QP+ heatmap data for the competitive zone
+    create_qp_heatmap_data <- function(pt, p_hand, b_hand, state) {
+      # Create a larger grid that extends beyond the competitive zone for better color range
+      x_seq <- seq(COMP_LEFT - 0.3, COMP_RIGHT + 0.3, length.out = 18)
+      y_seq <- seq(COMP_BOTTOM - 0.3, COMP_TOP + 0.3, length.out = 18)
+      grid_data <- expand.grid(x = x_seq, y = y_seq)
+      
+      grid_data$qp_score <- vapply(
+        seq_len(nrow(grid_data)),
+        function(i) score_location(grid_data$x[i], grid_data$y[i], pt, p_hand, state),
+        numeric(1)
+      )
+      
+      grid_data$pitch_type <- pt
+      return(grid_data)
+    }
+    
     # Prepare QP+ heatmap data for all pitch types
     all_heatmap_data <- do.call(rbind, lapply(pitch_types, function(pt) {
       create_qp_heatmap_data(pt, pitcher_hand, batter_hand, count_state)
@@ -3139,9 +3160,20 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
     
     # Ensure per-pitch QP+ (scaled to 0-200) is present for tooltips
     state_data <- tryCatch({
-      qp_raw <- compute_qp_points(state_data)
-      qp_scaled <- round(qp_raw * 200, 1)
-      state_data %>% dplyr::mutate(`QP+` = qp_scaled)
+      if (!nrow(state_data)) return(state_data)
+      qp_scored <- vapply(
+        seq_len(nrow(state_data)),
+        function(i) score_location(
+          state_data$PlateLocSide[i],
+          state_data$PlateLocHeight[i],
+          state_data$TaggedPitchType[i],
+          pitcher_hand,
+          count_state,
+          if ("SessionType" %in% names(state_data)) state_data$SessionType[i] else NULL
+        ),
+        numeric(1)
+      )
+      state_data %>% dplyr::mutate(`QP+` = round(qp_scored, 1))
     }, error = function(e) state_data)
     
     # Add pitch data with results and colors (includes QP+ for hover)
@@ -3647,7 +3679,7 @@ compute_qp_points <- function(df) {
   out
 }
 
-# QP Locations filter: determine if pitch locations are good (red/QP+ >= 50) or bad (blue/white/QP+ < 50)
+# QP Locations filter: determine if pitch locations are good (red/QP+ >= 100) or bad (blue/white/QP+ < 100)
 # This function calculates QP+ scores for pitch locations and classifies them
 filter_qp_locations <- function(df, qp_choice) {
   # Pass-through if "All" or invalid choice
@@ -3670,7 +3702,7 @@ filter_qp_locations <- function(df, qp_choice) {
   hand <- as.character(df$PitcherThrows)
   state <- count_state_vec(df$Balls, df$Strikes)
   
-  # Calculate QP+ scores (0-100 scale)
+  # Calculate QP+ scores (0-200 scale)
   qp_scores <- rep(NA_real_, n)
   
   for (i in seq_len(n)) {
@@ -3687,17 +3719,17 @@ filter_qp_locations <- function(df, qp_choice) {
     } else {
       # Calculate QP+ score using existing function
       qp_weight <- qp_weight_for_square(sq, pt[i], hand[i], ifelse(is.na(state[i]), "Even", state[i]))
-      qp_scores[i] <- qp_weight * 100
+      qp_scores[i] <- qp_weight * 200
     }
   }
   
   # Apply filter based on choice
   if (qp_choice == "Yes") {
-    # Show only good locations (red areas, QP+ >= 50)
-    return(df[qp_scores >= 50 & !is.na(qp_scores), , drop = FALSE])
+    # Show only good locations (red areas, QP+ >= 100)
+    return(df[qp_scores >= 100 & !is.na(qp_scores), , drop = FALSE])
   } else if (qp_choice == "No") {
-    # Show only poor locations (blue/white areas, QP+ < 50)
-    return(df[qp_scores < 50 & !is.na(qp_scores), , drop = FALSE])
+    # Show only poor locations (blue/white areas, QP+ < 100)
+    return(df[qp_scores < 100 & !is.na(qp_scores), , drop = FALSE])
   }
   
   return(df)
@@ -5243,7 +5275,7 @@ make_summary <- function(df, group_col = "TaggedPitchType") {
       
       KPercent  = safe_pct(K_all,  BF_all),
       BBPercent = safe_pct(BB_all, BF_all),
-      QPCount   = sum((QP_pts * 200) >= 50, na.rm = TRUE),
+      QPCount   = sum((QP_pts * 200) >= 100, na.rm = TRUE),
       fps_opp  = sum(SessionType == "Live" & Balls == 0 & Strikes == 0, na.rm = TRUE),
       
       FPS_all = sum(SessionType == "Live" & !is.na(Balls) & !is.na(Strikes) & Balls == 0 & Strikes == 0 &
@@ -10385,7 +10417,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
         ctrl_all   <- round(nz_mean(scores) * 100, 1)
         qp_vals   <- compute_qp_points(df)
         qp_all    <- round(nz_mean(qp_vals) * 200, 1)
-        qp_pct    <- safe_pct(sum((qp_vals * 200) >= 50, na.rm = TRUE), nrow(df))
+        qp_pct    <- safe_pct(sum((qp_vals * 200) >= 100, na.rm = TRUE), nrow(df))
         
         tibble::tibble(
           `#`            = nrow(df),
@@ -11315,7 +11347,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
           ctrl_all   <- round(nz_mean_local(scores) * 100, 1)
           qp_vals   <- compute_qp_points(df)
           qp_all    <- round(nz_mean_local(qp_vals) * 200, 1)
-          qp_pct    <- safe_pct(sum((qp_vals * 200) >= 50, na.rm = TRUE), nrow(df))
+          qp_pct    <- safe_pct(sum((qp_vals * 200) >= 100, na.rm = TRUE), nrow(df))
           
           tibble::tibble(
             `#`            = nrow(df),
@@ -16444,7 +16476,7 @@ player_plans_ui <- function() {
           condition = "input.pp_goal1_type == 'Execution'",
           selectInput("pp_goal1_execution_stat", "Stat:",
                       choices = c("", "FPS%", "E+A%", "InZone%", "Strike%", 
-                                  "Comp%", "Ctrl+", "QP+", "Whiff%", "CSW%"),
+                                  "Comp%", "Ctrl+", "QP+", "QP%", "Whiff%", "CSW%"),
                       selected = ""),
           selectInput("pp_goal1_execution_pitch", "Pitch Type:",
                       choices = c("All"),
@@ -16536,7 +16568,7 @@ player_plans_ui <- function() {
           condition = "input.pp_goal2_type == 'Execution'",
           selectInput("pp_goal2_execution_stat", "Stat:",
                       choices = c("", "FPS%", "E+A%", "InZone%", "Strike%", 
-                                  "Comp%", "Ctrl+", "QP+", "Whiff%", "CSW%"),
+                                  "Comp%", "Ctrl+", "QP+", "QP%", "Whiff%", "CSW%"),
                       selected = ""),
           selectInput("pp_goal2_execution_pitch", "Pitch Type:",
                       choices = c("All"),
@@ -16628,7 +16660,7 @@ player_plans_ui <- function() {
           condition = "input.pp_goal3_type == 'Execution'",
           selectInput("pp_goal3_execution_stat", "Stat:",
                       choices = c("", "FPS%", "E+A%", "InZone%", "Strike%", 
-                                  "Comp%", "Ctrl+", "QP+", "Whiff%", "CSW%"),
+                                  "Comp%", "Ctrl+", "QP+", "QP%", "Whiff%", "CSW%"),
                       selected = ""),
           selectInput("pp_goal3_execution_pitch", "Pitch Type:",
                       choices = c("All"),
@@ -22478,6 +22510,7 @@ server <- function(input, output, session) {
         dplyr::mutate(!!split_col_name := as.character(.data[[split_col_name]]))
     }
     df_table <- df_table %>% dplyr::left_join(extras, by = split_col_name)
+    df_table <- fill_all_qp_pct(df_table, df)
     if (identical(mode, "Usage")) {
       usage_extras_raw <- compute_usage_by_count(df)
       if ("PitchType" %in% names(usage_extras_raw)) {
@@ -25314,7 +25347,7 @@ server <- function(input, output, session) {
           },
           `QP%` = {
             vals <- compute_qp_points(dplyr::cur_data_all())
-            qp_count <- sum((vals * 200) >= 50, na.rm = TRUE)
+            qp_count <- sum((vals * 200) >= 100, na.rm = TRUE)
             if (dplyr::n() > 0) (qp_count / dplyr::n()) * 100 else NA_real_
           },
           `Strike%` = {
@@ -27137,6 +27170,22 @@ server <- function(input, output, session) {
                    .groups = 'drop'
                  ) %>%
                  dplyr::arrange(Date))
+      } else if (stat == "QP%") {
+        # QP% = Share of pitches with QP+ >= 100 (using compute_qp_points)
+        return(df %>%
+                 dplyr::group_by(Date, SessionType) %>%
+                 dplyr::summarise(
+                   qp_vals  = list(compute_qp_points(dplyr::cur_data_all())),
+                   qp_count = {
+                     vals <- unlist(qp_vals)
+                     sum((vals * 200) >= 100, na.rm = TRUE)
+                   },
+                   total_pitches = dplyr::n(),
+                   value = ifelse(total_pitches > 0, round(100 * qp_count / total_pitches, 1), 0),
+                   .groups = 'drop'
+                 ) %>%
+                 dplyr::select(-qp_vals) %>%
+                 dplyr::arrange(Date))
       } else if (stat == "Whiff%") {
         # Whiff% = Swinging strikes / Total swings
         return(df %>%
@@ -27375,12 +27424,17 @@ server <- function(input, output, session) {
       x = "Date",
       y = y_label,
       color = "Session Type"
-    ) +
+    )
+    
+    dark_on <- isTRUE(input$dark_mode)
+    p <- p +
       theme_minimal() +
       theme(
         plot.title = element_text(hjust = 0.5, face = "bold"),
         axis.text.x = element_text(angle = 45, hjust = 1),
-        legend.position = "bottom"
+        legend.position = "bottom",
+        panel.grid.minor = if (dark_on) element_blank() else NULL,
+        panel.grid.major = if (dark_on) element_line(color = "gray40", linewidth = 0.3) else NULL
       )
     
     return(p)
