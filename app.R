@@ -21,6 +21,20 @@ library(shinymanager)  # for custom authentication with cool login page
 # raise upload size if needed (50 MB here)
 options(shiny.maxRequestSize = 50 * 1024^2)
 
+# Set default plotting background to transparent
+options(shiny.plot.res = 96)
+# Force transparent backgrounds for all plot devices
+if (capabilities("cairo")) {
+  options(bitmapType = "cairo")
+}
+
+# Wrapper to force transparent girafe backgrounds everywhere
+girafe_transparent <- function(..., bg = "transparent") {
+  args <- list(...)
+  if (!"bg" %in% names(args)) args$bg <- bg
+  do.call(ggiraph::girafe, args)
+}
+
 # Optional team scoping: blank = no filter
 if (!exists("TEAM_CODE", inherits = TRUE)) TEAM_CODE <- ""
 
@@ -3278,12 +3292,20 @@ convert_to_clock <- Vectorize(function(x) {
 
 fmt_date <- function(d) format(d, "%m/%d/%y")
 
+transparent_bg_theme <- theme(
+  panel.background = element_rect(fill = "transparent", color = NA),
+  plot.background  = element_rect(fill = "transparent", color = NA),
+  legend.background = element_rect(fill = "transparent", color = NA),
+  legend.box.background = element_rect(fill = "transparent", color = NA),
+  strip.background = element_rect(fill = "transparent", color = NA)
+)
+
 axis_theme <- theme(
   axis.text.x  = element_text(color="black", face="bold"),
   axis.text.y  = element_text(color="black", face="bold"),
   axis.title.x = element_text(color="black", face="bold"),
   axis.title.y = element_text(color="black", face="bold")
-)
+) + transparent_bg_theme
 
 grid_theme <- function(dark_on = FALSE) {
   grid_col <- adjustcolor(if (dark_on) "white" else "black",
@@ -4370,8 +4392,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
     theme_void() + 
     theme(legend.position = "none",
           plot.title = element_text(face = "bold", hjust = 0.5),
-          plot.background = element_rect(fill = "white", color = NA),
-          panel.background = element_rect(fill = "white", color = NA)) +
+          plot.background = element_rect(fill = "transparent", color = NA),
+          panel.background = element_rect(fill = "transparent", color = NA)) +
     labs(title = title)
   
   # If show_scale, add gradient bar on top
@@ -4417,8 +4439,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
         axis.text.x = element_text(size = 10, face = "bold", margin = margin(t = 3)),
         axis.title.x = element_text(face = "bold", size = 11, margin = margin(t = 8)),
         plot.margin = margin(5, 0, 10, 0),
-        plot.background = element_rect(fill = "white", color = NA),
-        panel.background = element_rect(fill = "white", color = NA),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        panel.background = element_rect(fill = "transparent", color = NA),
         aspect.ratio = 0.15  # Make scale bar much narrower
       ) +
       labs(x = scale_label)
@@ -5814,9 +5836,10 @@ pitch_ui <- function(show_header = FALSE) {
               column(
                 12,
                 div(
+                  class = "legend-plot-wrap",
                   style = "display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0px; min-height: 130px;",
-                  plotOutput("summary_legend", height = "70px", width = "60%"),
-                  plotOutput("summary_result_legend", height = "70px", width = "60%")
+                  plotOutput("summary_legend", height = "70px", width = "100%"),
+                  plotOutput("summary_result_legend", height = "70px", width = "100%")
                 )
               )
             ),
@@ -6760,7 +6783,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
               coord_fixed(ratio = 1, xlim = c(-3, 3), ylim = c(0.5, 5)) +
               theme_void() + theme(legend.position = "none")
             
-            ggiraph::girafe(
+            girafe_transparent(
               ggobj = p,
               options = list(
                 ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE,
@@ -6913,7 +6936,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         p_empty <- ggplot() + 
           annotate("text", x = 0, y = 2.5, label = "No pitches", size = 5) +
           theme_void()
-        return(ggiraph::girafe(ggobj = p_empty))
+        return(girafe_transparent(ggobj = p_empty))
       }
       
       types_chr <- intersect(names(cols), unique(df_plot$TaggedPitchType))
@@ -6988,7 +7011,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         theme_void() +
         theme(legend.position = "none")
       
-      ggiraph::girafe(
+      girafe_transparent(
         ggobj = p,
         options = list(
           ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
@@ -7349,7 +7372,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         coord_fixed(ratio = 1, xlim = c(-3, 3), ylim = c(0.5, 5)) +
         theme_void() + theme(legend.position = "none")
       
-      ggiraph::girafe(
+      girafe_transparent(
         ggobj = p,
         options = list(
           ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE,
@@ -7511,7 +7534,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           annotate("text", x = 0, y = 200, label = "No balls in play for current filters", size = 5, color = text_col) +
           coord_fixed(xlim = c(-380, 380), ylim = c(-30, 420)) +
           theme_void()
-        return(ggiraph::girafe(ggobj = p_empty))
+        return(girafe_transparent(ggobj = p_empty))
       }
       
       # --- Points to plot ---
@@ -7596,7 +7619,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           )
         )
       
-      ggiraph::girafe(
+      girafe_transparent(
         ggobj = p,
         options = list(
           ggiraph::opts_sizing(rescale = TRUE),
@@ -8631,10 +8654,12 @@ mod_catch_ui <- function(id, show_header = FALSE) {
                 width = 3
               ),
               mainPanel(
-                conditionalPanel(sprintf("input['%s']=='Heat'", ns("hmChartType")),
-                                 plotOutput(ns("heatPlot"), height = "500px")),
-                conditionalPanel(sprintf("input['%s']=='Pitch'", ns("hmChartType")),
-                                 ggiraph::girafeOutput(ns("pitchPlot"), height = "500px"))
+                div(style = "background: transparent !important;",
+                  conditionalPanel(sprintf("input['%s']=='Heat'", ns("hmChartType")),
+                                   plotOutput(ns("heatPlot"), height = "500px")),
+                  conditionalPanel(sprintf("input['%s']=='Pitch'", ns("hmChartType")),
+                                   ggiraph::girafeOutput(ns("pitchPlot"), height = "500px"))
+                )
               )
             )
           )
@@ -9157,7 +9182,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       
       gc <- loc_guess_cols_xy(df)
       if (!nzchar(gc$x) || !nzchar(gc$y)) {
-        return(ggiraph::girafe(code = print(ggplot2::ggplot() +
+        return(girafe_transparent(code = print(ggplot2::ggplot() +
                                               ggplot2::annotate("text", x=0, y=0, label="No base-arrival X/Y columns found") +
                                               ggplot2::theme_void())))
       }
@@ -9198,9 +9223,10 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
         ggplot2::coord_fixed(xlim = c(-zoom, zoom), ylim = c(-zoom, zoom)) +
         ggplot2::labs(x = "Across-bag (ft)", y = "Up/down-bag (ft)",
                       title = paste("Throw Location (Top-down) →", if (is.null(input$loc_targetBase)) "2B" else input$loc_targetBase)) +
-        ggplot2::theme_minimal()
+        ggplot2::theme_minimal() +
+        transparent_bg_theme
       
-      ggiraph::girafe(
+      girafe_transparent(
         code = print(p),
         options = list(
           ggiraph::opts_hover(css = "opacity:0.9;"),
@@ -9293,9 +9319,12 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
             xaxis = list(title = "Across-bag (ft)", range = lim),
             yaxis = list(title = "Up/down-bag (ft)", range = lim),
             zaxis = list(title = "Height (ft)"),
-            aspectmode = "cube"
+            aspectmode = "cube",
+            bgcolor = "rgba(0,0,0,0)"
           ),
-          title = paste("Throw Location (3D) →", if (is.null(input$loc_targetBase)) "2B" else input$loc_targetBase)
+          title = paste("Throw Location (3D) →", if (is.null(input$loc_targetBase)) "2B" else input$loc_targetBase),
+          paper_bgcolor = "rgba(0,0,0,0)",
+          plot_bgcolor = "rgba(0,0,0,0)"
         )
     })
     
@@ -9460,7 +9489,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
         coord_fixed(ratio = 1, xlim = c(-3, 3), ylim = c(0.5, 5)) +
         theme_void() + theme(legend.position = "none")
       
-      ggiraph::girafe(
+      girafe_transparent(
         ggobj = p,
         options = list(
           ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE,
@@ -9930,14 +9959,15 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
           axis.ticks = element_blank()
         )
       
-      ggiraph::girafe(
-        ggobj = p,
-        width_svg = 8, height_svg = 6.5,
-        options = list(
-          ggiraph::opts_sizing(rescale = TRUE),
-          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
-          ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
-          ggiraph::opts_hover_inv(css = "opacity:0.15;")
+  girafe_transparent(
+    ggobj = p,
+    width_svg = 8, height_svg = 6.5,
+    bg = "transparent",
+    options = list(
+      ggiraph::opts_sizing(rescale = TRUE),
+      ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
+      ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+      ggiraph::opts_hover_inv(css = "opacity:0.15;")
         )
       )
     })
@@ -9993,14 +10023,15 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
           axis.ticks = element_blank()
         )
       
-      ggiraph::girafe(
-        ggobj = p,
-        width_svg = 8, height_svg = 6.5,
-        options = list(
-          ggiraph::opts_sizing(rescale = TRUE),
-          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
-          ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
-          ggiraph::opts_hover_inv(css = "opacity:0.15;")
+  girafe_transparent(
+    ggobj = p,
+    width_svg = 8, height_svg = 6.5,
+    bg = "transparent",
+    options = list(
+      ggiraph::opts_sizing(rescale = TRUE),
+      ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
+      ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+      ggiraph::opts_hover_inv(css = "opacity:0.15;")
         )
       )
     })
@@ -10043,7 +10074,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
           axis.title.y = element_text(color = axis_col)
         )
       
-      ggiraph::girafe(ggobj = p, options = list(ggiraph::opts_hover_inv(css = "opacity:0.1;")))
+      girafe_transparent(ggobj = p, options = list(ggiraph::opts_hover_inv(css = "opacity:0.1;")))
     })
     
     # Summary Heat Zone Plot
@@ -10062,7 +10093,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr, mark_max = FALSE,
                 show_scale = TRUE, scale_label = "Pitch Frequency",
                 scale_limits = c(0, 80))
-    })
+    }, bg = "transparent")
     
     # Summary Legend
     output$campSummaryLegend <- renderPlot({
@@ -10073,6 +10104,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       
       types <- intersect(names(all_colors), as.character(unique(df$TaggedPitchType)))
       if (!length(types)) return(ggplot() + theme_void())
+      pal <- colors_for_mode(dark_on)
       
       # Create a simple legend plot
       legend_df <- data.frame(
@@ -10083,17 +10115,18 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       
       ggplot(legend_df, aes(x, y, color = type)) +
         geom_point(size = 6) +
-        scale_color_manual(values = all_colors[types], name = "Pitch Type") +
+        scale_color_manual(values = pal[types], name = "Pitch Type") +
         theme_void() +
         theme(
           legend.position = "bottom",
           legend.direction = "horizontal",
+          legend.box = "horizontal",
           legend.text = element_text(size = 12, color = axis_col),
           legend.title = element_text(size = 14, face = "bold", color = axis_col),
           legend.margin = margin(t = 0, b = 0)
         ) +
         guides(color = guide_legend(override.aes = list(size = 4), nrow = 1))
-    })
+    }, bg = "transparent")
     
     # Summary Table Buttons
     output$campSummaryTableButtons <- renderUI({
@@ -10286,7 +10319,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
           axis.title.y = element_text(color = axis_col)
         )
       
-      ggiraph::girafe(ggobj = p)
+      girafe_transparent(ggobj = p)
     })
     
     # Movement Plot: HB vs IVB
@@ -10316,7 +10349,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
           axis.title.y = element_text(color = axis_col)
         )
       
-      ggiraph::girafe(ggobj = p)
+      girafe_transparent(ggobj = p)
     })
     
     # Location Plot: PlateLocSide vs PlateLocHeight + zone
@@ -10353,7 +10386,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
         coord_fixed(ratio = 1, xlim = c(-3, 3), ylim = c(0.5, 5)) +
         theme_void() + theme(legend.position = "none")
       
-      ggiraph::girafe(ggobj = p)
+      girafe_transparent(ggobj = p)
     })
     
     # ----- Pitching table (same options/defs as your Pitching Summary) -----
@@ -10554,7 +10587,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
           annotate("text", x = 0, y = 200, label = "No balls in play for current filters", size = 5) +
           coord_fixed(xlim = c(-380, 380), ylim = c(-30, 420)) +
           theme_void()
-        return(ggiraph::girafe(ggobj = p_empty))
+        return(girafe_transparent(ggobj = p_empty))
       }
       
       bbe <- df[ok, , drop = FALSE]
@@ -10609,7 +10642,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
         coord_fixed(xlim = c(-380, 380), ylim = c(-30, 420)) +
         theme_void() + theme(legend.position = "right")
       
-      ggiraph::girafe(
+      girafe_transparent(
         ggobj = p,
         options = list(
           ggiraph::opts_sizing(rescale = TRUE),
@@ -12599,7 +12632,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
           panel.grid.major = element_line(color = grid_col),
           panel.grid.minor = element_blank()
         )
-      ggiraph::girafe(
+      girafe_transparent(
         ggobj = p,
         options = list(
           ggiraph::opts_sizing(rescale = TRUE),
@@ -12737,7 +12770,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
             p_empty <- ggplot() +
               annotate("text", x = 0, y = 2.5, label = "No pitches", size = 5) +
               theme_void()
-            return(ggiraph::girafe(ggobj = p_empty))
+            return(girafe_transparent(ggobj = p_empty))
           }
           types_chr <- intersect(names(cols), unique(df_plot$TaggedPitchType))
           if (!length(types_chr)) types_chr <- unique(df_plot$TaggedPitchType)
@@ -12806,7 +12839,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
             theme_void() +
             theme(legend.position = "none")
           
-          ggiraph::girafe(
+          girafe_transparent(
             ggobj = p,
             options = list(
               ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
@@ -12865,7 +12898,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
           aes(PlateLocSide, PlateLocHeight, tooltip = tt, data_id = rid, fill = I(tt_fill)),
           inherit.aes = FALSE, shape = 21, size = 6, alpha = 0.001, stroke = 0
         )
-      ggiraph::girafe(
+      girafe_transparent(
         ggobj = p,
         options = list(
           ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
@@ -14097,7 +14130,7 @@ correlations_ui <- function() {
           border: 1px solid #dee2e6;
           border-radius: 5px;
           padding: 15px;
-          background-color: white;
+          background-color: transparent;
         }
         .correlation-controls {
           margin-bottom: 20px;
@@ -15244,7 +15277,7 @@ custom_reports_server <- function(id) {
                   axis.ticks = element_blank(),
                   panel.grid.major = element_line(color = grid_col),
                   panel.grid.minor = element_blank())
-          ggiraph::girafe(
+          girafe_transparent(
             ggobj = p,
             width_svg = 8, height_svg = 6.5,
             options = list(
@@ -15328,7 +15361,7 @@ custom_reports_server <- function(id) {
               plot.background = element_rect(fill = "transparent", color = NA)
             )
           
-          ggiraph::girafe(
+          girafe_transparent(
             ggobj = p,
             width_svg = 8, height_svg = 6.5,
             options = list(
@@ -15454,7 +15487,7 @@ custom_reports_server <- function(id) {
               coord_fixed(ratio = 1, xlim = c(-3, 3), ylim = c(0.5, 5)) +
               theme_void() + theme(legend.position = "none")
             
-            ggiraph::girafe(
+            girafe_transparent(
               ggobj = p,
               options = list(
                 ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css_local),
@@ -15511,7 +15544,7 @@ custom_reports_server <- function(id) {
                 aes(PlateLocSide, PlateLocHeight, tooltip = tt, data_id = rid, fill = I(tt_fill)),
                 shape = 21, size = 6, alpha = 0.001, stroke = 0, inherit.aes = FALSE
               )
-            ggiraph::girafe(
+            girafe_transparent(
               ggobj = p,
               options = list(
                 ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css_local),
@@ -15655,7 +15688,7 @@ custom_reports_server <- function(id) {
           
           # Default fallback
           ggplot() + theme_void()
-        })
+        }, bg = "transparent")
         return(plotOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Summary Table") {
         output[[out_id]] <- DT::renderDataTable({
@@ -16181,7 +16214,7 @@ custom_reports_server <- function(id) {
               annotate("text", x = 0, y = 200, label = "No balls in play for current filters", size = 5, color = text_col) +
               coord_fixed(xlim = c(-380, 380), ylim = c(-30, 420)) +
               theme_void()
-            return(ggiraph::girafe(ggobj = p_empty))
+            return(girafe_transparent(ggobj = p_empty))
           }
           
           # --- Points to plot ---
@@ -16257,7 +16290,7 @@ custom_reports_server <- function(id) {
               legend.key = element_rect(fill = "transparent", color = NA)
             )
           
-          ggiraph::girafe(
+          girafe_transparent(
             ggobj = p,
             options = list(
               ggiraph::opts_sizing(rescale = TRUE),
@@ -16918,6 +16951,23 @@ enforce_admin_flags(c("jgaynor@pitchingcoachu.com","banni17@yahoo.com"), sm_db_c
 ui <- tagList(
   # --- Custom navbar colors & styling ---
   tags$head(
+    # Page title
+    tags$title("PCU Dashboard"),
+    # Apple iOS home screen icon
+    tags$link(rel = "apple-touch-icon", href = "PCUlogo.png"),
+    tags$link(rel = "apple-touch-icon", sizes = "152x152", href = "PCUlogo.png"),
+    tags$link(rel = "apple-touch-icon", sizes = "180x180", href = "PCUlogo.png"),
+    tags$link(rel = "apple-touch-icon", sizes = "167x167", href = "PCUlogo.png"),
+    # Favicons for browser tabs (multiple sizes for better display)
+    tags$link(rel = "icon", type = "image/png", sizes = "16x16", href = "PCUlogo.png"),
+    tags$link(rel = "icon", type = "image/png", sizes = "32x32", href = "PCUlogo.png"),
+    tags$link(rel = "icon", type = "image/png", sizes = "96x96", href = "PCUlogo.png"),
+    tags$link(rel = "icon", type = "image/png", href = "PCUlogo.png"),
+    # Apple mobile web app settings
+    tags$meta(name = "apple-mobile-web-app-capable", content = "yes"),
+    tags$meta(name = "apple-mobile-web-app-status-bar-style", content = "black-translucent"),
+    tags$meta(name = "apple-mobile-web-app-title", content = "PCU Dashboard"),
+    
     tags$script(HTML("
       document.addEventListener('DOMContentLoaded', function() {
         var checkbox = document.querySelector('.dark-toggle input#dark_mode');
@@ -16930,6 +16980,180 @@ ui <- tagList(
         };
         checkbox.addEventListener('change', sync);
         sync();
+      });
+    ")),
+    tags$script(HTML("
+      // Add a simple dropdown mirror for the top navbar tabs (mobile only)
+      document.addEventListener('DOMContentLoaded', function() {
+        var buildSelect = function() {
+          var nav = document.querySelector('#top .navbar-nav');
+          if (!nav) return;
+          var links = Array.prototype.slice.call(nav.querySelectorAll('a'));
+          if (!links.length || document.getElementById('topNavSelect')) return;
+          var select = document.createElement('select');
+          select.id = 'topNavSelect';
+          select.className = 'form-control nav-dropdown';
+          links.forEach(function(link) {
+            var opt = document.createElement('option');
+            var val = (link.getAttribute('data-value') || link.textContent || '').trim();
+            opt.value = val;
+            opt.textContent = (link.textContent || '').trim();
+            if (link.parentElement && link.parentElement.classList.contains('active')) opt.selected = true;
+            select.appendChild(opt);
+          });
+          select.addEventListener('change', function() {
+            var target = links.find(function(l) {
+              var val = (l.getAttribute('data-value') || l.textContent || '').trim();
+              return val === select.value;
+            });
+            if (target) target.click();
+          });
+          var container = document.querySelector('#top .navbar-header') || nav.parentNode;
+          if (container) {
+            container.parentNode.insertBefore(select, container.nextSibling);
+          } else {
+            nav.parentNode.insertBefore(select, nav);
+          }
+          $(document).on('shown.bs.tab', '#top .navbar-nav a', function(e) {
+            var val = ($(e.target).data('value') || $(e.target).text() || '').trim();
+            $('#topNavSelect').val(val);
+          });
+        };
+        buildSelect();
+        // fallback for late nav rendering
+        setTimeout(buildSelect, 300);
+      });
+    ")),
+    tags$script(HTML("
+      // Add dropdown mirrors for inner tabsets (suite pages) - mobile-friendly
+      document.addEventListener('DOMContentLoaded', function() {
+        var ensureSidebarDock = function() {
+          // Prefer the accordion body under Filters
+          var body = document.querySelector('.sidebar .sidebar-accordion-body');
+          if (body) return body;
+          // If accordion exists but body not yet created (unlikely), build one
+          var accordion = document.querySelector('.sidebar .sidebar-accordion');
+          if (accordion && !accordion.querySelector('.sidebar-accordion-body')) {
+            var b = document.createElement('div');
+            b.className = 'sidebar-accordion-body';
+            accordion.appendChild(b);
+            return b;
+          }
+          return null;
+        };
+        var placeWrapper = function(nav, wrapper) {
+          if (!nav || !wrapper) return;
+          var target = null;
+          var mobile = window.innerWidth <= 768;
+          if (mobile) {
+            var row = nav.closest('.row');
+            target = row ? row.querySelector('.sidebar-accordion-body') : null;
+            if (!target) target = ensureSidebarDock();
+            if (!target) target = document.querySelector('.sidebar .sidebar-accordion-body');
+          }
+          if (target) {
+            wrapper.classList.add('inner-nav-in-sidebar');
+            if (wrapper.parentNode !== target) {
+              target.insertBefore(wrapper, target.firstChild);
+            } else if (wrapper !== target.firstChild) {
+              target.insertBefore(wrapper, target.firstChild);
+            }
+          } else if (nav.parentNode) {
+            wrapper.classList.remove('inner-nav-in-sidebar');
+            if (wrapper.parentNode !== nav.parentNode) {
+              nav.parentNode.insertBefore(wrapper, nav);
+            } else if (wrapper.nextSibling !== nav) {
+              nav.parentNode.insertBefore(wrapper, nav);
+            }
+          }
+        };
+        var enhance = function(nav) {
+          if (window.innerWidth <= 768) return; // show native tabs on mobile; no dropdown mirror
+          if (!nav || nav.dataset.hasSelect) return;
+          var links = Array.prototype.slice.call(nav.querySelectorAll('a'));
+          if (!links.length) return;
+          var sel = document.createElement('select');
+          sel.className = 'form-control inner-nav-dropdown';
+          links.forEach(function(link) {
+            var opt = document.createElement('option');
+            var href = (link.getAttribute('href') || '').replace('#','');
+            opt.value = href;
+            opt.textContent = (link.textContent || '').trim();
+            if (link.parentElement && link.parentElement.classList.contains('active')) opt.selected = true;
+            sel.appendChild(opt);
+          });
+          sel.addEventListener('change', function() {
+            var target = links.find(function(l) {
+              var href = (l.getAttribute('href') || '').replace('#','');
+              return href === sel.value;
+            });
+            if (target) target.click();
+          });
+          var wrapper = document.createElement('div');
+          wrapper.className = 'inner-nav-wrap';
+          wrapper.appendChild(sel);
+          nav._innerSelectWrapper = wrapper;
+          placeWrapper(nav, wrapper);
+          // Re-check placement after other mobile transforms run
+          setTimeout(function() { placeWrapper(nav, wrapper); }, 150);
+          window.addEventListener('resize', function() { placeWrapper(nav, wrapper); });
+          $(nav).on('shown.bs.tab', 'a', function(e) {
+            var href = ($(e.target).attr('href') || '').replace('#','');
+            sel.value = href;
+          });
+          nav.dataset.hasSelect = '1';
+        };
+        var init = function() {
+          // standard tabsets
+          document.querySelectorAll('.tabbable > .nav.nav-tabs').forEach(function(nav){
+            if (!nav.dataset.hasSelect) enhance(nav);
+            else if (nav._innerSelectWrapper) placeWrapper(nav, nav._innerSelectWrapper);
+          });
+          // fallback: any nav-tabs missing a select
+          document.querySelectorAll('.nav.nav-tabs').forEach(function(nav){
+            if (!nav.dataset.hasSelect) enhance(nav);
+            else if (nav._innerSelectWrapper) placeWrapper(nav, nav._innerSelectWrapper);
+          });
+        };
+        init();
+        // Re-run when DOM mutates (late-rendered tabsets)
+        var mo = new MutationObserver(function() {
+          clearTimeout(mo._debounce);
+          mo._debounce = setTimeout(init, 120);
+        });
+        mo.observe(document.body, {childList: true, subtree: true});
+        document.addEventListener('shiny:recalculating', function() { setTimeout(init, 200); });
+      });
+    ")),
+    tags$script(HTML("
+      // Mobile sidebar: replace full panel with a single dropdown accordion
+      document.addEventListener('DOMContentLoaded', function() {
+        var transform = function(sidebar) {
+          if (!sidebar || sidebar.dataset.mobileAccordion) return;
+          if (window.innerWidth > 768) return;
+          var details = document.createElement('details');
+          details.className = 'sidebar-accordion';
+          var summary = document.createElement('summary');
+          summary.textContent = 'Filters';
+          summary.className = 'sidebar-accordion-summary';
+          var body = document.createElement('div');
+          body.className = 'sidebar-accordion-body';
+          while (sidebar.firstChild) {
+            body.appendChild(sidebar.firstChild);
+          }
+          details.appendChild(summary);
+          details.appendChild(body);
+          sidebar.appendChild(details);
+          sidebar.dataset.mobileAccordion = '1';
+        };
+        var init = function() {
+          document.querySelectorAll('.sidebar').forEach(transform);
+        };
+        init();
+        window.addEventListener('resize', function() {
+          // Do not rebuild; only apply on first mobile render to avoid moving nodes back and forth
+        });
+        document.addEventListener('shiny:recalculating', function() { setTimeout(init, 200); });
       });
     ")),
     # Persist shinymanager token in localStorage so users stay logged in across visits
@@ -17043,10 +17267,41 @@ ui <- tagList(
         filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
       }
       @media (max-width: 768px) {
-        .navbar .pcu-right { right: 60px; height: 40px; }
+        .navbar .pcu-right { display: none; }
         .navbar-inverse .navbar-brand { font-size: 18px; }
-        .navbar-inverse .navbar-brand .brand-logo { height: 32px; }
-      }
+      .navbar-inverse .navbar-brand .brand-logo { height: 32px; }
+      /* Mobile nav: show original tabs (scrollable) plus dropdown */
+      .navbar-inverse .navbar-nav { display: flex; overflow-x: auto; white-space: nowrap; }
+      .navbar-inverse .navbar-nav > li { float: none; display: inline-block; }
+      #topNavSelect, .nav-dropdown { display: block; width: 100%; max-width: none; }
+      /* Sidebar: show accordion dropdown only on mobile */
+      .sidebar-dropdown-wrap { display: none; }
+        .sidebar { display: block !important; }
+        .sidebar details.sidebar-accordion { display: block; }
+        .sidebar .well { padding: 0; border: none; box-shadow: none; background: transparent; }
+        .sidebar .sidebar-accordion-body .well { padding: 16px; }
+        /* Prevent thin charts/tables: allow horizontal scroll when needed */
+        .plotly { overflow-x: auto !important; }
+        .plotly .main-svg { overflow: visible !important; }
+        .plotly .legend, .plotly .infolayer { overflow: visible !important; }
+        .plot-container { overflow: auto !important; padding-bottom: 12px; }
+        .girafe_container_std, .ggiraph-container { overflow: auto !important; }
+        .dataTables_wrapper { overflow-x: auto !important; width: 100% !important; }
+        /* Hide desktop sidebar toggle button on mobile */
+        #pitchingSidebarToggle { display: none !important; }
+        /* Allow Plotly legends to scroll on small screens */
+        .plotly .legend {
+          max-height: 65vh;
+          overflow-y: auto !important;
+          white-space: normal !important;
+          max-width: 100% !important;
+          position: relative !important;
+        }
+      .plotly .legend .scrollbox { overflow: visible !important; }
+      /* Let static legend plots breathe on mobile */
+      .legend-plot-wrap { width: 100%; overflow-x: auto; }
+      #summary_legend, #summary_result_legend { min-height: 140px !important; }
+    }
 
       /* Tab Navigation - Modern pill style */
       .navbar-inverse .navbar-nav {
@@ -17094,6 +17349,152 @@ ui <- tagList(
         box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
         transform: translateY(-2px);
       }
+      /* Charts/graphs: keep backgrounds transparent globally */
+      .plot-container, .plotly, .plotly .main-svg, .plotly .svg-container { background: transparent !important; }
+      .plotly .cartesianlayer .bg, .plotly .draglayer, .plotly .bglayer rect { fill: transparent !important; }
+      .plotly .polar > g, .plotly .ternary > g { fill: transparent !important; }
+      .girafe_container svg, .ggiraph-container svg, canvas { background: transparent !important; }
+      /* Nuke ggiraph’s white rect background in light mode */
+      body:not(.theme-dark) .girafe_container svg rect.bg,
+      body:not(.theme-dark) .ggiraph-container svg rect.bg {
+        fill: transparent !important;
+      }
+      /* Remove default white panel rects in girafe outputs */
+      body:not(.theme-dark) .girafe_container svg rect[fill='#FFFFFF'],
+      body:not(.theme-dark) .girafe_container svg rect[fill='#ffffff'],
+      body:not(.theme-dark) .girafe_container svg rect[fill='#fff'],
+      body:not(.theme-dark) .girafe_container svg rect[fill='white'],
+      body:not(.theme-dark) .ggiraph-container svg rect[fill='#FFFFFF'],
+      body:not(.theme-dark) .ggiraph-container svg rect[fill='#ffffff'],
+      body:not(.theme-dark) .ggiraph-container svg rect[fill='#fff'],
+      body:not(.theme-dark) .ggiraph-container svg rect[fill='white'] {
+        fill: transparent !important;
+        stroke: none !important;
+      }
+      /* Force plot images and canvases transparent */
+      .shiny-plot-output img,
+      .shiny-plot-output canvas,
+      .shiny-image-output img {
+        background: transparent !important;
+        background-color: transparent !important;
+      }
+      /* Light mode: transparent plot surfaces + no shadows */
+      body:not(.theme-dark) .shiny-plot-output,
+      body:not(.theme-dark) .plotly,
+      body:not(.theme-dark) .html-widget,
+      body:not(.theme-dark) .ggiraph-container,
+      body:not(.theme-dark) .girafe_container {
+        background: transparent !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+      /* Light mode: remove white panels behind plots/graphs (everywhere except sidebar) */
+      body:not(.theme-dark) .well,
+      body:not(.theme-dark) .panel {
+        background: transparent !important;
+        border: none !important;
+        box-shadow: none !important;
+      }
+      /* Light mode: ensure main content areas are transparent */
+      body:not(.theme-dark) .col-sm-9,
+      body:not(.theme-dark) .main-panel,
+      body:not(.theme-dark) .tab-content,
+      body:not(.theme-dark) .tab-pane {
+        background: transparent !important;
+      }
+      /* Light mode: force sidebarLayout panels transparent */
+      body:not(.theme-dark) .sidebarLayout,
+      body:not(.theme-dark) .sidebarPanel,
+      body:not(.theme-dark) .mainPanel,
+      body:not(.theme-dark) .container-fluid,
+      body:not(.theme-dark) .row {
+        background: transparent !important;
+      }
+      /* Light mode: all divs inside main content transparent */
+      body:not(.theme-dark) .col-sm-9 > div,
+      body:not(.theme-dark) .main-panel > div,
+      body:not(.theme-dark) .tab-pane > div {
+        background: transparent !important;
+      }
+      /* Light mode: specific plot IDs (matching dark mode approach) */
+      body:not(.theme-dark) #heatPlot,
+      body:not(.theme-dark) #heatPlot canvas,
+      body:not(.theme-dark) #heatPlot img,
+      body:not(.theme-dark) #pitchPlot,
+      body:not(.theme-dark) #pitchPlot canvas,
+      body:not(.theme-dark) #pitchPlot img,
+      body:not(.theme-dark) #heatmapPlot,
+      body:not(.theme-dark) #heatmapPlot canvas,
+      body:not(.theme-dark) #heatmapPlot img,
+      body:not(.theme-dark) #veloTrendPlot,
+      body:not(.theme-dark) #veloTrendPlot canvas,
+      body:not(.theme-dark) #veloTrendPlot img,
+      body:not(.theme-dark) #summary_heatZonePlot,
+      body:not(.theme-dark) #summary_heatZonePlot canvas,
+      body:not(.theme-dark) #summary_heatZonePlot img,
+      body:not(.theme-dark) #summary_legend,
+      body:not(.theme-dark) #summary_legend canvas,
+      body:not(.theme-dark) #summary_legend img,
+      body:not(.theme-dark) #heatmapsHeatPlot,
+      body:not(.theme-dark) #heatmapsHeatPlot canvas,
+      body:not(.theme-dark) #heatmapsHeatPlot img,
+      body:not(.theme-dark) #cmpA_heat,
+      body:not(.theme-dark) #cmpA_heat canvas,
+      body:not(.theme-dark) #cmpA_heat img,
+      body:not(.theme-dark) #cmpB_heat,
+      body:not(.theme-dark) #cmpB_heat canvas,
+      body:not(.theme-dark) #cmpB_heat img,
+      body:not(.theme-dark) #corr_plot,
+      body:not(.theme-dark) #corr_plot canvas,
+      body:not(.theme-dark) #corr_plot img,
+      body:not(.theme-dark) #campSummaryHeatZonePlot,
+      body:not(.theme-dark) #campSummaryHeatZonePlot canvas,
+      body:not(.theme-dark) #campSummaryHeatZonePlot img,
+      body:not(.theme-dark) #campSummaryLegend,
+      body:not(.theme-dark) #campSummaryLegend canvas,
+      body:not(.theme-dark) #campSummaryLegend img,
+      body:not(.theme-dark) #summary_result_legend,
+      body:not(.theme-dark) #summary_result_legend canvas,
+      body:not(.theme-dark) #summary_result_legend img,
+      body:not(.theme-dark) #result_key,
+      body:not(.theme-dark) #result_key canvas,
+      body:not(.theme-dark) #result_key img,
+      body:not(.theme-dark) #pitch_type_key,
+      body:not(.theme-dark) #pitch_type_key canvas,
+      body:not(.theme-dark) #pitch_type_key img {
+        background: transparent !important;
+      }
+      /* Keep sidebar styling intact in light mode */
+      body:not(.theme-dark) .sidebar .well,
+      body:not(.theme-dark) .col-sm-3 .well,
+      body:not(.theme-dark) .col-sm-4 .well,
+      body:not(.theme-dark) .sidebar .panel {
+        background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
+        border: none !important;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
+        border-left: 4px solid #667eea !important;
+      }
+      /* Tables: allow full width */
+      .dataTables_wrapper { width: 100% !important; }
+      /* Optional navbar dropdown mirror */
+      .nav-dropdown {
+        margin: 6px 0 10px 0;
+        max-width: 360px;
+        font-weight: 700;
+        font-size: 17px;
+        padding: 12px 14px;
+        min-height: 48px;
+        line-height: 1.4;
+      }
+      /* Inner tabset dropdown mirror */
+      .inner-nav-wrap { margin: 8px 0 12px 0; display: none; }
+      .inner-nav-dropdown { width: 100%; font-weight: 800; font-size: 17px; padding: 22px 18px; min-height: 76px; line-height: 1.45; letter-spacing: 0.2px; }
+      /* Sidebar dropdown */
+      .sidebar-dropdown-wrap { margin: 8px 0 8px 0; display: none; }
+      .sidebar-dropdown { width: 100%; font-weight: 700; font-size: 17px; padding: 12px 14px; min-height: 48px; line-height: 1.4; }
+      .sidebar-accordion { border: 1px solid #e2e8f0; border-radius: 12px; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.06); }
+      .sidebar-accordion-summary { padding: 14px; font-weight: 800; font-size: 16px; cursor: pointer; }
+      .sidebar-accordion-body { padding: 12px; }
       
       /* ===== SIDEBAR DESIGN ===== */
       .well {
@@ -17312,7 +17713,7 @@ ui <- tagList(
         border-radius: 12px;
         overflow: hidden;
         box-shadow: 0 2px 12px rgba(0, 0, 0, 0.06);
-        background: white;
+        background: transparent;
       }
       
       /* ===== PAGE CONTAINER ===== */
@@ -17363,6 +17764,22 @@ ui <- tagList(
         color: #ffffff !important;
         background: rgba(255,255,255,0.08);
         box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+      }
+      /* Dark mode: keep sidebars transparent (mobile + desktop) */
+      body.theme-dark .sidebar,
+      body.theme-dark .sidebar .well,
+      body.theme-dark .col-sm-3 .well,
+      body.theme-dark .col-sm-4 .well,
+      body.theme-dark .sidebar .panel,
+      body.theme-dark .sidebar-accordion,
+      body.theme-dark .sidebar-accordion-body {
+        background: transparent !important;
+        box-shadow: none !important;
+        border: none !important;
+      }
+      body.theme-dark .sidebar .well .form-control,
+      body.theme-dark .sidebar .well .selectize-input {
+        background: rgba(255,255,255,0.06) !important;
       }
       body.theme-dark .navbar-inverse .navbar-nav > .active > a,
       body.theme-dark .navbar-inverse .navbar-nav > .active > a:hover,
@@ -17712,7 +18129,7 @@ ui <- tagList(
   navbarPage(
     title = tagList(
       tags$img(src = "GCUlogo.png", class = "brand-logo", alt = "GCU"),
-      tags$span("Dashboard", class = "brand-title"),
+      tags$span("PCU Dashboard", class = "brand-title"),
       tags$img(src = "PCUlogo.png", class = "pcu-right", alt = "PCU")
     ),
     id = "top",
@@ -19520,7 +19937,7 @@ server <- function(input, output, session) {
         )
     }
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj   = p,
       options = list(
         ggiraph::opts_hover_inv(css = "opacity:0.1;"),
@@ -19895,7 +20312,7 @@ server <- function(input, output, session) {
         axis.ticks = element_blank()
       )
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p,
       width_svg = 8, height_svg = 6.5,
       options = list(
@@ -20091,15 +20508,16 @@ server <- function(input, output, session) {
         axis.ticks      = element_blank()
       )
     
-    ggiraph::girafe(
-      ggobj = p,
-      width_svg  = 8,
-      height_svg = 6.5,
-      options = list(
-        ggiraph::opts_sizing(rescale = TRUE),
-        ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css),
-        ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
-        ggiraph::opts_hover_inv(css = "opacity:0.15;"),
+  girafe_transparent(
+    ggobj = p,
+    width_svg  = 8,
+    height_svg = 6.5,
+    bg = "transparent",
+    options = list(
+      ggiraph::opts_sizing(rescale = TRUE),
+      ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css),
+      ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+      ggiraph::opts_hover_inv(css = "opacity:0.15;"),
         ggiraph::opts_selection(type = "multiple", selected = character(0))
       )
     )
@@ -20170,13 +20588,14 @@ server <- function(input, output, session) {
         shape = 21, size = 6, alpha = 0.001, stroke = 0, inherit.aes = FALSE
       )
     
-    ggiraph::girafe(
-      ggobj = p,
-      options = list(
-        ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
-        ggiraph::opts_hover(css = "stroke-width:1.5px;"),
-        ggiraph::opts_hover_inv(css = "opacity:0.15;")
-      )
+  girafe_transparent(
+    ggobj = p,
+    bg = "transparent",
+    options = list(
+      ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
+      ggiraph::opts_hover(css = "stroke-width:1.5px;"),
+      ggiraph::opts_hover_inv(css = "opacity:0.15;")
+    )
     )
   })
   
@@ -20198,9 +20617,10 @@ server <- function(input, output, session) {
     types<-ordered_types(); if(!length(types)) return()
     dark_on <- isTRUE(input$dark_mode)
     axis_col <- if (dark_on) "#ffffff" else "black"
+    pal <- colors_for_mode(dark_on)
     leg_df<-data.frame(TaggedPitchType=factor(types,levels=types),x=1,y=1)
     ggplot(leg_df,aes(x,y,color=TaggedPitchType))+geom_point(size=0,alpha=0)+
-      scale_color_manual(values=all_colors[types],limits=types,name=NULL)+
+      scale_color_manual(values=pal[types],limits=types,name=NULL)+
       guides(color=guide_legend(nrow=1,byrow=TRUE,override.aes=list(size=4,alpha=1)))+
       theme_void()+
       theme(
@@ -22838,7 +23258,7 @@ server <- function(input, output, session) {
               theme_void() + theme(legend.position = "none",
                                    plot.title = element_text(color = axis_col))
             
-            ggiraph::girafe(
+            girafe_transparent(
               ggobj = p,
               options = list(
                 ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE,
@@ -23043,7 +23463,7 @@ server <- function(input, output, session) {
     legend.text = element_text(size = 14, color = axis_col)
   )
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p,
       width_svg = 9, height_svg = 12,
       options = list(
@@ -23220,7 +23640,7 @@ server <- function(input, output, session) {
         axis.text.y = element_text(color = axis_col)
       )
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p,
       options = list(
         ggiraph::opts_tooltip(
@@ -23748,7 +24168,7 @@ server <- function(input, output, session) {
       }
     }
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p,
       options = list(
         ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css),
@@ -23838,7 +24258,7 @@ server <- function(input, output, session) {
       labs(title = "Average Velocity by Game",
            x = "Game Date", y = "Velocity (MPH)")
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p2,
       options = list(
         ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css),
@@ -23942,7 +24362,7 @@ server <- function(input, output, session) {
       labs(title = "Average Velocity by Inning ",
            x = "Inning of Appearance", y = "Velocity (MPH)")
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p3,
       options = list(
         ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css),
@@ -23951,7 +24371,6 @@ server <- function(input, output, session) {
       )
     )
   })
-  
   
   # Velocity Trend Plot
   # Replace your existing output$veloTrendPlot with this:
@@ -23989,7 +24408,7 @@ server <- function(input, output, session) {
         axis.line.x    = element_line(color = "black"),
         axis.line.y    = element_line(color = "black")
       )
-  })
+  }, bg = "transparent")
   
   # Heatmap Plot (using modern KDE approach like other suites)
   output$heatmapPlot <- renderPlot({
@@ -24023,7 +24442,7 @@ server <- function(input, output, session) {
     return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr, mark_max = FALSE,
                     show_scale = TRUE, scale_label = "Pitch Frequency",
                     scale_limits = c(0, 80)))
-  })
+  }, bg = "transparent")
   
   # Pitch Plot
   output$pitchPlot <- ggiraph::renderGirafe({
@@ -24088,7 +24507,7 @@ server <- function(input, output, session) {
         shape = 21, size = 6, alpha = 0.001, stroke = 0, inherit.aes = FALSE
       )
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p,
       options = list(
         ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
@@ -24270,7 +24689,7 @@ server <- function(input, output, session) {
         shape = 21, size = 6, alpha = 0.001, stroke = 0, inherit.aes = FALSE
       )
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p,
       options = list(
         ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
@@ -24341,7 +24760,7 @@ server <- function(input, output, session) {
     count_state <- fams_no_other[1]
     p <- create_qp_locations_plot(df, count_state, pitcher_hand, batter_hand)
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p,
       width_svg = 12, height_svg = 5,
       options = list(
@@ -25655,11 +26074,13 @@ server <- function(input, output, session) {
         plot.title = element_text(size = 16, face = "bold"),
         plot.subtitle = element_text(size = 14),
         axis.title = element_text(size = 12),
-        axis.text = element_text(size = 10)
+        axis.text = element_text(size = 10),
+        panel.background = element_rect(fill = "transparent", colour = NA),
+        plot.background = element_rect(fill = "transparent", colour = NA)
       )
     
     return(p)
-  })
+  }, bg = "transparent")
   
   # Data table
   output$corr_data_table <- DT::renderDataTable({
@@ -26862,7 +27283,7 @@ server <- function(input, output, session) {
         shape = 21, size = 6, alpha = 0.001, stroke = 0, inherit.aes = FALSE
       )
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p,
       options = list(
         ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
@@ -26894,7 +27315,7 @@ server <- function(input, output, session) {
       dplyr::filter(is.finite(InducedVertBreak), is.finite(HorzBreak)) %>%
       dplyr::mutate(
         TaggedPitchType = as.character(TaggedPitchType),
-        HB_adj = ifelse(PitcherThrows == "Left", HorzBreak, -HorzBreak),
+        HB_adj = HorzBreak,  # Use HorzBreak directly to match other suites
         tt     = make_hover_tt(.),
         rid    = dplyr::row_number()
       )
@@ -26924,7 +27345,7 @@ server <- function(input, output, session) {
       target_data <- lapply(types_chr, function(pt) {
         tgt <- get_target_shape(pitcher_name, pt, input$pp_date_range)
         if (is.null(tgt)) return(NULL)
-        hb_plot <- ifelse(pitcher_hand == "Left", tgt$HB, -tgt$HB)
+        hb_plot <- tgt$HB  # Use HB directly to match other suites
         data.frame(
           TaggedPitchType = pt,
           HB_Target = hb_plot,
@@ -26988,7 +27409,7 @@ server <- function(input, output, session) {
       ) +
       coord_cartesian(xlim = c(-25, 25), ylim = c(-25, 25))
     
-    ggiraph::girafe(
+    girafe_transparent(
       ggobj = p,
       width_svg = 8, height_svg = 6.5,
       options = list(
@@ -27429,6 +27850,7 @@ server <- function(input, output, session) {
     dark_on <- isTRUE(input$dark_mode)
     p <- p +
       theme_minimal() +
+      transparent_bg_theme +
       theme(
         plot.title = element_text(hjust = 0.5, face = "bold"),
         axis.text.x = element_text(angle = 45, hjust = 1),
@@ -27515,21 +27937,21 @@ server <- function(input, output, session) {
   output$pp_goal1_plot <- ggiraph::renderGirafe({
     p <- create_pp_goal_plot(1)
     if (inherits(p, "girafe")) return(p)
-    if (inherits(p, "ggplot")) return(ggiraph::girafe(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE))))
+    if (inherits(p, "ggplot")) return(girafe_transparent(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE))))
     NULL
   })
   
   output$pp_goal2_plot <- ggiraph::renderGirafe({
     p <- create_pp_goal_plot(2)
     if (inherits(p, "girafe")) return(p)
-    if (inherits(p, "ggplot")) return(ggiraph::girafe(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE))))
+    if (inherits(p, "ggplot")) return(girafe_transparent(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE))))
     NULL
   })
   
   output$pp_goal3_plot <- ggiraph::renderGirafe({
     p <- create_pp_goal_plot(3)
     if (inherits(p, "girafe")) return(p)
-    if (inherits(p, "ggplot")) return(ggiraph::girafe(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE))))
+    if (inherits(p, "ggplot")) return(girafe_transparent(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE))))
     NULL
   })
   
@@ -27832,7 +28254,7 @@ server <- function(input, output, session) {
       
       p <- create_qp_locations_plot(df, "Behind", pitcher_hand, batter_hand)
       
-      ggiraph::girafe(
+      girafe_transparent(
         ggobj = p,
         width_svg = 12, height_svg = 4,
         options = list(
@@ -27862,7 +28284,7 @@ server <- function(input, output, session) {
       
       p <- create_qp_locations_plot(df, "Even", pitcher_hand, batter_hand)
       
-      ggiraph::girafe(
+      girafe_transparent(
         ggobj = p,
         width_svg = 12, height_svg = 4,
         options = list(
@@ -27892,7 +28314,7 @@ server <- function(input, output, session) {
       
       p <- create_qp_locations_plot(df, "Ahead", pitcher_hand, batter_hand)
       
-      ggiraph::girafe(
+      girafe_transparent(
         ggobj = p,
         width_svg = 12, height_svg = 4,
         options = list(
