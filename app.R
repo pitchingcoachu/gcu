@@ -18129,7 +18129,7 @@ ui <- tagList(
   navbarPage(
     title = tagList(
       tags$img(src = "GCUlogo.png", class = "brand-logo", alt = "GCU"),
-      tags$span("PCU Dashboard", class = "brand-title"),
+      tags$span("Dashboard", class = "brand-title"),
       tags$img(src = "PCUlogo.png", class = "pcu-right", alt = "PCU")
     ),
     id = "top",
