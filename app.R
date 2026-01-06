@@ -223,8 +223,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
 # Draw BINNED heatmap using geom_tile (for sparse rate data like whiff rate)
 # This shows actual bins where data exists instead of interpolating
 draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
-                              title = NULL, breaks = NULL,
-                              show_scale = FALSE, scale_label = NULL, scale_limits = NULL) {
+                             title = NULL, breaks = NULL,
+                             show_scale = FALSE, scale_label = NULL, scale_limits = NULL) {
   if (!nrow(grid)) return(ggplot() + theme_void())
   
   home <- data.frame(
@@ -638,9 +638,9 @@ make_rate_grid <- function(df, numerator_condition, denominator_condition = NULL
   rate_data <- rate_data %>%
     mutate(
       x = (as.numeric(sub("\\((.+),.*", "\\1", x_bin)) + 
-           as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", x_bin))) / 2,
+             as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", x_bin))) / 2,
       y = (as.numeric(sub("\\((.+),.*", "\\1", y_bin)) + 
-           as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", y_bin))) / 2
+             as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", y_bin))) / 2
     ) %>%
     dplyr::select(x, y, z = rate)
   
@@ -666,15 +666,15 @@ smooth_grid <- function(grid_data, n = 120, x_range = c(-2.5, 2.5), y_range = c(
   smooth_data <- tryCatch({
     # Allow limited extrapolation so sparse areas don't leave holes
     interp_result <- akima::interp(
-        x = grid_data$x,
-        y = grid_data$y,
-        z = grid_data$z,
-        xo = seq(x_range[1], x_range[2], length.out = n),
-        yo = seq(y_range[1], y_range[2], length.out = n),
-        linear = FALSE,  # Use non-linear for smoother appearance
-        extrap = TRUE,  # Allow light extrapolation to avoid white holes
-        duplicate = "mean"
-      )
+      x = grid_data$x,
+      y = grid_data$y,
+      z = grid_data$z,
+      xo = seq(x_range[1], x_range[2], length.out = n),
+      yo = seq(y_range[1], y_range[2], length.out = n),
+      linear = FALSE,  # Use non-linear for smoother appearance
+      extrap = TRUE,  # Allow light extrapolation to avoid white holes
+      duplicate = "mean"
+    )
     
     result <- expand.grid(x = interp_result$x, y = interp_result$y) %>%
       mutate(z = as.vector(interp_result$z)) %>%
@@ -724,9 +724,9 @@ make_avg_grid <- function(df, value_col, bin_size = 0.4,
   avg_data <- avg_data %>%
     mutate(
       x = (as.numeric(sub("\\((.+),.*", "\\1", x_bin)) + 
-           as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", x_bin))) / 2,
+             as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", x_bin))) / 2,
       y = (as.numeric(sub("\\((.+),.*", "\\1", y_bin)) + 
-           as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", y_bin))) / 2
+             as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", y_bin))) / 2
     ) %>%
     dplyr::select(x, y, z = avg_value)
   
@@ -2843,16 +2843,16 @@ make_session_logs_table <- function(df) {
               na.rm = TRUE),
           sum(d$Balls==0 & d$Strikes==0, na.rm = TRUE)
         ),
-    `E+A%`   = .s_fmt_pct1(
-      sum(d$SessionType=="Live" & (
-        (d$Balls==0 & d$Strikes==0 & d$PitchCall=="InPlay") |
-          (d$Balls==0 & d$Strikes==1 & d$PitchCall %in% c("InPlay","FoulBallNotFieldable", "FoulBallFieldable","StrikeSwinging","StrikeCalled")) |
-          (d$Balls==1 & d$Strikes==0 & d$PitchCall=="InPlay") |
-          (d$Balls==1 & d$Strikes==1 & d$PitchCall %in% c("InPlay","FoulBallNotFieldable","StrikeSwinging","StrikeCalled", "FoulBallFieldable"))
-      ), na.rm = TRUE),
-      sum(d$SessionType=="Live" & d$Balls==0 & d$Strikes==0, na.rm = TRUE)
-    ),
-    `QP%`    = qp_pct,
+        `E+A%`   = .s_fmt_pct1(
+          sum(d$SessionType=="Live" & (
+            (d$Balls==0 & d$Strikes==0 & d$PitchCall=="InPlay") |
+              (d$Balls==0 & d$Strikes==1 & d$PitchCall %in% c("InPlay","FoulBallNotFieldable", "FoulBallFieldable","StrikeSwinging","StrikeCalled")) |
+              (d$Balls==1 & d$Strikes==0 & d$PitchCall=="InPlay") |
+              (d$Balls==1 & d$Strikes==1 & d$PitchCall %in% c("InPlay","FoulBallNotFieldable","StrikeSwinging","StrikeCalled", "FoulBallFieldable"))
+          ), na.rm = TRUE),
+          sum(d$SessionType=="Live" & d$Balls==0 & d$Strikes==0, na.rm = TRUE)
+        ),
+        `QP%`    = qp_pct,
         `K%`     = .s_safe_div(Kct_all, PAt),
         `BB%`    = .s_safe_div(BBc_all, PAt),
         `Whiff%` = .s_safe_div(whiffs, swings),
@@ -5566,7 +5566,7 @@ pitch_ui <- function(show_header = FALSE) {
       title = "Hide Filters",
       HTML('<i class="fa fa-angle-double-left"></i>')
     ),
-
+    
     # Anchored dark mode toggle (under navbar, above sidebar)
     fluidRow(
       column(
@@ -5913,19 +5913,19 @@ pitch_ui <- function(show_header = FALSE) {
                   "input.hmChartType=='Heat'",
                   selectInput(
                     "hmStat", "Select Stat:",
-                  choices = c(
-                    "Frequency"      = "Frequency",
-                    "Whiff Rate"     = "Whiff Rate",
-                    "Exit Velocity"  = "EV",
-                    "GB Rate"        = "GB Rate",
-                    "Contact Rate"   = "Contact Rate",
-                    "Swing Rate"     = "Swing Rate",
-                    "Run Values"     = "Run Values"
+                    choices = c(
+                      "Frequency"      = "Frequency",
+                      "Whiff Rate"     = "Whiff Rate",
+                      "Exit Velocity"  = "EV",
+                      "GB Rate"        = "GB Rate",
+                      "Contact Rate"   = "Contact Rate",
+                      "Swing Rate"     = "Swing Rate",
+                      "Run Values"     = "Run Values"
+                    ),
+                    selected = "Frequency"
                   ),
-                  selected = "Frequency"
+                  uiOutput("hmNote")
                 ),
-                uiOutput("hmNote")
-              ),
                 conditionalPanel(
                   "input.hmChartType=='QP+'",
                   helpText("Requires batter hand + counts from the same family (Ahead, Even, or Behind).")
@@ -5948,15 +5948,15 @@ pitch_ui <- function(show_header = FALSE) {
               column(2,
                      div(style = "padding: 10px;",
                          h5("Pitch Results", style = "font-weight: bold; margin-bottom: 10px;"),
-                             div(style = "font-size: 12px;",
-                                 div(style = "margin-bottom: 3px;", "\u25CF Called Strike"),  # ●
-                                 div(style = "margin-bottom: 3px;", "\u25CB Ball"),           # ○
-                                 div(style = "margin-bottom: 3px;", "\u25B3 Foul"),           # △
-                                 div(style = "margin-bottom: 3px;", "\u2605 Whiff"),          # ★
-                                 div(style = "margin-bottom: 3px;", "\u25B2 In Play (Out)"),  # ▲
-                                 div(style = "margin-bottom: 3px;", "\u25A0 In Play (Hit)"),  # ■
-                                 div(style = "margin-bottom: 3px;", "\u25A1 Error")           # □
-                             ),
+                         div(style = "font-size: 12px;",
+                             div(style = "margin-bottom: 3px;", "\u25CF Called Strike"),  # ●
+                             div(style = "margin-bottom: 3px;", "\u25CB Ball"),           # ○
+                             div(style = "margin-bottom: 3px;", "\u25B3 Foul"),           # △
+                             div(style = "margin-bottom: 3px;", "\u2605 Whiff"),          # ★
+                             div(style = "margin-bottom: 3px;", "\u25B2 In Play (Out)"),  # ▲
+                             div(style = "margin-bottom: 3px;", "\u25A0 In Play (Hit)"),  # ■
+                             div(style = "margin-bottom: 3px;", "\u25A1 Error")           # □
+                         ),
                          br(),
                          h5("Pitch Type", style = "font-weight: bold; margin-bottom: 10px;"),
                          uiOutput("qpPitchTypeColors"),
@@ -7215,9 +7215,9 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       rate_data <- rate_data %>%
         mutate(
           x = (as.numeric(sub("\\((.+),.*", "\\1", x_bin)) + 
-               as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", x_bin))) / 2,
+                 as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", x_bin))) / 2,
           y = (as.numeric(sub("\\((.+),.*", "\\1", y_bin)) + 
-               as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", y_bin))) / 2
+                 as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", y_bin))) / 2
         ) %>%
         dplyr::select(x, y, z = rate)
       
@@ -7299,9 +7299,9 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       avg_data <- avg_data %>%
         mutate(
           x = (as.numeric(sub("\\((.+),.*", "\\1", x_bin)) + 
-               as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", x_bin))) / 2,
+                 as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", x_bin))) / 2,
           y = (as.numeric(sub("\\((.+),.*", "\\1", y_bin)) + 
-               as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", y_bin))) / 2
+                 as.numeric(sub("[^,]*,([^]]+)\\]", "\\1", y_bin))) / 2
         ) %>%
         dplyr::select(x, y, z = avg_value)
       
@@ -7347,11 +7347,11 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       df_other <- dplyr::filter(df_i,  is.na(Result))
       
       p <- ggplot() +
-              geom_polygon(data = home, aes(x, y), fill = NA, color = line_col) +
-              geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                        fill = NA, color = line_col, linetype = "dashed") +
-              geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                        fill = NA, color = line_col) +
+        geom_polygon(data = home, aes(x, y), fill = NA, color = line_col) +
+        geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                  fill = NA, color = line_col, linetype = "dashed") +
+        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                  fill = NA, color = line_col) +
         ggiraph::geom_point_interactive(
           data = df_other,
           aes(PlateLocSide, PlateLocHeight,
@@ -8655,10 +8655,10 @@ mod_catch_ui <- function(id, show_header = FALSE) {
               ),
               mainPanel(
                 div(style = "background: transparent !important;",
-                  conditionalPanel(sprintf("input['%s']=='Heat'", ns("hmChartType")),
-                                   plotOutput(ns("heatPlot"), height = "500px")),
-                  conditionalPanel(sprintf("input['%s']=='Pitch'", ns("hmChartType")),
-                                   ggiraph::girafeOutput(ns("pitchPlot"), height = "500px"))
+                    conditionalPanel(sprintf("input['%s']=='Heat'", ns("hmChartType")),
+                                     plotOutput(ns("heatPlot"), height = "500px")),
+                    conditionalPanel(sprintf("input['%s']=='Pitch'", ns("hmChartType")),
+                                     ggiraph::girafeOutput(ns("pitchPlot"), height = "500px"))
                 )
               )
             )
@@ -9183,8 +9183,8 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       gc <- loc_guess_cols_xy(df)
       if (!nzchar(gc$x) || !nzchar(gc$y)) {
         return(girafe_transparent(code = print(ggplot2::ggplot() +
-                                              ggplot2::annotate("text", x=0, y=0, label="No base-arrival X/Y columns found") +
-                                              ggplot2::theme_void())))
+                                                 ggplot2::annotate("text", x=0, y=0, label="No base-arrival X/Y columns found") +
+                                                 ggplot2::theme_void())))
       }
       
       mode <- if (is.null(input$loc_units)) "auto" else input$loc_units
@@ -9841,7 +9841,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       if (length(input$dates) == 2) {
         df <- df[!is.na(dcol) & dcol >= as.Date(input$dates[1]) & dcol <= as.Date(input$dates[2]), , drop = FALSE]
       }
-            # Pitcher hand
+      # Pitcher hand
       if (input$hand != "All") df <- dplyr::filter(df, PitcherThrows == input$hand)
       
       # Batter hand (Live only)
@@ -9962,15 +9962,15 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
           axis.ticks = element_blank()
         )
       
-  girafe_transparent(
-    ggobj = p,
-    width_svg = 8, height_svg = 6.5,
-    bg = "transparent",
-    options = list(
-      ggiraph::opts_sizing(rescale = TRUE),
-      ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
-      ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
-      ggiraph::opts_hover_inv(css = "opacity:0.15;")
+      girafe_transparent(
+        ggobj = p,
+        width_svg = 8, height_svg = 6.5,
+        bg = "transparent",
+        options = list(
+          ggiraph::opts_sizing(rescale = TRUE),
+          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
+          ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+          ggiraph::opts_hover_inv(css = "opacity:0.15;")
         )
       )
     })
@@ -10026,15 +10026,15 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
           axis.ticks = element_blank()
         )
       
-  girafe_transparent(
-    ggobj = p,
-    width_svg = 8, height_svg = 6.5,
-    bg = "transparent",
-    options = list(
-      ggiraph::opts_sizing(rescale = TRUE),
-      ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
-      ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
-      ggiraph::opts_hover_inv(css = "opacity:0.15;")
+      girafe_transparent(
+        ggobj = p,
+        width_svg = 8, height_svg = 6.5,
+        bg = "transparent",
+        options = list(
+          ggiraph::opts_sizing(rescale = TRUE),
+          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
+          ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+          ggiraph::opts_hover_inv(css = "opacity:0.15;")
         )
       )
     })
@@ -13022,188 +13022,188 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
           )
           term <- df_src[is_term, , drop = FALSE]
           
-        per_split <- term %>%
-          dplyr::group_by(SplitColumn) %>%
-          dplyr::summarise(
-            PA   = dplyr::n(),
-            HBP  = sum(PlayResult == "HitByPitch", na.rm = TRUE),
-            Sac  = sum(PlayResult == "Sacrifice",  na.rm = TRUE),
-            SFct = sum(PlayResult == "Sacrifice",  na.rm = TRUE),
-            IBBct= sum(PlayResult == "IntentionalWalk", na.rm = TRUE),
-            `1B` = sum(PlayResult == "Single",  na.rm = TRUE),
-            `2B` = sum(PlayResult == "Double",  na.rm = TRUE),
-            `3B` = sum(PlayResult == "Triple",  na.rm = TRUE),
-            HR   = sum(PlayResult == "HomeRun", na.rm = TRUE),
-            Kct  = sum(KorBB == "Strikeout" |
+          per_split <- term %>%
+            dplyr::group_by(SplitColumn) %>%
+            dplyr::summarise(
+              PA   = dplyr::n(),
+              HBP  = sum(PlayResult == "HitByPitch", na.rm = TRUE),
+              Sac  = sum(PlayResult == "Sacrifice",  na.rm = TRUE),
+              SFct = sum(PlayResult == "Sacrifice",  na.rm = TRUE),
+              IBBct= sum(PlayResult == "IntentionalWalk", na.rm = TRUE),
+              `1B` = sum(PlayResult == "Single",  na.rm = TRUE),
+              `2B` = sum(PlayResult == "Double",  na.rm = TRUE),
+              `3B` = sum(PlayResult == "Triple",  na.rm = TRUE),
+              HR   = sum(PlayResult == "HomeRun", na.rm = TRUE),
+              Kct  = sum(KorBB == "Strikeout" |
                            PlayResult %in% c("Strikeout","StrikeoutSwinging","StrikeoutLooking"), na.rm = TRUE),
               BBct = sum(KorBB == "Walk" | PlayResult == "Walk", na.rm = TRUE),
               .groups = "drop"
             ) %>%
             dplyr::mutate(
-            AB  = PA - (BBct + HBP + Sac),
-            H   = `1B` + `2B` + `3B` + HR,
-            TB  = 1*`1B` + 2*`2B` + 3*`3B` + 4*HR,
-            AVG = safe_div_local(H, AB),
-            SLG = safe_div_local(TB, AB),
-            OBP = safe_div_local(H + BBct + HBP, PA),
-            OPS = SLG + OBP,
-            ISO = SLG - AVG,
-            uBB = BBct - IBBct,
-            wOBA_num = 0.690*uBB + 0.722*HBP + 0.888*`1B` + 1.271*`2B` + 1.616*`3B` + 2.101*HR,
-            wOBA_den = AB + BBct - IBBct + SFct + HBP,
-            wOBA = safe_div_local(wOBA_num, wOBA_den)
-          )
+              AB  = PA - (BBct + HBP + Sac),
+              H   = `1B` + `2B` + `3B` + HR,
+              TB  = 1*`1B` + 2*`2B` + 3*`3B` + 4*HR,
+              AVG = safe_div_local(H, AB),
+              SLG = safe_div_local(TB, AB),
+              OBP = safe_div_local(H + BBct + HBP, PA),
+              OPS = SLG + OBP,
+              ISO = SLG - AVG,
+              uBB = BBct - IBBct,
+              wOBA_num = 0.690*uBB + 0.722*HBP + 0.888*`1B` + 1.271*`2B` + 1.616*`3B` + 2.101*HR,
+              wOBA_den = AB + BBct - IBBct + SFct + HBP,
+              wOBA = safe_div_local(wOBA_num, wOBA_den)
+            )
           
-        pitch_totals <- df_src %>%
-          dplyr::group_by(SplitColumn) %>%
-          dplyr::summarise(
-            Pitches = dplyr::n(),
-            Swings  = sum(!is.na(PitchCall) & PitchCall %in% swing_levels, na.rm = TRUE),
-            Whiffs  = sum(PitchCall == "StrikeSwinging", na.rm = TRUE),
-            .groups = "drop"
-          )
-        total_pitches <- sum(pitch_totals$Pitches, na.rm = TRUE)
-        
-        bbe <- df_src %>% dplyr::filter(grepl("live|game|ab", tolower(SessionType)), PitchCall == "InPlay")
-        evla <- bbe %>%
-          dplyr::group_by(SplitColumn) %>%
-          dplyr::summarise(EV = nz_mean_local(ExitSpeed), LA = nz_mean_local(Angle), .groups = "drop")
-        gb <- bbe %>%
-          dplyr::group_by(SplitColumn) %>%
-          dplyr::summarise(
-            `GB%` = safe_div_local(sum(TaggedHitType == "GroundBall", na.rm = TRUE),
-                             sum(!is.na(TaggedHitType),        na.rm = TRUE)),
-            .groups = "drop"
-          )
-        
-        parse_pct_prop <- function(x) {
-          x_num <- suppressWarnings(as.numeric(sub("%$", "", as.character(x))))
-          ifelse(is.finite(x_num), x_num / 100, NA_real_)
-        }
-        
-        extras_raw <- compute_process_results(df_src)
-        extras <- extras_raw %>%
-          {
-            df_proc <- .
-            if (!"SplitColumn" %in% names(df_proc) && "PitchType" %in% names(df_proc)) {
-              df_proc <- dplyr::rename(df_proc, SplitColumn = PitchType)
-            }
-            df_proc
-          } %>%
-          dplyr::mutate(
-            xWOBA     = suppressWarnings(as.numeric(xWOBA)),
-            xISO      = suppressWarnings(as.numeric(xISO)),
-            BABIP     = suppressWarnings(as.numeric(BABIP)),
-            `Barrel%` = parse_pct_prop(`Barrel%`)
-          ) %>%
-          dplyr::select(SplitColumn, xWOBA, xISO, BABIP, `Barrel%`)
-        
-        res_pt <- per_split %>%
-          dplyr::left_join(pitch_totals, by = "SplitColumn") %>%
-          dplyr::left_join(evla,         by = "SplitColumn") %>%
-          dplyr::left_join(gb,           by = "SplitColumn") %>%
-          dplyr::mutate(
-            `Swing%` = safe_div_local(Swings, Pitches),
-            `Whiff%` = safe_div_local(Whiffs, Swings)
-          ) %>%
-          dplyr::left_join(extras, by = "SplitColumn") %>%
-          dplyr::transmute(
-            !!split_col_name := as.character(SplitColumn),
-            PA, AB, AVG, SLG, OBP, OPS,
-            wOBA, xWOBA,
-            ISO, xISO, BABIP,
-            `Swing%`, `Whiff%`, `GB%`,
-            `K%` = safe_div_local(Kct, PA),
-            `BB%` = safe_div_local(BBct, PA),
-            `Barrel%`,
-            EV, LA
-          )
-        
-        # All-row
-        PAt <- nrow(term)
-        HBP_all <- sum(term$PlayResult == "HitByPitch", na.rm = TRUE)
-        Sac_all <- sum(term$PlayResult == "Sacrifice",  na.rm = TRUE)
-        H1  <- sum(term$PlayResult == "Single",  na.rm = TRUE)
-        H2  <- sum(term$PlayResult == "Double",  na.rm = TRUE)
-        H3  <- sum(term$PlayResult == "Triple",  na.rm = TRUE)
-        HR  <- sum(term$PlayResult == "HomeRun", na.rm = TRUE)
-        H   <- H1 + H2 + H3 + HR
-        IBB_all <- sum(term$PlayResult == "IntentionalWalk", na.rm = TRUE)
-        TB  <- 1*H1 + 2*H2 + 3*H3 + 4*HR
-        Kct_all <- sum(term$KorBB == "Strikeout" |
-                         term$PlayResult %in% c("Strikeout","StrikeoutSwinging","StrikeoutLooking"), na.rm = TRUE)
-        BBc_all <- sum(term$KorBB == "Walk" | term$PlayResult == "Walk", na.rm = TRUE)
-        ABt <- PAt - (BBc_all + HBP_all + Sac_all)
-        swings  <- sum(!is.na(df_src$PitchCall) & df_src$PitchCall %in% swing_levels, na.rm = TRUE)
-        whiffs  <- sum(df_src$PitchCall == "StrikeSwinging",                      na.rm = TRUE)
-        gbpct_all <- {
-          d <- df_src %>% dplyr::filter(grepl("live|game|ab", tolower(SessionType)), PitchCall == "InPlay")
-          safe_div_local(sum(d$TaggedHitType == "GroundBall", na.rm = TRUE),
-                   sum(!is.na(d$TaggedHitType),         na.rm = TRUE))
-        }
-        bbe_all <- df_src %>% dplyr::filter(grepl("live|game|ab", tolower(SessionType)), PitchCall == "InPlay")
-        
-        all_row <- tibble::tibble(
-          !!split_col_name := "All",
-          PA = PAt,
-          AB = ABt,
-          AVG = safe_div_local(H, ABt),
-          SLG = safe_div_local(TB, ABt),
-          OBP = safe_div_local(H + BBc_all + HBP_all, PAt),
-          OPS = NA_real_,
-          xWOBA = NA_real_, xISO = NA_real_, BABIP = NA_real_,
-          `Swing%` = safe_div_local(swings, total_pitches),
-          `Whiff%` = safe_div_local(whiffs, swings),
-          `GB%`    = gbpct_all,
-          `K%`     = safe_div_local(Kct_all, PAt),
-          `BB%`    = safe_div_local(BBc_all, PAt),
-          `Barrel%`= NA_real_,
-          EV = nz_mean_local(bbe_all$ExitSpeed),
-          LA = nz_mean_local(bbe_all$Angle),
-          ISO = SLG - AVG,
-          wOBA = {
-            uBB_all <- BBc_all - IBB_all
-            num <- 0.690*uBB_all + 0.722*HBP_all + 0.888*H1 + 1.271*H2 + 1.616*H3 + 2.101*HR
-            den <- ABt + BBc_all - IBB_all + Sac_all + HBP_all
-            safe_div_local(num, den)
+          pitch_totals <- df_src %>%
+            dplyr::group_by(SplitColumn) %>%
+            dplyr::summarise(
+              Pitches = dplyr::n(),
+              Swings  = sum(!is.na(PitchCall) & PitchCall %in% swing_levels, na.rm = TRUE),
+              Whiffs  = sum(PitchCall == "StrikeSwinging", na.rm = TRUE),
+              .groups = "drop"
+            )
+          total_pitches <- sum(pitch_totals$Pitches, na.rm = TRUE)
+          
+          bbe <- df_src %>% dplyr::filter(grepl("live|game|ab", tolower(SessionType)), PitchCall == "InPlay")
+          evla <- bbe %>%
+            dplyr::group_by(SplitColumn) %>%
+            dplyr::summarise(EV = nz_mean_local(ExitSpeed), LA = nz_mean_local(Angle), .groups = "drop")
+          gb <- bbe %>%
+            dplyr::group_by(SplitColumn) %>%
+            dplyr::summarise(
+              `GB%` = safe_div_local(sum(TaggedHitType == "GroundBall", na.rm = TRUE),
+                                     sum(!is.na(TaggedHitType),        na.rm = TRUE)),
+              .groups = "drop"
+            )
+          
+          parse_pct_prop <- function(x) {
+            x_num <- suppressWarnings(as.numeric(sub("%$", "", as.character(x))))
+            ifelse(is.finite(x_num), x_num / 100, NA_real_)
           }
-        ) %>%
-          dplyr::mutate(OPS = SLG + OBP)
-        
-        # Fill All-row process metrics using a single-group compute (avoids unweighted averaging across splits)
-        extras_all <- {
-          df_all <- df_src
-          df_all$SplitColumn <- "All"
-          compute_process_results(df_all) %>%
+          
+          extras_raw <- compute_process_results(df_src)
+          extras <- extras_raw %>%
+            {
+              df_proc <- .
+              if (!"SplitColumn" %in% names(df_proc) && "PitchType" %in% names(df_proc)) {
+                df_proc <- dplyr::rename(df_proc, SplitColumn = PitchType)
+              }
+              df_proc
+            } %>%
             dplyr::mutate(
               xWOBA     = suppressWarnings(as.numeric(xWOBA)),
               xISO      = suppressWarnings(as.numeric(xISO)),
               BABIP     = suppressWarnings(as.numeric(BABIP)),
               `Barrel%` = parse_pct_prop(`Barrel%`)
             ) %>%
-            dplyr::summarise(
-              xWOBA = nz_mean_local(xWOBA),
-              xISO  = nz_mean_local(xISO),
-              BABIP = nz_mean_local(BABIP),
-              `Barrel%` = nz_mean_local(`Barrel%`),
-              .groups = "drop"
+            dplyr::select(SplitColumn, xWOBA, xISO, BABIP, `Barrel%`)
+          
+          res_pt <- per_split %>%
+            dplyr::left_join(pitch_totals, by = "SplitColumn") %>%
+            dplyr::left_join(evla,         by = "SplitColumn") %>%
+            dplyr::left_join(gb,           by = "SplitColumn") %>%
+            dplyr::mutate(
+              `Swing%` = safe_div_local(Swings, Pitches),
+              `Whiff%` = safe_div_local(Whiffs, Swings)
+            ) %>%
+            dplyr::left_join(extras, by = "SplitColumn") %>%
+            dplyr::transmute(
+              !!split_col_name := as.character(SplitColumn),
+              PA, AB, AVG, SLG, OBP, OPS,
+              wOBA, xWOBA,
+              ISO, xISO, BABIP,
+              `Swing%`, `Whiff%`, `GB%`,
+              `K%` = safe_div_local(Kct, PA),
+              `BB%` = safe_div_local(BBct, PA),
+              `Barrel%`,
+              EV, LA
             )
-        }
-        if (nrow(extras_all)) {
-          all_row$xWOBA     <- extras_all$xWOBA[1]
-          all_row$xISO      <- extras_all$xISO[1]
-          all_row$BABIP     <- extras_all$BABIP[1]
-          all_row$`Barrel%` <- extras_all$`Barrel%`[1]
-        }
-        
-        res <- dplyr::bind_rows(res_pt, all_row)
-        if (identical(split_choice, "Pitch Types") && split_col_name == "Pitch") {
-          ord <- names(all_colors)
-          res[[split_col_name]] <- factor(res[[split_col_name]], levels = c(ord, setdiff(res[[split_col_name]], ord)))
-          res <- res %>% dplyr::arrange(res[[split_col_name]])
-          res[[split_col_name]] <- as.character(res[[split_col_name]])
-        }
-        res
+          
+          # All-row
+          PAt <- nrow(term)
+          HBP_all <- sum(term$PlayResult == "HitByPitch", na.rm = TRUE)
+          Sac_all <- sum(term$PlayResult == "Sacrifice",  na.rm = TRUE)
+          H1  <- sum(term$PlayResult == "Single",  na.rm = TRUE)
+          H2  <- sum(term$PlayResult == "Double",  na.rm = TRUE)
+          H3  <- sum(term$PlayResult == "Triple",  na.rm = TRUE)
+          HR  <- sum(term$PlayResult == "HomeRun", na.rm = TRUE)
+          H   <- H1 + H2 + H3 + HR
+          IBB_all <- sum(term$PlayResult == "IntentionalWalk", na.rm = TRUE)
+          TB  <- 1*H1 + 2*H2 + 3*H3 + 4*HR
+          Kct_all <- sum(term$KorBB == "Strikeout" |
+                           term$PlayResult %in% c("Strikeout","StrikeoutSwinging","StrikeoutLooking"), na.rm = TRUE)
+          BBc_all <- sum(term$KorBB == "Walk" | term$PlayResult == "Walk", na.rm = TRUE)
+          ABt <- PAt - (BBc_all + HBP_all + Sac_all)
+          swings  <- sum(!is.na(df_src$PitchCall) & df_src$PitchCall %in% swing_levels, na.rm = TRUE)
+          whiffs  <- sum(df_src$PitchCall == "StrikeSwinging",                      na.rm = TRUE)
+          gbpct_all <- {
+            d <- df_src %>% dplyr::filter(grepl("live|game|ab", tolower(SessionType)), PitchCall == "InPlay")
+            safe_div_local(sum(d$TaggedHitType == "GroundBall", na.rm = TRUE),
+                           sum(!is.na(d$TaggedHitType),         na.rm = TRUE))
+          }
+          bbe_all <- df_src %>% dplyr::filter(grepl("live|game|ab", tolower(SessionType)), PitchCall == "InPlay")
+          
+          all_row <- tibble::tibble(
+            !!split_col_name := "All",
+            PA = PAt,
+            AB = ABt,
+            AVG = safe_div_local(H, ABt),
+            SLG = safe_div_local(TB, ABt),
+            OBP = safe_div_local(H + BBc_all + HBP_all, PAt),
+            OPS = NA_real_,
+            xWOBA = NA_real_, xISO = NA_real_, BABIP = NA_real_,
+            `Swing%` = safe_div_local(swings, total_pitches),
+            `Whiff%` = safe_div_local(whiffs, swings),
+            `GB%`    = gbpct_all,
+            `K%`     = safe_div_local(Kct_all, PAt),
+            `BB%`    = safe_div_local(BBc_all, PAt),
+            `Barrel%`= NA_real_,
+            EV = nz_mean_local(bbe_all$ExitSpeed),
+            LA = nz_mean_local(bbe_all$Angle),
+            ISO = SLG - AVG,
+            wOBA = {
+              uBB_all <- BBc_all - IBB_all
+              num <- 0.690*uBB_all + 0.722*HBP_all + 0.888*H1 + 1.271*H2 + 1.616*H3 + 2.101*HR
+              den <- ABt + BBc_all - IBB_all + Sac_all + HBP_all
+              safe_div_local(num, den)
+            }
+          ) %>%
+            dplyr::mutate(OPS = SLG + OBP)
+          
+          # Fill All-row process metrics using a single-group compute (avoids unweighted averaging across splits)
+          extras_all <- {
+            df_all <- df_src
+            df_all$SplitColumn <- "All"
+            compute_process_results(df_all) %>%
+              dplyr::mutate(
+                xWOBA     = suppressWarnings(as.numeric(xWOBA)),
+                xISO      = suppressWarnings(as.numeric(xISO)),
+                BABIP     = suppressWarnings(as.numeric(BABIP)),
+                `Barrel%` = parse_pct_prop(`Barrel%`)
+              ) %>%
+              dplyr::summarise(
+                xWOBA = nz_mean_local(xWOBA),
+                xISO  = nz_mean_local(xISO),
+                BABIP = nz_mean_local(BABIP),
+                `Barrel%` = nz_mean_local(`Barrel%`),
+                .groups = "drop"
+              )
+          }
+          if (nrow(extras_all)) {
+            all_row$xWOBA     <- extras_all$xWOBA[1]
+            all_row$xISO      <- extras_all$xISO[1]
+            all_row$BABIP     <- extras_all$BABIP[1]
+            all_row$`Barrel%` <- extras_all$`Barrel%`[1]
+          }
+          
+          res <- dplyr::bind_rows(res_pt, all_row)
+          if (identical(split_choice, "Pitch Types") && split_col_name == "Pitch") {
+            ord <- names(all_colors)
+            res[[split_col_name]] <- factor(res[[split_col_name]], levels = c(ord, setdiff(res[[split_col_name]], ord)))
+            res <- res %>% dplyr::arrange(res[[split_col_name]])
+            res[[split_col_name]] <- as.character(res[[split_col_name]])
+          }
+          res
         }
         
         build_swing_decisions_hit <- function(df_src) {
@@ -14318,9 +14318,9 @@ custom_reports_ui <- function(id) {
                    selectInput(ns("saved_report"), "Saved Reports:", choices = c(""), selected = ""),
                    uiOutput(ns("report_global_toggle")),
                    div(style = "display: flex; gap: 5px;",
-                     actionButton(ns("new_report"), "New Report", class = "btn-success btn-sm"),
-                     actionButton(ns("save_report"), "Save Report", class = "btn-primary btn-sm"),
-                     actionButton(ns("delete_report"), "Delete Report", class = "btn-danger btn-sm")
+                       actionButton(ns("new_report"), "New Report", class = "btn-success btn-sm"),
+                       actionButton(ns("save_report"), "Save Report", class = "btn-primary btn-sm"),
+                       actionButton(ns("delete_report"), "Delete Report", class = "btn-danger btn-sm")
                    )
                )
         ),
@@ -14469,7 +14469,7 @@ custom_reports_server <- function(id) {
                 # Update filter inputs if they have saved values
                 if (!is.null(saved_cell$dates) && length(saved_cell$dates) == 2) {
                   updateDateRangeInput(session, paste0("cell_dates_", cell_id), 
-                                      start = saved_cell$dates[1], end = saved_cell$dates[2])
+                                       start = saved_cell$dates[1], end = saved_cell$dates[2])
                 }
                 if (!is.null(saved_cell$session) && length(saved_cell$session) == 1 && !is.na(saved_cell$session) && saved_cell$session != "") {
                   updateSelectInput(session, paste0("cell_session_", cell_id), selected = saved_cell$session)
@@ -14773,9 +14773,9 @@ custom_reports_server <- function(id) {
           existing_vmax <- input[[paste0("cell_velo_max_", cell_id)]] %||% saved_cell$velo_max %||% NULL
           out <- c(out, list(
             numericInput(ns(paste0("cell_velo_min_", cell_id)), "Velo Min", 
-                        value = if (!is.null(existing_vmin)) existing_vmin else NA),
+                         value = if (!is.null(existing_vmin)) existing_vmin else NA),
             numericInput(ns(paste0("cell_velo_max_", cell_id)), "Velo Max", 
-                        value = if (!is.null(existing_vmax)) existing_vmax else NA)
+                         value = if (!is.null(existing_vmax)) existing_vmax else NA)
           ))
         }
         if ("IVB Min/Max" %in% sel) {
@@ -14783,9 +14783,9 @@ custom_reports_server <- function(id) {
           existing_ivbmax <- input[[paste0("cell_ivb_max_", cell_id)]] %||% saved_cell$ivb_max %||% NULL
           out <- c(out, list(
             numericInput(ns(paste0("cell_ivb_min_", cell_id)), "IVB Min", 
-                        value = if (!is.null(existing_ivbmin)) existing_ivbmin else NA),
+                         value = if (!is.null(existing_ivbmin)) existing_ivbmin else NA),
             numericInput(ns(paste0("cell_ivb_max_", cell_id)), "IVB Max", 
-                        value = if (!is.null(existing_ivbmax)) existing_ivbmax else NA)
+                         value = if (!is.null(existing_ivbmax)) existing_ivbmax else NA)
           ))
         }
         if ("HB Min/Max" %in% sel) {
@@ -14793,9 +14793,9 @@ custom_reports_server <- function(id) {
           existing_hbmax <- input[[paste0("cell_hb_max_", cell_id)]] %||% saved_cell$hb_max %||% NULL
           out <- c(out, list(
             numericInput(ns(paste0("cell_hb_min_", cell_id)), "HB Min", 
-                        value = if (!is.null(existing_hbmin)) existing_hbmin else NA),
+                         value = if (!is.null(existing_hbmin)) existing_hbmin else NA),
             numericInput(ns(paste0("cell_hb_max_", cell_id)), "HB Max", 
-                        value = if (!is.null(existing_hbmax)) existing_hbmax else NA)
+                         value = if (!is.null(existing_hbmax)) existing_hbmax else NA)
           ))
         }
         if (length(out)) {
@@ -14906,59 +14906,59 @@ custom_reports_server <- function(id) {
                   conditionalPanel(
                     condition = if (is_controlled_row) "false" else sprintf("input['%s']", ns(paste0("cell_show_controls_", cell_id))),
                     div(
-                    # Title input - only visible when controls are shown
-                    textInput(ns(paste0("cell_title_", cell_id)), "Chart Title:", 
-                              value = sel$title %||% "", placeholder = "Enter chart title..."),
-                    selectInput(ns(paste0("cell_type_", cell_id)), "Content:", 
-                                choices = c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart"),
-                                selected = sel$type),
-                    conditionalPanel(
-                      sprintf("input['%s'] == 'Summary Table'", ns(paste0("cell_type_", cell_id))),
-                      tagList(
-                        selectInput(ns(paste0("cell_table_mode_", cell_id)), "Table:", 
-                                    choices = if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data",
-                                                                                                                                 names(custom_tables()), "Custom"),
-                                    selected = {
-                                      ch <- if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data",
-                                                                                                                               names(custom_tables()), "Custom")
-                                      if (!is.null(sel$table_mode) && sel$table_mode %in% ch) sel$table_mode else ch[[1]]
-                                    }),
-                        selectInput(ns(paste0("cell_filter_", cell_id)), "Split By:", 
-                                    choices = c("Pitch Types","Batter Hand","Pitcher Hand","Count","After Count","Velocity","IVB","HB","Batter"),
-                                    selected = sel$filter),
-                        checkboxInput(ns(paste0("cell_color_", cell_id)), "Color-Code", value = sel$color %||% TRUE),
-                        conditionalPanel(
-                          condition = sprintf("input['%s']=='Custom' && input['%s']=='Hitting'", 
-                                              ns(paste0("cell_table_mode_", cell_id)), ns("report_type")),
-                          selectizeInput(
-                            ns(paste0("cell_table_custom_cols_", cell_id)),
-                            "Columns (drag to order):",
-                            choices = c("PA","AB","AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP",
-                                        "Swing%","Whiff%","CSW%","GB%","K%","BB%","Barrel%","EV","LA"),
-                            selected = sel$table_custom_cols %||% c("PA","AB","AVG","SLG","OBP","OPS","Swing%","Whiff%"),
-                            multiple = TRUE,
-                            options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
+                      # Title input - only visible when controls are shown
+                      textInput(ns(paste0("cell_title_", cell_id)), "Chart Title:", 
+                                value = sel$title %||% "", placeholder = "Enter chart title..."),
+                      selectInput(ns(paste0("cell_type_", cell_id)), "Content:", 
+                                  choices = c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart"),
+                                  selected = sel$type),
+                      conditionalPanel(
+                        sprintf("input['%s'] == 'Summary Table'", ns(paste0("cell_type_", cell_id))),
+                        tagList(
+                          selectInput(ns(paste0("cell_table_mode_", cell_id)), "Table:", 
+                                      choices = if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data",
+                                                                                                                                   names(custom_tables()), "Custom"),
+                                      selected = {
+                                        ch <- if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data",
+                                                                                                                                 names(custom_tables()), "Custom")
+                                        if (!is.null(sel$table_mode) && sel$table_mode %in% ch) sel$table_mode else ch[[1]]
+                                      }),
+                          selectInput(ns(paste0("cell_filter_", cell_id)), "Split By:", 
+                                      choices = c("Pitch Types","Batter Hand","Pitcher Hand","Count","After Count","Velocity","IVB","HB","Batter"),
+                                      selected = sel$filter),
+                          checkboxInput(ns(paste0("cell_color_", cell_id)), "Color-Code", value = sel$color %||% TRUE),
+                          conditionalPanel(
+                            condition = sprintf("input['%s']=='Custom' && input['%s']=='Hitting'", 
+                                                ns(paste0("cell_table_mode_", cell_id)), ns("report_type")),
+                            selectizeInput(
+                              ns(paste0("cell_table_custom_cols_", cell_id)),
+                              "Columns (drag to order):",
+                              choices = c("PA","AB","AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP",
+                                          "Swing%","Whiff%","CSW%","GB%","K%","BB%","Barrel%","EV","LA"),
+                              selected = sel$table_custom_cols %||% c("PA","AB","AVG","SLG","OBP","OPS","Swing%","Whiff%"),
+                              multiple = TRUE,
+                              options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
+                            )
                           )
                         )
-                      )
-                    ),
-                    conditionalPanel(
-                      sprintf("input['%s'] == 'Heatmap'", ns(paste0("cell_type_", cell_id))),
-                      selectInput(ns(paste0("cell_heat_stat_", cell_id)), "Heatmap Type:",
-                                  choices = c("Frequency","Whiff Rate","Exit Velocity","GB Rate","Contact Rate","Swing Rate","Run Values"),
-                                  selected = sel$heat_stat %||% "Frequency")
-                    ),
-                    # Per-cell filters (collapsed set)
-                    selectizeInput(
-                      ns(paste0("cell_filter_select_", cell_id)),
-                      "Filters to show:",
-                      choices = c("Dates","Session Type","Pitch Types","Batter Hand","Pitcher Hand","Pitch Results","QP Locations",
-                                  "Count","After Count","Zone Location","Velo Min/Max","IVB Min/Max","HB Min/Max"),
-                      selected = sel$filter_select %||% c("Dates","Session Type","Pitch Types"),
-                      multiple = TRUE,
-                      options = list(plugins = list("remove_button"))
-                    ),
-                    uiOutput(ns(paste0("cell_filters_", cell_id)))
+                      ),
+                      conditionalPanel(
+                        sprintf("input['%s'] == 'Heatmap'", ns(paste0("cell_type_", cell_id))),
+                        selectInput(ns(paste0("cell_heat_stat_", cell_id)), "Heatmap Type:",
+                                    choices = c("Frequency","Whiff Rate","Exit Velocity","GB Rate","Contact Rate","Swing Rate","Run Values"),
+                                    selected = sel$heat_stat %||% "Frequency")
+                      ),
+                      # Per-cell filters (collapsed set)
+                      selectizeInput(
+                        ns(paste0("cell_filter_select_", cell_id)),
+                        "Filters to show:",
+                        choices = c("Dates","Session Type","Pitch Types","Batter Hand","Pitcher Hand","Pitch Results","QP Locations",
+                                    "Count","After Count","Zone Location","Velo Min/Max","IVB Min/Max","HB Min/Max"),
+                        selected = sel$filter_select %||% c("Dates","Session Type","Pitch Types"),
+                        multiple = TRUE,
+                        options = list(plugins = list("remove_button"))
+                      ),
+                      uiOutput(ns(paste0("cell_filters_", cell_id)))
                     )
                   )
                 ),
@@ -15058,8 +15058,8 @@ custom_reports_server <- function(id) {
     # Helper: get filtered dataset for player(s) for a given cell
     # This is now a pure function that will be cached via bindCache in the reactive
     get_cell_data <- function(cell_id, players, report_type, dates, session, pitch_types, 
-                               batter_side, pitcher_hand, results, qp, count, after_count, 
-                               zone, velo_min, velo_max, ivb_min, ivb_max, hb_min, hb_max) {
+                              batter_side, pitcher_hand, results, qp, count, after_count, 
+                              zone, velo_min, velo_max, ivb_min, ivb_max, hb_min, hb_max) {
       if (is.null(players) || length(players) == 0) return(data.frame())
       
       # Handle "All" selection - get all data for that report type
@@ -15272,20 +15272,20 @@ custom_reports_server <- function(id) {
             dplyr::summarise(
               avg_HB   = mean(HorzBreak, na.rm = TRUE),
               avg_IVB  = mean(InducedVertBreak, na.rm = TRUE),
-            avg_velo = mean(RelSpeed, na.rm = TRUE),
-            avg_stuff= if ("Stuff+" %in% names(df_mv)) mean(`Stuff+`, na.rm = TRUE) else NA_real_,
-            n_obs    = dplyr::n(),
-            .groups = "drop"
-          ) %>%
-          dplyr::mutate(
-            tt = paste0(SplitColumn,
-                        "<br>Velo: ", round(avg_velo,1), " mph",
-                        "<br>IVB: ", round(avg_IVB,1), " in",
-                        "<br>HB: ", round(avg_HB,1), " in",
-                        ifelse(is.finite(avg_stuff), paste0("<br>Stuff+: ", round(avg_stuff,1)), ""),
-                        "<br>Pitches: ", n_obs),
-            data_id = SplitColumn
-          )
+              avg_velo = mean(RelSpeed, na.rm = TRUE),
+              avg_stuff= if ("Stuff+" %in% names(df_mv)) mean(`Stuff+`, na.rm = TRUE) else NA_real_,
+              n_obs    = dplyr::n(),
+              .groups = "drop"
+            ) %>%
+            dplyr::mutate(
+              tt = paste0(SplitColumn,
+                          "<br>Velo: ", round(avg_velo,1), " mph",
+                          "<br>IVB: ", round(avg_IVB,1), " in",
+                          "<br>HB: ", round(avg_HB,1), " in",
+                          ifelse(is.finite(avg_stuff), paste0("<br>Stuff+: ", round(avg_stuff,1)), ""),
+                          "<br>Pitches: ", n_obs),
+              data_id = SplitColumn
+            )
           p <- ggplot() +
             ggiraph::geom_point_interactive(
               data = df_mv,
@@ -15617,8 +15617,8 @@ custom_reports_server <- function(id) {
             grid$z <- (grid$z / max(grid$z, na.rm = TRUE)) * 100
             
             return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr, mark_max = FALSE,
-                            show_scale = TRUE, scale_label = "Pitch Frequency",
-                            scale_limits = c(0, 80)))
+                             show_scale = TRUE, scale_label = "Pitch Frequency",
+                             scale_limits = c(0, 80)))
           }
           
           # Filter to valid location data for non-Frequency stats
@@ -15637,9 +15637,9 @@ custom_reports_server <- function(id) {
             breaks <- c(seq(0, 50, length.out = HEAT_BINS + 1), Inf)
             
             return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                            breaks = breaks, mark_max = FALSE,
-                            show_scale = TRUE, scale_label = "Whiff Rate %",
-                            scale_limits = c(0, 50)))
+                             breaks = breaks, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "Whiff Rate %",
+                             scale_limits = c(0, 50)))
           }
           
           if (hm_stat == "GB Rate") {
@@ -15659,9 +15659,9 @@ custom_reports_server <- function(id) {
             breaks <- c(-Inf, seq(0, 70, length.out = HEAT_BINS + 1), Inf)
             
             return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                            breaks = breaks, mark_max = FALSE,
-                            show_scale = TRUE, scale_label = "GB Rate %",
-                            scale_limits = c(0, 70)))
+                             breaks = breaks, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "GB Rate %",
+                             scale_limits = c(0, 70)))
           }
           
           if (hm_stat == "Contact Rate") {
@@ -15676,9 +15676,9 @@ custom_reports_server <- function(id) {
             breaks <- seq(50, 100, length.out = HEAT_BINS + 1)
             
             return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                            breaks = breaks, mark_max = FALSE,
-                            show_scale = TRUE, scale_label = "Contact Rate %",
-                            scale_limits = c(50, 100)))
+                             breaks = breaks, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "Contact Rate %",
+                             scale_limits = c(50, 100)))
           }
           
           if (hm_stat == "Swing Rate") {
@@ -15691,9 +15691,9 @@ custom_reports_server <- function(id) {
             breaks <- seq(20, 80, length.out = HEAT_BINS + 1)
             
             return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                            breaks = breaks, mark_max = FALSE,
-                            show_scale = TRUE, scale_label = "Swing Rate %",
-                            scale_limits = c(20, 80)))
+                             breaks = breaks, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "Swing Rate %",
+                             scale_limits = c(20, 80)))
           }
           
           if (hm_stat == "Exit Velocity") {
@@ -15713,9 +15713,9 @@ custom_reports_server <- function(id) {
             breaks <- seq(60, 110, length.out = HEAT_BINS + 1)
             
             return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                            breaks = breaks, mark_max = FALSE,
-                            show_scale = TRUE, scale_label = "Exit Velocity (mph)",
-                            scale_limits = c(60, 110)))
+                             breaks = breaks, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "Exit Velocity (mph)",
+                             scale_limits = c(60, 110)))
           }
           
           # Default fallback
@@ -16466,352 +16466,352 @@ player_plans_ui <- function() {
     div(
       class = "pp-root",
       sidebarLayout(
-      sidebarPanel(
-        width = 3,
-        h4("Player Plans"),
-        selectInput("pp_player_select", "Select Player:",
-                    choices = NULL,
-                    selected = NULL),
-        
-        selectInput("pp_session_type", "Session Type:",
-                    choices = c("All", "Bullpen", "Live"),
-                    selected = "All"),
-        
-        dateRangeInput("pp_date_range", "Date Range:",
-                       start = Sys.Date() - 30,
-                       end = Sys.Date(),
-                       format = "mm/dd/yyyy"),
-        
-        hr(),
-        
-        # Goal 1
-        h5("Goal #1"),
-        selectInput("pp_goal1_type", "Goal Type:",
-                    choices = c("", "Stuff", "Execution"),
-                    selected = ""),
-        
-        conditionalPanel(
-          condition = "input.pp_goal1_type == 'Stuff'",
-          selectInput("pp_goal1_stuff_category", "Category:",
-                      choices = c("", "Velocity", "Movement"),
-                      selected = "")
-        ),
-        
-        conditionalPanel(
-          condition = "input.pp_goal1_type == 'Stuff' && input.pp_goal1_stuff_category == 'Velocity'",
-          selectInput("pp_goal1_velocity_pitch", "Pitch Type:",
+        sidebarPanel(
+          width = 3,
+          h4("Player Plans"),
+          selectInput("pp_player_select", "Select Player:",
                       choices = NULL,
                       selected = NULL),
-          selectInput("pp_goal1_batter_hand", "Batter Hand:",
-                      choices = c("All", "Left", "Right"),
-                      selected = "All")
-        ),
-        
-        conditionalPanel(
-          condition = "input.pp_goal1_type == 'Stuff' && input.pp_goal1_stuff_category == 'Movement'",
-          selectInput("pp_goal1_movement_pitch", "Pitch Type:",
-                      choices = NULL,
-                      selected = NULL),
-          selectInput("pp_goal1_movement_type", "Movement Type:",
-                      choices = c("IVB", "HB"),
-                      selected = NULL,
-                      multiple = TRUE),
-          selectInput("pp_goal1_batter_hand", "Batter Hand:",
-                      choices = c("All", "Left", "Right"),
-                      selected = "All")
-        ),
-        conditionalPanel(
-          condition = "input.pp_goal1_type == 'Stuff'",
-          selectInput("pp_goal1_chart_view", "Chart View:",
-                      choices = c("Trend Chart", "Movement Plot", "Pitch Map"),
-                      selected = "Trend Chart")
-        ),
-        conditionalPanel(
-          condition = "input.pp_goal1_type == 'Stuff' && input.pp_goal1_chart_view == 'Movement Plot'",
-          selectInput("pp_goal1_movement_display", "Movement Plot View:",
-                      choices = c("Averages Only", "Averages and Pitches",
-                                  "Target Shapes Only", "Target Shapes and Pitches"),
-                      selected = c("Averages and Pitches"),
-                      multiple = TRUE),
-          actionButton("pp_goal1_target_settings", "Target Shapes Settings",
-                       class = "btn-default btn-sm")
-        ),
-        
-        conditionalPanel(
-          condition = "input.pp_goal1_type == 'Execution'",
-          selectInput("pp_goal1_execution_stat", "Stat:",
-                      choices = c("", "FPS%", "E+A%", "InZone%", "Strike%", 
-                                  "Comp%", "Ctrl+", "QP+", "QP%", "Whiff%", "CSW%"),
-                      selected = ""),
-          selectInput("pp_goal1_execution_pitch", "Pitch Type:",
-                      choices = c("All"),
-                      selected = "All",
-                      multiple = TRUE),
-          selectInput("pp_goal1_batter_hand", "Batter Hand:",
-                      choices = c("All", "Left", "Right"),
+          
+          selectInput("pp_session_type", "Session Type:",
+                      choices = c("All", "Bullpen", "Live"),
                       selected = "All"),
-          selectInput("pp_goal1_chart_view", "Chart View:",
-                      choices = c("Trend Chart", "Heatmap", "Pitch Map"),
-                      selected = "Trend Chart")
-        ),
-        
-        # Target section for Goal 1
-        conditionalPanel(
-          condition = "input.pp_goal1_type != ''",
+          
+          dateRangeInput("pp_date_range", "Date Range:",
+                         start = Sys.Date() - 30,
+                         end = Sys.Date(),
+                         format = "mm/dd/yyyy"),
+          
           hr(),
-          h6("Target:"),
-          fluidRow(
-            column(4,
-                   selectInput("pp_goal1_target_direction", NULL,
-                               choices = c("", ">", "<"),
-                               selected = "")
-            ),
-            column(8,
-                   textInput("pp_goal1_target_value", NULL,
-                             placeholder = "Enter target value",
-                             value = "")
-            )
-          )
-        ),
-        
-        hr(),
-        
-        # Goal 2
-        h5("Goal #2"),
-        selectInput("pp_goal2_type", "Goal Type:",
-                    choices = c("", "Stuff", "Execution"),
-                    selected = ""),
-        
-        conditionalPanel(
-          condition = "input.pp_goal2_type == 'Stuff'",
-          selectInput("pp_goal2_stuff_category", "Category:",
-                      choices = c("", "Velocity", "Movement"),
-                      selected = "")
-        ),
-        
-        conditionalPanel(
-          condition = "input.pp_goal2_type == 'Stuff' && input.pp_goal2_stuff_category == 'Velocity'",
-          selectInput("pp_goal2_velocity_pitch", "Pitch Type:",
-                      choices = NULL,
-                      selected = NULL),
-          selectInput("pp_goal2_batter_hand", "Batter Hand:",
-                      choices = c("All", "Left", "Right"),
-                      selected = "All")
-        ),
-        
-        conditionalPanel(
-          condition = "input.pp_goal2_type == 'Stuff' && input.pp_goal2_stuff_category == 'Movement'",
-          selectInput("pp_goal2_movement_pitch", "Pitch Type:",
-                      choices = NULL,
-                      selected = NULL),
-          selectInput("pp_goal2_movement_type", "Movement Type:",
-                      choices = c("IVB", "HB"),
-                      selected = NULL,
-                      multiple = TRUE),
-          selectInput("pp_goal2_batter_hand", "Batter Hand:",
-                      choices = c("All", "Left", "Right"),
-                      selected = "All")
-        ),
-        conditionalPanel(
-          condition = "input.pp_goal2_type == 'Stuff'",
-          selectInput("pp_goal2_chart_view", "Chart View:",
-                      choices = c("Trend Chart", "Movement Plot", "Pitch Map"),
-                      selected = "Trend Chart")
-        ),
-        conditionalPanel(
-          condition = "input.pp_goal2_type == 'Stuff' && input.pp_goal2_chart_view == 'Movement Plot'",
-          selectInput("pp_goal2_movement_display", "Movement Plot View:",
-                      choices = c("Averages Only", "Averages and Pitches",
-                                  "Target Shapes Only", "Target Shapes and Pitches"),
-                      selected = c("Averages and Pitches"),
-                      multiple = TRUE),
-          actionButton("pp_goal2_target_settings", "Target Shapes Settings",
-                       class = "btn-default btn-sm")
-        ),
-        
-        conditionalPanel(
-          condition = "input.pp_goal2_type == 'Execution'",
-          selectInput("pp_goal2_execution_stat", "Stat:",
-                      choices = c("", "FPS%", "E+A%", "InZone%", "Strike%", 
-                                  "Comp%", "Ctrl+", "QP+", "QP%", "Whiff%", "CSW%"),
+          
+          # Goal 1
+          h5("Goal #1"),
+          selectInput("pp_goal1_type", "Goal Type:",
+                      choices = c("", "Stuff", "Execution"),
                       selected = ""),
-          selectInput("pp_goal2_execution_pitch", "Pitch Type:",
-                      choices = c("All"),
-                      selected = "All",
-                      multiple = TRUE),
-          selectInput("pp_goal2_batter_hand", "Batter Hand:",
-                      choices = c("All", "Left", "Right"),
-                      selected = "All"),
-          selectInput("pp_goal2_chart_view", "Chart View:",
-                      choices = c("Trend Chart", "Heatmap", "Pitch Map"),
-                      selected = "Trend Chart")
-        ),
-        
-        # Target section for Goal 2
-        conditionalPanel(
-          condition = "input.pp_goal2_type != ''",
-          hr(),
-          h6("Target:"),
-          fluidRow(
-            column(4,
-                   selectInput("pp_goal2_target_direction", NULL,
-                               choices = c("", ">", "<"),
-                               selected = "")
-            ),
-            column(8,
-                   textInput("pp_goal2_target_value", NULL,
-                             placeholder = "Enter target value",
-                             value = "")
-            )
-          )
-        ),
-        
-        hr(),
-        
-        # Goal 3
-        h5("Goal #3"),
-        selectInput("pp_goal3_type", "Goal Type:",
-                    choices = c("", "Stuff", "Execution"),
-                    selected = ""),
-        
-        conditionalPanel(
-          condition = "input.pp_goal3_type == 'Stuff'",
-          selectInput("pp_goal3_stuff_category", "Category:",
-                      choices = c("", "Velocity", "Movement"),
-                      selected = "")
-        ),
-        
-        conditionalPanel(
-          condition = "input.pp_goal3_type == 'Stuff' && input.pp_goal3_stuff_category == 'Velocity'",
-          selectInput("pp_goal3_velocity_pitch", "Pitch Type:",
-                      choices = NULL,
-                      selected = NULL),
-          selectInput("pp_goal3_batter_hand", "Batter Hand:",
-                      choices = c("All", "Left", "Right"),
-                      selected = "All")
-        ),
-        
-        conditionalPanel(
-          condition = "input.pp_goal3_type == 'Stuff' && input.pp_goal3_stuff_category == 'Movement'",
-          selectInput("pp_goal3_movement_pitch", "Pitch Type:",
-                      choices = NULL,
-                      selected = NULL),
-          selectInput("pp_goal3_movement_type", "Movement Type:",
-                      choices = c("IVB", "HB"),
-                      selected = NULL,
-                      multiple = TRUE),
-          selectInput("pp_goal3_batter_hand", "Batter Hand:",
-                      choices = c("All", "Left", "Right"),
-                      selected = "All")
-        ),
-        conditionalPanel(
-          condition = "input.pp_goal3_type == 'Stuff'",
-          selectInput("pp_goal3_chart_view", "Chart View:",
-                      choices = c("Trend Chart", "Movement Plot", "Pitch Map"),
-                      selected = "Trend Chart")
-        ),
-        conditionalPanel(
-          condition = "input.pp_goal3_type == 'Stuff' && input.pp_goal3_chart_view == 'Movement Plot'",
-          selectInput("pp_goal3_movement_display", "Movement Plot View:",
-                      choices = c("Averages Only", "Averages and Pitches",
-                                  "Target Shapes Only", "Target Shapes and Pitches"),
-                      selected = c("Averages and Pitches"),
-                      multiple = TRUE),
-          actionButton("pp_goal3_target_settings", "Target Shapes Settings",
-                       class = "btn-default btn-sm")
-        ),
-        
-        conditionalPanel(
-          condition = "input.pp_goal3_type == 'Execution'",
-          selectInput("pp_goal3_execution_stat", "Stat:",
-                      choices = c("", "FPS%", "E+A%", "InZone%", "Strike%", 
-                                  "Comp%", "Ctrl+", "QP+", "QP%", "Whiff%", "CSW%"),
-                      selected = ""),
-          selectInput("pp_goal3_execution_pitch", "Pitch Type:",
-                      choices = c("All"),
-                      selected = "All",
-                      multiple = TRUE),
-          selectInput("pp_goal3_batter_hand", "Batter Hand:",
-                      choices = c("All", "Left", "Right"),
-                      selected = "All"),
-          selectInput("pp_goal3_chart_view", "Chart View:",
-                      choices = c("Trend Chart", "Heatmap", "Pitch Map"),
-                      selected = "Trend Chart")
-        ),
-        
-        # Target section for Goal 3
-        conditionalPanel(
-          condition = "input.pp_goal3_type != ''",
-          hr(),
-          h6("Target:"),
-          fluidRow(
-            column(4,
-                   selectInput("pp_goal3_target_direction", NULL,
-                               choices = c("", ">", "<"),
-                               selected = "")
-            ),
-            column(8,
-                   textInput("pp_goal3_target_value", NULL,
-                             placeholder = "Enter target value",
-                             value = "")
-            )
-          )
-        )
-      ),
-      
-      mainPanel(
-        width = 9,
-        div(id = "player-plans-content",
-            # PDF Download Button
-            # Content goes here
-            
-            # Header section with logos and title
+          
+          conditionalPanel(
+            condition = "input.pp_goal1_type == 'Stuff'",
+            selectInput("pp_goal1_stuff_category", "Category:",
+                        choices = c("", "Velocity", "Movement"),
+                        selected = "")
+          ),
+          
+          conditionalPanel(
+            condition = "input.pp_goal1_type == 'Stuff' && input.pp_goal1_stuff_category == 'Velocity'",
+            selectInput("pp_goal1_velocity_pitch", "Pitch Type:",
+                        choices = NULL,
+                        selected = NULL),
+            selectInput("pp_goal1_batter_hand", "Batter Hand:",
+                        choices = c("All", "Left", "Right"),
+                        selected = "All")
+          ),
+          
+          conditionalPanel(
+            condition = "input.pp_goal1_type == 'Stuff' && input.pp_goal1_stuff_category == 'Movement'",
+            selectInput("pp_goal1_movement_pitch", "Pitch Type:",
+                        choices = NULL,
+                        selected = NULL),
+            selectInput("pp_goal1_movement_type", "Movement Type:",
+                        choices = c("IVB", "HB"),
+                        selected = NULL,
+                        multiple = TRUE),
+            selectInput("pp_goal1_batter_hand", "Batter Hand:",
+                        choices = c("All", "Left", "Right"),
+                        selected = "All")
+          ),
+          conditionalPanel(
+            condition = "input.pp_goal1_type == 'Stuff'",
+            selectInput("pp_goal1_chart_view", "Chart View:",
+                        choices = c("Trend Chart", "Movement Plot", "Pitch Map"),
+                        selected = "Trend Chart")
+          ),
+          conditionalPanel(
+            condition = "input.pp_goal1_type == 'Stuff' && input.pp_goal1_chart_view == 'Movement Plot'",
+            selectInput("pp_goal1_movement_display", "Movement Plot View:",
+                        choices = c("Averages Only", "Averages and Pitches",
+                                    "Target Shapes Only", "Target Shapes and Pitches"),
+                        selected = c("Averages and Pitches"),
+                        multiple = TRUE),
+            actionButton("pp_goal1_target_settings", "Target Shapes Settings",
+                         class = "btn-default btn-sm")
+          ),
+          
+          conditionalPanel(
+            condition = "input.pp_goal1_type == 'Execution'",
+            selectInput("pp_goal1_execution_stat", "Stat:",
+                        choices = c("", "FPS%", "E+A%", "InZone%", "Strike%", 
+                                    "Comp%", "Ctrl+", "QP+", "QP%", "Whiff%", "CSW%"),
+                        selected = ""),
+            selectInput("pp_goal1_execution_pitch", "Pitch Type:",
+                        choices = c("All"),
+                        selected = "All",
+                        multiple = TRUE),
+            selectInput("pp_goal1_batter_hand", "Batter Hand:",
+                        choices = c("All", "Left", "Right"),
+                        selected = "All"),
+            selectInput("pp_goal1_chart_view", "Chart View:",
+                        choices = c("Trend Chart", "Heatmap", "Pitch Map"),
+                        selected = "Trend Chart")
+          ),
+          
+          # Target section for Goal 1
+          conditionalPanel(
+            condition = "input.pp_goal1_type != ''",
+            hr(),
+            h6("Target:"),
             fluidRow(
-              column(2,
-                     div(style = "text-align: left; padding-top: 20px;",
-                         tags$img(src = "PCUlogo.png", style = "height: 80px; max-width: 100%;")
-                     )
+              column(4,
+                     selectInput("pp_goal1_target_direction", NULL,
+                                 choices = c("", ">", "<"),
+                                 selected = "")
               ),
               column(8,
-                     div(style = "text-align: center; padding: 20px 0;",
-                         h2(strong("Player Development Plan"), style = "margin-bottom: 10px;"),
-                         h3(strong(textOutput("pp_player_name", inline = TRUE)), style = "margin-bottom: 5px;"),
-                         h5(em(textOutput("pp_date_range_display", inline = TRUE)), style = "margin: 0;")
-                     )
-              ),
-              column(2,
-                     div(style = "text-align: right; padding-top: 30px;",
-                         tags$img(src = "GCUlogo.png", style = "height: 40px; max-width: 100%;")
-                     )
-              )
-            ),
-            hr(),
-            uiOutput("pp_dynamic_goals"),
-            br(),
-            # View Completed Goals button
-            fluidRow(
-              column(12,
-                     div(style = "text-align: center; margin: 20px 0;",
-                         actionButton("pp_view_completed", "View Completed Goals", 
-                                      class = "btn-info", style = "margin-right: 10px;"),
-                         span(textOutput("pp_completed_count", inline = TRUE), 
-                              style = "font-size: 14px; color: #666;")
-                     )
-              )
-            ),
-            br(),
-            fluidRow(
-              column(12,
-                     div(style = "text-align: center;",
-                         h4(strong("Notes"))
-                     ),
-                     textAreaInput("pp_general_notes", label = NULL,
-                                   placeholder = "Enter general notes for this player plan...",
-                                   rows = 4, width = "100%")
+                     textInput("pp_goal1_target_value", NULL,
+                               placeholder = "Enter target value",
+                               value = "")
               )
             )
-        ) # Close player-plans-content div
-      )
+          ),
+          
+          hr(),
+          
+          # Goal 2
+          h5("Goal #2"),
+          selectInput("pp_goal2_type", "Goal Type:",
+                      choices = c("", "Stuff", "Execution"),
+                      selected = ""),
+          
+          conditionalPanel(
+            condition = "input.pp_goal2_type == 'Stuff'",
+            selectInput("pp_goal2_stuff_category", "Category:",
+                        choices = c("", "Velocity", "Movement"),
+                        selected = "")
+          ),
+          
+          conditionalPanel(
+            condition = "input.pp_goal2_type == 'Stuff' && input.pp_goal2_stuff_category == 'Velocity'",
+            selectInput("pp_goal2_velocity_pitch", "Pitch Type:",
+                        choices = NULL,
+                        selected = NULL),
+            selectInput("pp_goal2_batter_hand", "Batter Hand:",
+                        choices = c("All", "Left", "Right"),
+                        selected = "All")
+          ),
+          
+          conditionalPanel(
+            condition = "input.pp_goal2_type == 'Stuff' && input.pp_goal2_stuff_category == 'Movement'",
+            selectInput("pp_goal2_movement_pitch", "Pitch Type:",
+                        choices = NULL,
+                        selected = NULL),
+            selectInput("pp_goal2_movement_type", "Movement Type:",
+                        choices = c("IVB", "HB"),
+                        selected = NULL,
+                        multiple = TRUE),
+            selectInput("pp_goal2_batter_hand", "Batter Hand:",
+                        choices = c("All", "Left", "Right"),
+                        selected = "All")
+          ),
+          conditionalPanel(
+            condition = "input.pp_goal2_type == 'Stuff'",
+            selectInput("pp_goal2_chart_view", "Chart View:",
+                        choices = c("Trend Chart", "Movement Plot", "Pitch Map"),
+                        selected = "Trend Chart")
+          ),
+          conditionalPanel(
+            condition = "input.pp_goal2_type == 'Stuff' && input.pp_goal2_chart_view == 'Movement Plot'",
+            selectInput("pp_goal2_movement_display", "Movement Plot View:",
+                        choices = c("Averages Only", "Averages and Pitches",
+                                    "Target Shapes Only", "Target Shapes and Pitches"),
+                        selected = c("Averages and Pitches"),
+                        multiple = TRUE),
+            actionButton("pp_goal2_target_settings", "Target Shapes Settings",
+                         class = "btn-default btn-sm")
+          ),
+          
+          conditionalPanel(
+            condition = "input.pp_goal2_type == 'Execution'",
+            selectInput("pp_goal2_execution_stat", "Stat:",
+                        choices = c("", "FPS%", "E+A%", "InZone%", "Strike%", 
+                                    "Comp%", "Ctrl+", "QP+", "QP%", "Whiff%", "CSW%"),
+                        selected = ""),
+            selectInput("pp_goal2_execution_pitch", "Pitch Type:",
+                        choices = c("All"),
+                        selected = "All",
+                        multiple = TRUE),
+            selectInput("pp_goal2_batter_hand", "Batter Hand:",
+                        choices = c("All", "Left", "Right"),
+                        selected = "All"),
+            selectInput("pp_goal2_chart_view", "Chart View:",
+                        choices = c("Trend Chart", "Heatmap", "Pitch Map"),
+                        selected = "Trend Chart")
+          ),
+          
+          # Target section for Goal 2
+          conditionalPanel(
+            condition = "input.pp_goal2_type != ''",
+            hr(),
+            h6("Target:"),
+            fluidRow(
+              column(4,
+                     selectInput("pp_goal2_target_direction", NULL,
+                                 choices = c("", ">", "<"),
+                                 selected = "")
+              ),
+              column(8,
+                     textInput("pp_goal2_target_value", NULL,
+                               placeholder = "Enter target value",
+                               value = "")
+              )
+            )
+          ),
+          
+          hr(),
+          
+          # Goal 3
+          h5("Goal #3"),
+          selectInput("pp_goal3_type", "Goal Type:",
+                      choices = c("", "Stuff", "Execution"),
+                      selected = ""),
+          
+          conditionalPanel(
+            condition = "input.pp_goal3_type == 'Stuff'",
+            selectInput("pp_goal3_stuff_category", "Category:",
+                        choices = c("", "Velocity", "Movement"),
+                        selected = "")
+          ),
+          
+          conditionalPanel(
+            condition = "input.pp_goal3_type == 'Stuff' && input.pp_goal3_stuff_category == 'Velocity'",
+            selectInput("pp_goal3_velocity_pitch", "Pitch Type:",
+                        choices = NULL,
+                        selected = NULL),
+            selectInput("pp_goal3_batter_hand", "Batter Hand:",
+                        choices = c("All", "Left", "Right"),
+                        selected = "All")
+          ),
+          
+          conditionalPanel(
+            condition = "input.pp_goal3_type == 'Stuff' && input.pp_goal3_stuff_category == 'Movement'",
+            selectInput("pp_goal3_movement_pitch", "Pitch Type:",
+                        choices = NULL,
+                        selected = NULL),
+            selectInput("pp_goal3_movement_type", "Movement Type:",
+                        choices = c("IVB", "HB"),
+                        selected = NULL,
+                        multiple = TRUE),
+            selectInput("pp_goal3_batter_hand", "Batter Hand:",
+                        choices = c("All", "Left", "Right"),
+                        selected = "All")
+          ),
+          conditionalPanel(
+            condition = "input.pp_goal3_type == 'Stuff'",
+            selectInput("pp_goal3_chart_view", "Chart View:",
+                        choices = c("Trend Chart", "Movement Plot", "Pitch Map"),
+                        selected = "Trend Chart")
+          ),
+          conditionalPanel(
+            condition = "input.pp_goal3_type == 'Stuff' && input.pp_goal3_chart_view == 'Movement Plot'",
+            selectInput("pp_goal3_movement_display", "Movement Plot View:",
+                        choices = c("Averages Only", "Averages and Pitches",
+                                    "Target Shapes Only", "Target Shapes and Pitches"),
+                        selected = c("Averages and Pitches"),
+                        multiple = TRUE),
+            actionButton("pp_goal3_target_settings", "Target Shapes Settings",
+                         class = "btn-default btn-sm")
+          ),
+          
+          conditionalPanel(
+            condition = "input.pp_goal3_type == 'Execution'",
+            selectInput("pp_goal3_execution_stat", "Stat:",
+                        choices = c("", "FPS%", "E+A%", "InZone%", "Strike%", 
+                                    "Comp%", "Ctrl+", "QP+", "QP%", "Whiff%", "CSW%"),
+                        selected = ""),
+            selectInput("pp_goal3_execution_pitch", "Pitch Type:",
+                        choices = c("All"),
+                        selected = "All",
+                        multiple = TRUE),
+            selectInput("pp_goal3_batter_hand", "Batter Hand:",
+                        choices = c("All", "Left", "Right"),
+                        selected = "All"),
+            selectInput("pp_goal3_chart_view", "Chart View:",
+                        choices = c("Trend Chart", "Heatmap", "Pitch Map"),
+                        selected = "Trend Chart")
+          ),
+          
+          # Target section for Goal 3
+          conditionalPanel(
+            condition = "input.pp_goal3_type != ''",
+            hr(),
+            h6("Target:"),
+            fluidRow(
+              column(4,
+                     selectInput("pp_goal3_target_direction", NULL,
+                                 choices = c("", ">", "<"),
+                                 selected = "")
+              ),
+              column(8,
+                     textInput("pp_goal3_target_value", NULL,
+                               placeholder = "Enter target value",
+                               value = "")
+              )
+            )
+          )
+        ),
+        
+        mainPanel(
+          width = 9,
+          div(id = "player-plans-content",
+              # PDF Download Button
+              # Content goes here
+              
+              # Header section with logos and title
+              fluidRow(
+                column(2,
+                       div(style = "text-align: left; padding-top: 20px;",
+                           tags$img(src = "PCUlogo.png", style = "height: 80px; max-width: 100%;")
+                       )
+                ),
+                column(8,
+                       div(style = "text-align: center; padding: 20px 0;",
+                           h2(strong("Player Development Plan"), style = "margin-bottom: 10px;"),
+                           h3(strong(textOutput("pp_player_name", inline = TRUE)), style = "margin-bottom: 5px;"),
+                           h5(em(textOutput("pp_date_range_display", inline = TRUE)), style = "margin: 0;")
+                       )
+                ),
+                column(2,
+                       div(style = "text-align: right; padding-top: 30px;",
+                           tags$img(src = "GCUlogo.png", style = "height: 40px; max-width: 100%;")
+                       )
+                )
+              ),
+              hr(),
+              uiOutput("pp_dynamic_goals"),
+              br(),
+              # View Completed Goals button
+              fluidRow(
+                column(12,
+                       div(style = "text-align: center; margin: 20px 0;",
+                           actionButton("pp_view_completed", "View Completed Goals", 
+                                        class = "btn-info", style = "margin-right: 10px;"),
+                           span(textOutput("pp_completed_count", inline = TRUE), 
+                                style = "font-size: 14px; color: #666;")
+                       )
+                )
+              ),
+              br(),
+              fluidRow(
+                column(12,
+                       div(style = "text-align: center;",
+                           h4(strong("Notes"))
+                       ),
+                       textAreaInput("pp_general_notes", label = NULL,
+                                     placeholder = "Enter general notes for this player plan...",
+                                     rows = 4, width = "100%")
+                )
+              )
+          ) # Close player-plans-content div
+        )
       ),
       
       # JavaScript for localStorage persistence
@@ -16868,7 +16868,7 @@ player_plans_ui <- function() {
         }
       });
     ")),
-    
+      
       # Add custom CSS for the modal
       tags$style(HTML("
       .modal-dialog {
@@ -19921,16 +19921,16 @@ server <- function(input, output, session) {
         axis.ticks      = element_blank()
       )
     
-  girafe_transparent(
-    ggobj = p,
-    width_svg  = 8,
-    height_svg = 6.5,
-    bg = "transparent",
-    options = list(
-      ggiraph::opts_sizing(rescale = TRUE),
-      ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css),
-      ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
-      ggiraph::opts_hover_inv(css = "opacity:0.15;"),
+    girafe_transparent(
+      ggobj = p,
+      width_svg  = 8,
+      height_svg = 6.5,
+      bg = "transparent",
+      options = list(
+        ggiraph::opts_sizing(rescale = TRUE),
+        ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css),
+        ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+        ggiraph::opts_hover_inv(css = "opacity:0.15;"),
         ggiraph::opts_selection(type = "multiple", selected = character(0))
       )
     )
@@ -20001,14 +20001,14 @@ server <- function(input, output, session) {
         shape = 21, size = 6, alpha = 0.001, stroke = 0, inherit.aes = FALSE
       )
     
-  girafe_transparent(
-    ggobj = p,
-    bg = "transparent",
-    options = list(
-      ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
-      ggiraph::opts_hover(css = "stroke-width:1.5px;"),
-      ggiraph::opts_hover_inv(css = "opacity:0.15;")
-    )
+    girafe_transparent(
+      ggobj = p,
+      bg = "transparent",
+      options = list(
+        ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
+        ggiraph::opts_hover(css = "stroke-width:1.5px;"),
+        ggiraph::opts_hover_inv(css = "opacity:0.15;")
+      )
     )
   })
   
@@ -20823,8 +20823,8 @@ server <- function(input, output, session) {
           
           # Calculate Barrel%
           barrels <- sum(split_df$SessionType == "Live" & split_df$PitchCall == "InPlay" &
-                          is.finite(split_df$ExitSpeed) & is.finite(split_df$Angle) &
-                          split_df$ExitSpeed >= 95 & split_df$Angle >= 10 & split_df$Angle <= 35, na.rm = TRUE)
+                           is.finite(split_df$ExitSpeed) & is.finite(split_df$Angle) &
+                           split_df$ExitSpeed >= 95 & split_df$Angle >= 10 & split_df$Angle <= 35, na.rm = TRUE)
           inplay_live <- sum(split_df$SessionType == "Live" & split_df$PitchCall == "InPlay", na.rm = TRUE)
           BarrelPct <- safe_div(barrels, inplay_live)
           
@@ -20911,8 +20911,8 @@ server <- function(input, output, session) {
         }
         
         barrels_all <- sum(df$SessionType == "Live" & df$PitchCall == "InPlay" &
-                            is.finite(df$ExitSpeed) & is.finite(df$Angle) &
-                            df$ExitSpeed >= 95 & df$Angle >= 10 & df$Angle <= 35, na.rm = TRUE)
+                             is.finite(df$ExitSpeed) & is.finite(df$Angle) &
+                             df$ExitSpeed >= 95 & df$Angle >= 10 & df$Angle <= 35, na.rm = TRUE)
         inplay_live_all <- sum(df$SessionType == "Live" & df$PitchCall == "InPlay", na.rm = TRUE)
         BarrelPct_all <- safe_div(barrels_all, inplay_live_all)
         
@@ -21007,48 +21007,23 @@ server <- function(input, output, session) {
         for (state in c("Even", "Ahead", "Behind")) {
           state_df <- df %>% dplyr::filter(CountState == state)
           if (nrow(state_df) > 0) {
-            state_summary <- safe_make_summary(state_df, group_col = "SplitColumn")
-            if (nrow(state_summary) > 0) {
-              # Aggregate all counts in this state into one row
-              state_row <- state_summary %>%
-                dplyr::summarise(
-                  PitchType = state,
-                  PitchCount = sum(PitchCount, na.rm = TRUE),
-                  Usage = "",  # Will calculate later
-                  Overall = "",
-                  BF = sum(BF, na.rm = TRUE),
-                  Velo_Avg = round(nz_mean(rep(Velo_Avg, PitchCount)), 1),
-                  Velo_Max = round(max(Velo_Max, na.rm = TRUE), 1),
-                  IVB = round(nz_mean(rep(IVB, PitchCount)), 1),
-                  HB = round(nz_mean(rep(HB, PitchCount)), 1),
-                  ReleaseTilt = as.character(NA),
-                  BreakTilt = as.character(NA),
-                  SpinEff = nz_mean(rep(SpinEff, PitchCount)),
-                  SpinRate = round(nz_mean(rep(SpinRate, PitchCount)), 0),
-                  RelHeight = round(nz_mean(rep(RelHeight, PitchCount)), 1),
-                  RelSide = round(nz_mean(rep(RelSide, PitchCount)), 1),
-                  VertApprAngle = round(nz_mean(rep(VertApprAngle, PitchCount)), 1),
-                  HorzApprAngle = round(nz_mean(rep(HorzApprAngle, PitchCount)), 1),
-                  Extension = round(nz_mean(rep(Extension, PitchCount)), 1),
-                  InZonePercent = "",
-                  CompPercent = "",
-                  KPercent = "",
-                  BBPercent = "",
-                  FPSPercent = "",
-                  EAPercent = "",
-                  QPPercent = "",
-                  StrikePercent = "",
-                  SwingPercent = "",
-                  WhiffPercent = "",
-                  EV = round(nz_mean(rep(EV, PitchCount)), 1),
-                  LA = round(nz_mean(rep(LA, PitchCount)), 1),
-                  `Stuff+` = round(nz_mean(rep(`Stuff+`, PitchCount)), 1),
-                  `Ctrl+` = round(nz_mean(rep(`Ctrl+`, PitchCount)), 1),
-                  `QP+` = round(nz_mean(rep(`QP+`, PitchCount)), 1),
-                  `Pitching+` = round(nz_mean(rep(`Pitching+`, PitchCount)), 1)
-                )
-              count_state_summ <- dplyr::bind_rows(count_state_summ, state_row)
+            state_summary <- safe_make_summary(
+              state_df %>% dplyr::mutate(SplitColumn = state),
+              group_col = "SplitColumn"
+            )
+            if ("SplitColumn" %in% names(state_summary)) {
+              state_summary <- state_summary %>% dplyr::rename(PitchType = SplitColumn)
             }
+            if (!("PitchType" %in% names(state_summary))) {
+              state_summary$PitchType <- state
+            }
+            state_row <- state_summary %>%
+              dplyr::mutate(
+                PitchType = state,
+                Usage = "",  # Calculate after binding
+                Overall = ""
+              )
+            count_state_summ <- dplyr::bind_rows(count_state_summ, state_row)
           }
         }
         # Update Usage for count state rows
@@ -21643,12 +21618,48 @@ server <- function(input, output, session) {
         all_row$xISO      <- extras_all$xISO[1]
         all_row$BABIP     <- extras_all$BABIP[1]
         all_row$`Barrel%` <- extras_all$`Barrel%`[1]
-        all_row$`RV/100`  <- fmt_num2(extras_all$`RV/100`[1])
+        all_row$`RV/100`  <- extras_all$`RV/100`[1]
       }
       
       # Add Even/Ahead/Behind summary rows if splitting by Count (Data & Performance)
       dp_count_state_rows <- NULL
       if (split_choice == "Count" && "CountState" %in% names(df)) {
+        swing_levels <- c("StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","FoulBall","InPlay")
+        calc_rv100 <- function(dfi) {
+          dfi_live <- dfi %>% dplyr::filter(SessionType == "Live")
+          dfi_use  <- if (nrow(dfi_live)) dfi_live else dfi
+          if (!nrow(dfi_use)) return(NA_real_)
+          run_val <- function(pitch_call, play_result, korbb = NA) {
+            pitch_call  <- as.character(pitch_call)
+            play_result <- as.character(play_result)
+            korbb       <- as.character(korbb)
+            if (!is.na(korbb) && nzchar(korbb) && korbb != "NA") {
+              if (korbb == "Strikeout") return(-0.27)
+              if (korbb == "Walk")     return(0.33)
+            }
+            if (pitch_call %in% c("BallCalled", "BallIntentional", "BallinDirt")) return(0.03)
+            if (pitch_call %in% c("StrikeCalled", "StrikeSwinging", "FoulBall",
+                                  "FoulBallFieldable", "FoulBallNotFieldable"))  return(-0.03)
+            if (pitch_call == "HitByPitch" || play_result %in% c("Walk","IntentionalWalk","HitByPitch")) return(0.33)
+            if (pitch_call == "InPlay") {
+              if (play_result == "Single")   return(0.47)
+              if (play_result == "Double")   return(0.78)
+              if (play_result == "Triple")   return(1.09)
+              if (play_result == "HomeRun")  return(1.40)
+              if (play_result == "Error")    return(0.33)
+              return(-0.27)
+            }
+            0
+          }
+          rv_vals <- mapply(
+            run_val,
+            dfi_use$PitchCall,
+            dfi_use$PlayResult,
+            if ("KorBB" %in% names(dfi_use)) dfi_use$KorBB else NA
+          )
+          rv_val <- ((sum(rv_vals, na.rm = TRUE) / nrow(dfi_use)) * 100) - 0.43
+          ifelse(is.finite(rv_val), rv_val, NA_real_)
+        }
         for (state in c("Even", "Ahead", "Behind")) {
           state_df <- df %>% dplyr::filter(CountState == state)
           state_term <- term %>% dplyr::filter(CountState == state)
@@ -21747,10 +21758,13 @@ server <- function(input, output, session) {
             state_CompPct <- safe_div(state_comp, nrow(state_df))
             
             state_pitches <- nrow(state_df)
+            state_rv100 <- calc_rv100(state_df)
+            pitching_plus <- if ("Pitching+" %in% names(state_df)) round(nz_mean(state_df$`Pitching+`), 1) else round(nz_mean(state_df$`Stuff+`), 1)
             state_row_data <- list(
               `#` = state_pitches,
               Usage = ifelse(total_pitches > 0, paste0(round(100*state_pitches/total_pitches, 1), "%"), ""),
               BF = state_PA,
+              `RV/100` = ifelse(is.finite(state_rv100), state_rv100, NA_real_),
               IP = ip_fmt(state_IP),
               FIP = state_FIP,
               WHIP = state_WHIP,
@@ -21775,7 +21789,7 @@ server <- function(input, output, session) {
               `Barrel%` = state_BarrelPct,
               EV = nz_mean(state_bbe$ExitSpeed),
               LA = nz_mean(state_bbe$Angle),
-              `Pitching+` = round(nz_mean(state_df$`Stuff+`), 1)
+              `Pitching+` = pitching_plus
             )
             state_row_data[[split_col_name]] <- state
             state_row <- tibble::as_tibble(state_row_data)
@@ -21812,6 +21826,10 @@ server <- function(input, output, session) {
       df_out$LA   <- ifelse(is.finite(df_out$LA),   round(df_out$LA, 1), "")
       df_out$FIP  <- ifelse(is.finite(df_out$FIP),  sprintf("%.2f", df_out$FIP), "")
       df_out$WHIP <- ifelse(is.finite(df_out$WHIP), sprintf("%.2f", df_out$WHIP), "")
+      df_out$`RV/100` <- {
+        z <- suppressWarnings(as.numeric(df_out$`RV/100`))
+        ifelse(is.finite(z), fmt_num2(z), "")
+      }
       
       # Sort by IVB/HB in descending order if applicable
       df_out <- sort_by_range(df_out, split_col_name, split_choice)
@@ -22038,8 +22056,8 @@ server <- function(input, output, session) {
         
         # Calculate Barrel%
         barrels <- sum(split_df$SessionType == "Live" & split_df$PitchCall == "InPlay" &
-                        is.finite(split_df$ExitSpeed) & is.finite(split_df$Angle) &
-                        split_df$ExitSpeed >= 95 & split_df$Angle >= 10 & split_df$Angle <= 35, na.rm = TRUE)
+                         is.finite(split_df$ExitSpeed) & is.finite(split_df$Angle) &
+                         split_df$ExitSpeed >= 95 & split_df$Angle >= 10 & split_df$Angle <= 35, na.rm = TRUE)
         inplay_live <- sum(split_df$SessionType == "Live" & split_df$PitchCall == "InPlay", na.rm = TRUE)
         BarrelPct <- safe_div(barrels, inplay_live)
         
@@ -22126,8 +22144,8 @@ server <- function(input, output, session) {
       }
       
       barrels_all <- sum(term$SessionType == "Live" & term$PitchCall == "InPlay" &
-                          is.finite(term$ExitSpeed) & is.finite(term$Angle) &
-                          term$ExitSpeed >= 95 & term$Angle >= 10 & term$Angle <= 35, na.rm = TRUE)
+                           is.finite(term$ExitSpeed) & is.finite(term$Angle) &
+                           term$ExitSpeed >= 95 & term$Angle >= 10 & term$Angle <= 35, na.rm = TRUE)
       inplay_live_all <- sum(term$SessionType == "Live" & term$PitchCall == "InPlay", na.rm = TRUE)
       BarrelPct_all <- safe_div(barrels_all, inplay_live_all)
       
@@ -22308,15 +22326,15 @@ server <- function(input, output, session) {
         `InZone%` = InZonePercent,
         `Comp%`   = CompPercent,
         `K%`      = KPercent,
-          `BB%`     = BBPercent,
-          `FPS%`    = FPSPercent,
-          `E+A%`    = EAPercent,
-          `QP%`     = QPPercent,
-          `Strike%` = StrikePercent,
-          `Swing%`  = SwingPercent,
-          `Whiff%`  = WhiffPercent,
-          VAA       = VertApprAngle,
-          HAA       = HorzApprAngle
+        `BB%`     = BBPercent,
+        `FPS%`    = FPSPercent,
+        `E+A%`    = EAPercent,
+        `QP%`     = QPPercent,
+        `Strike%` = StrikePercent,
+        `Swing%`  = SwingPercent,
+        `Whiff%`  = WhiffPercent,
+        VAA       = VertApprAngle,
+        HAA       = HorzApprAngle
       ) %>%
       dplyr::mutate(!!split_col_name := as.character(.data[[split_col_name]])) %>%
       dplyr::select(
@@ -22773,16 +22791,16 @@ server <- function(input, output, session) {
         )
       )
     
-  p1 <- ggplot() +
-    geom_polygon(data = mound_df, aes(x, y), fill = "tan", color = "tan") +
-    annotate("rect", xmin = -0.5, xmax = 0.5, ymin = rp_h - 0.05, ymax = rp_h + 0.05, fill = "white") +
-    geom_vline(xintercept = 0, color = line_col, size = 0.7) +
-    geom_hline(yintercept = 0, color = line_col, size = 0.7) +
-    # Individual pitches layer
-    { if (show_pitches) {
-      ggiraph::geom_point_interactive(
-        data = df_i,
-        aes(x = RelSide, y = RelHeight,
+    p1 <- ggplot() +
+      geom_polygon(data = mound_df, aes(x, y), fill = "tan", color = "tan") +
+      annotate("rect", xmin = -0.5, xmax = 0.5, ymin = rp_h - 0.05, ymax = rp_h + 0.05, fill = "white") +
+      geom_vline(xintercept = 0, color = line_col, size = 0.7) +
+      geom_hline(yintercept = 0, color = line_col, size = 0.7) +
+      # Individual pitches layer
+      { if (show_pitches) {
+        ggiraph::geom_point_interactive(
+          data = df_i,
+          aes(x = RelSide, y = RelHeight,
               color = TaggedPitchType, fill = TaggedPitchType,
               tooltip = tt, data_id = rid),
           alpha = 0.2, size = 2.5, shape = 21, stroke = 0.25, show.legend = FALSE
@@ -22798,15 +22816,15 @@ server <- function(input, output, session) {
         )
       } } +
       scale_color_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
-    scale_fill_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
-    scale_y_continuous(limits = c(0, y_max), breaks = seq(0, ceiling(y_max), by = 1)) +
-    theme_minimal() + axis_theme + grid_theme(dark_on) + labs(x = NULL, y = NULL) +
-    theme(
-      panel.grid = element_blank(),
-      axis.ticks = element_blank(),
-      axis.text.x = element_text(color = axis_col),
-      axis.text.y = element_text(color = axis_col)
-    )
+      scale_fill_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
+      scale_y_continuous(limits = c(0, y_max), breaks = seq(0, ceiling(y_max), by = 1)) +
+      theme_minimal() + axis_theme + grid_theme(dark_on) + labs(x = NULL, y = NULL) +
+      theme(
+        panel.grid = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.x = element_text(color = axis_col),
+        axis.text.y = element_text(color = axis_col)
+      )
     
     # --- (B) Extension vs Height averages
     re_w <- 7; re_h <- 0.83
@@ -22834,15 +22852,15 @@ server <- function(input, output, session) {
         )
       )
     
-  p2 <- ggplot() +
-    geom_polygon(data = ext_bg, aes(x, y), fill = "tan", color = "tan") +
-    annotate("rect", xmin = 0, xmax = 0.2, ymin = re_h - 0.05, ymax = re_h + 0.05, fill = "white") +
-    geom_vline(xintercept = 0, color = line_col, size = 0.7) +
-    # Individual pitches layer
-    { if (show_pitches) {
-      ggiraph::geom_point_interactive(
-        data = df_i_ext,
-        aes(x = Extension, y = RelHeight,
+    p2 <- ggplot() +
+      geom_polygon(data = ext_bg, aes(x, y), fill = "tan", color = "tan") +
+      annotate("rect", xmin = 0, xmax = 0.2, ymin = re_h - 0.05, ymax = re_h + 0.05, fill = "white") +
+      geom_vline(xintercept = 0, color = line_col, size = 0.7) +
+      # Individual pitches layer
+      { if (show_pitches) {
+        ggiraph::geom_point_interactive(
+          data = df_i_ext,
+          aes(x = Extension, y = RelHeight,
               color = TaggedPitchType, fill = TaggedPitchType,
               tooltip = tt, data_id = rid),
           alpha = 0.2, size = 2.5, shape = 21, stroke = 0.25, show.legend = FALSE
@@ -22857,24 +22875,24 @@ server <- function(input, output, session) {
           size = 4, show.legend = TRUE   # legend only here
         )
       } } +
-    scale_x_continuous(limits = c(0, 7.5), breaks = seq(1, 7.5, 1)) +
-    scale_y_continuous(limits = c(0, y_max), breaks = seq(0, ceiling(y_max), by = 1)) +
-    scale_color_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
-    scale_fill_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
-    theme_minimal() + axis_theme + grid_theme(dark_on) + labs(x = NULL, y = NULL) +
-    theme(
-      panel.grid = element_blank(),
-      axis.ticks = element_blank(),
-      axis.text.x = element_text(color = axis_col),
-      axis.text.y = element_text(color = axis_col)
-    )
+      scale_x_continuous(limits = c(0, 7.5), breaks = seq(1, 7.5, 1)) +
+      scale_y_continuous(limits = c(0, y_max), breaks = seq(0, ceiling(y_max), by = 1)) +
+      scale_color_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
+      scale_fill_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
+      theme_minimal() + axis_theme + grid_theme(dark_on) + labs(x = NULL, y = NULL) +
+      theme(
+        panel.grid = element_blank(),
+        axis.ticks = element_blank(),
+        axis.text.x = element_text(color = axis_col),
+        axis.text.y = element_text(color = axis_col)
+      )
     
     # --- stack + single legend at bottom; enlarge legend text a bit
     p <- (p1 / p2) + patchwork::plot_layout(guides = "collect")
-  p <- p & theme(
-    legend.position = "bottom",
-    legend.text = element_text(size = 14, color = axis_col)
-  )
+    p <- p & theme(
+      legend.position = "bottom",
+      legend.text = element_text(size = 14, color = axis_col)
+    )
     
     girafe_transparent(
       ggobj = p,
@@ -23853,8 +23871,8 @@ server <- function(input, output, session) {
     
     # Use blue->red palette for frequency (matching other suites)
     return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr, mark_max = FALSE,
-                    show_scale = TRUE, scale_label = "Pitch Frequency",
-                    scale_limits = c(0, 80)))
+                     show_scale = TRUE, scale_label = "Pitch Frequency",
+                     scale_limits = c(0, 80)))
   }, bg = "transparent")
   
   # Pitch Plot
@@ -26486,8 +26504,8 @@ server <- function(input, output, session) {
       grid$z <- (grid$z / max(grid$z, na.rm = TRUE)) * 100
       
       return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr, mark_max = FALSE,
-                      show_scale = TRUE, scale_label = "First Pitch Frequency",
-                      scale_limits = c(0, 80)))
+                       show_scale = TRUE, scale_label = "First Pitch Frequency",
+                       scale_limits = c(0, 80)))
       
     }
     
@@ -26514,7 +26532,7 @@ server <- function(input, output, session) {
       
       numerator_cond <- df_loc$ExcellentAdv
       grid <- make_rate_grid(df_loc, numerator_cond, denominator_condition = NULL, 
-                            bin_size = 0.4, min_sample = 1)
+                             bin_size = 0.4, min_sample = 1)
       
       if (!nrow(grid)) {
         return(ggplot() + 
@@ -26526,9 +26544,9 @@ server <- function(input, output, session) {
       breaks <- seq(0, 100, length.out = HEAT_BINS + 1)
       
       return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                      breaks = breaks, mark_max = FALSE,
-                      show_scale = TRUE, scale_label = "E+A%",
-                      scale_limits = c(0, 100)))
+                       breaks = breaks, mark_max = FALSE,
+                       show_scale = TRUE, scale_label = "E+A%",
+                       scale_limits = c(0, 100)))
       
     } else if (stat == "InZone%") {
       # InZone% - rate heatmap
@@ -26537,7 +26555,7 @@ server <- function(input, output, session) {
         df_loc$PlateLocHeight >= ZONE_BOTTOM & df_loc$PlateLocHeight <= ZONE_TOP
       
       grid <- make_rate_grid(df_loc, in_zone_cond, denominator_condition = NULL, 
-                            bin_size = 0.4, min_sample = 1)
+                             bin_size = 0.4, min_sample = 1)
       
       if (!nrow(grid)) {
         return(ggplot() + 
@@ -26549,9 +26567,9 @@ server <- function(input, output, session) {
       breaks <- seq(0, 100, length.out = HEAT_BINS + 1)
       
       return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                      breaks = breaks, mark_max = FALSE,
-                      show_scale = TRUE, scale_label = "InZone%",
-                      scale_limits = c(0, 100)))
+                       breaks = breaks, mark_max = FALSE,
+                       show_scale = TRUE, scale_label = "InZone%",
+                       scale_limits = c(0, 100)))
       
     } else if (stat == "Strike%") {
       # Strike% - rate heatmap
@@ -26559,7 +26577,7 @@ server <- function(input, output, session) {
       strike_cond <- df_loc$PitchCall %in% strike_calls
       
       grid <- make_rate_grid(df_loc, strike_cond, denominator_condition = NULL, 
-                            bin_size = 0.4, min_sample = 1)
+                             bin_size = 0.4, min_sample = 1)
       
       if (!nrow(grid)) {
         return(ggplot() + 
@@ -26571,9 +26589,9 @@ server <- function(input, output, session) {
       breaks <- seq(0, 100, length.out = HEAT_BINS + 1)
       
       return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                      breaks = breaks, mark_max = FALSE,
-                      show_scale = TRUE, scale_label = "Strike%",
-                      scale_limits = c(0, 100)))
+                       breaks = breaks, mark_max = FALSE,
+                       show_scale = TRUE, scale_label = "Strike%",
+                       scale_limits = c(0, 100)))
       
     } else if (stat == "Comp%") {
       # Comp% (Competitive pitches) - rate heatmap
@@ -26582,7 +26600,7 @@ server <- function(input, output, session) {
         df_loc$PlateLocHeight >= (ZONE_BOTTOM - 0.5) & df_loc$PlateLocHeight <= (ZONE_TOP + 0.5)
       
       grid <- make_rate_grid(df_loc, comp_cond, denominator_condition = NULL, 
-                            bin_size = 0.4, min_sample = 1)
+                             bin_size = 0.4, min_sample = 1)
       
       if (!nrow(grid)) {
         return(ggplot() + 
@@ -26594,9 +26612,9 @@ server <- function(input, output, session) {
       breaks <- seq(0, 100, length.out = HEAT_BINS + 1)
       
       return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                      breaks = breaks, mark_max = FALSE,
-                      show_scale = TRUE, scale_label = "Comp%",
-                      scale_limits = c(0, 100)))
+                       breaks = breaks, mark_max = FALSE,
+                       show_scale = TRUE, scale_label = "Comp%",
+                       scale_limits = c(0, 100)))
       
     } else if (stat == "Whiff%") {
       # Whiff% - rate heatmap (whiffs per swing opportunity)
@@ -26608,7 +26626,7 @@ server <- function(input, output, session) {
       denominator_cond <- df_loc$PitchCall %in% swing_events
       
       grid <- make_rate_grid(df_loc, numerator_cond, denominator_cond, 
-                            bin_size = 0.4, min_sample = 1)
+                             bin_size = 0.4, min_sample = 1)
       
       if (!nrow(grid)) {
         return(ggplot() + 
@@ -26620,9 +26638,9 @@ server <- function(input, output, session) {
       breaks <- seq(0, 100, length.out = HEAT_BINS + 1)
       
       return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                      breaks = breaks, mark_max = FALSE,
-                      show_scale = TRUE, scale_label = "Whiff%",
-                      scale_limits = c(0, 100)))
+                       breaks = breaks, mark_max = FALSE,
+                       show_scale = TRUE, scale_label = "Whiff%",
+                       scale_limits = c(0, 100)))
       
     } else if (stat == "CSW%") {
       # CSW% - called strikes + whiffs per opportunity (rate heatmap)
@@ -26630,7 +26648,7 @@ server <- function(input, output, session) {
       
       numerator_cond <- df_loc$PitchCall %in% csw_calls
       grid <- make_rate_grid(df_loc, numerator_cond, denominator_condition = NULL, 
-                            bin_size = 0.4, min_sample = 1)
+                             bin_size = 0.4, min_sample = 1)
       
       if (!nrow(grid)) {
         return(ggplot() + 
@@ -26642,9 +26660,9 @@ server <- function(input, output, session) {
       breaks <- seq(0, 100, length.out = HEAT_BINS + 1)
       
       return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                      breaks = breaks, mark_max = FALSE,
-                      show_scale = TRUE, scale_label = "CSW%",
-                      scale_limits = c(0, 100)))
+                       breaks = breaks, mark_max = FALSE,
+                       show_scale = TRUE, scale_label = "CSW%",
+                       scale_limits = c(0, 100)))
       
     } else {
       # For all other execution stats, show frequency heatmap with advanced KDE
@@ -26656,8 +26674,8 @@ server <- function(input, output, session) {
       grid$z <- (grid$z / max(grid$z, na.rm = TRUE)) * 100
       
       return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr, mark_max = FALSE,
-                      show_scale = TRUE, scale_label = paste(stat, "Frequency"),
-                      scale_limits = c(0, 80)))
+                       show_scale = TRUE, scale_label = paste(stat, "Frequency"),
+                       scale_limits = c(0, 80)))
     }
   }
   
