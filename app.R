@@ -16891,7 +16891,10 @@ player_plans_ui <- function() {
 # 2. Coaches - see all data, no admin features  
 # 3. Players - see only their own data (matched via lookup_table.csv)
 
-admin_emails <- c("jgaynor@pitchingcoachu.com")
+admin_emails <- c(
+  "jgaynor@pitchingcoachu.com",
+  "ahalverson@pitchingcoachu.com"
+)
 
 # Coach emails - these users can see ALL data but don't have admin features
 coach_emails <- c(
