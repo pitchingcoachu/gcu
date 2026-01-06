@@ -740,7 +740,7 @@ library(RSQLite)  # for SQLite database
 
 # Configure Cloudinary (recommended simple host for images/videos)
 # Create a free account, make an *unsigned upload preset*, then set these:
-# 1) Prefer environment variables in production (shinyapps.io Settings → Environment Variables)
+# 1) Prefer environment variables in production (shinpps.io Settings → Environment Variables)
 # 2) Fall back to your local defaults for dev
 CLOUDINARY_CLOUD_NAME    <- Sys.getenv("CLOUDINARY_CLOUD_NAME", unset = "")
 CLOUDINARY_UPLOAD_PRESET <- Sys.getenv("CLOUDINARY_UPLOAD_PRESET", unset = "")
@@ -2911,7 +2911,6 @@ make_hover_tt <- function(df) {
     "<br>IVB: " , ifelse(is.na(df$InducedVertBreak), "", sprintf("%.1f in", df$InducedVertBreak)),
     "<br>HB: "  , ifelse(is.na(df$HorzBreak), "", sprintf("%.1f in", df$HorzBreak)),
     "<br>Stuff+: ", ifelse(is.na(df$`Stuff+`), "", sprintf("%.1f", df$`Stuff+`)),
-    "<br>QP+: ", ifelse(is.na(df$`QP+`), "", sprintf("%.1f", df$`QP+`)),
     "<br>In Zone: ", inzone_label(df$PlateLocSide, df$PlateLocHeight)
   )
 }
@@ -6001,6 +6000,7 @@ pitch_ui <- function(show_header = FALSE) {
                     "Stuff+",
                     "Ctrl+",
                     "QP+",
+                    "QP%",
                     "Pitching+",
                     "IVB",
                     "HB",
@@ -9820,11 +9820,15 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       if ("PitchSession" %in% names(df)) {
         df <- df %>% dplyr::filter(is.na(PitchSession) | PitchSession != "Warmup")
       }
-      # Apply per-user visibility rules (mirror leaderboard)
+      # Per-user visibility: Coaches see all, Players see only their own data
+      is_coach_val <- tryCatch({
+        exists("is_coach", inherits = TRUE) && isTRUE(get("is_coach", inherits = TRUE)())
+      }, error = function(...) FALSE)
       admin_val <- tryCatch({
         exists("is_admin", inherits = TRUE) && isTRUE(get("is_admin", inherits = TRUE)())
       }, error = function(...) FALSE)
-      if (!admin_val && "Email" %in% names(df)) {
+      
+      if (!admin_val && !is_coach_val && "Email" %in% names(df)) {
         norm_email_local <- function(x) tolower(trimws(x))
         ue <- tryCatch({
           if (exists("user_email", inherits = TRUE)) get("user_email", inherits = TRUE)() else NA_character_
@@ -9837,8 +9841,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       if (length(input$dates) == 2) {
         df <- df[!is.na(dcol) & dcol >= as.Date(input$dates[1]) & dcol <= as.Date(input$dates[2]), , drop = FALSE]
       }
-      
-      # Pitcher hand
+            # Pitcher hand
       if (input$hand != "All") df <- dplyr::filter(df, PitcherThrows == input$hand)
       
       # Batter hand (Live only)
@@ -11155,11 +11158,15 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       if (nnz(input$pcMin)) df <- dplyr::filter(df, PitchNumber >= input$pcMin)
       if (nnz(input$pcMax)) df <- dplyr::filter(df, PitchNumber <= input$pcMax)
       
-      # Respect per-user visibility (mirror pitching suite) when available in this module
+      # Per-user visibility: Coaches see all, Players see only their own data
+      is_coach_val <- tryCatch({
+        exists("is_coach", inherits = TRUE) && isTRUE(get("is_coach", inherits = TRUE)())
+      }, error = function(...) FALSE)
       admin_val <- tryCatch({
         exists("is_admin", inherits = TRUE) && isTRUE(get("is_admin", inherits = TRUE)())
       }, error = function(...) FALSE)
-      if (!admin_val && "Email" %in% names(df)) {
+      
+      if (!admin_val && !is_coach_val && "Email" %in% names(df)) {
         norm_email_local <- function(x) tolower(trimws(x))
         ue <- tryCatch({
           if (exists("user_email", inherits = TRUE)) get("user_email", inherits = TRUE)() else NA_character_
@@ -12475,10 +12482,11 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
       df <- if (identical(dom, "Pitcher") && exists("pitch_data_pitching")) pitch_data_pitching else pitch_data
       if (!nrow(df)) return(df[0, , drop = FALSE])
       
-      # privacy scoping
+      # Privacy scoping: Coaches see all, Players see only their own data
       if (exists("user_email") && is.function(user_email) &&
           exists("is_admin")   && is.function(is_admin)   &&
-          !is_admin()) {
+          exists("is_coach")   && is.function(is_coach)   &&
+          !is_admin() && !is_coach()) {
         ne <- function(x) tolower(trimws(x))
         ue <- user_email()
         if (!is.na(ue) && "Email" %in% names(df)) {
@@ -15061,6 +15069,18 @@ custom_reports_server <- function(id) {
         } else {
           df <- pitch_data_pitching %>% dplyr::filter(Pitcher %in% players)
         }
+        
+        # Apply three-tier filtering for players (admins and coaches see all)
+        tryCatch({
+          if (!is_admin() && !is_coach()) {
+            ue <- user_email()
+            if (!is.na(ue)) {
+              df <- df %>% dplyr::filter(norm_email(Email) == norm_email(ue))
+            }
+          }
+        }, error = function(e) {
+          # Silently handle if is_admin/is_coach not available
+        })
       } else {
         # For Hitting: filter by Batter, ensure Batter column exists and has data
         if (!"Batter" %in% names(pitch_data)) {
@@ -15073,6 +15093,18 @@ custom_reports_server <- function(id) {
           df <- pitch_data %>% 
             dplyr::filter(!is.na(Batter), nzchar(as.character(Batter)), Batter %in% players)
         }
+        
+        # Apply three-tier filtering for players (admins and coaches see all)
+        tryCatch({
+          if (!is_admin() && !is_coach()) {
+            ue <- user_email()
+            if (!is.na(ue)) {
+              df <- df %>% dplyr::filter(norm_email(Email) == norm_email(ue))
+            }
+          }
+        }, error = function(e) {
+          # Silently handle if is_admin/is_coach not available
+        })
       }
       
       # Apply all filters efficiently
@@ -16853,115 +16885,36 @@ player_plans_ui <- function() {
 # == AUTHENTICATION SETUP ==
 # ==================================
 
-get_auth_db_config <- function() {
-  NULL  # Using SQLite for shinymanager auth to maintain compatibility
-}
+# Using shinyapps.io native authentication instead of shinymanager
+# Three-tier access system:
+# 1. Admins - see all data + admin features
+# 2. Coaches - see all data, no admin features  
+# 3. Players - see only their own data (matched via lookup_table.csv)
 
-sm_db_config <- get_auth_db_config()
+admin_emails <- c("jgaynor@pitchingcoachu.com")
 
-get_credentials_path <- function() {
-  p <- Sys.getenv("CREDENTIALS_SQLITE_PATH", unset = "credentials.sqlite")
-  p <- path.expand(p)
-  dir.create(dirname(p), recursive = TRUE, showWarnings = FALSE)
-  p
-}
-
-credentials_path <- get_credentials_path()
-
-# Create initial admin users using their actual emails as usernames
-initial_credentials <- data.frame(
-  user = c(
-    "jgaynor@pitchingcoachu.com",
-    "banni17@yahoo.com",
-    "adam.racine@aol.com",
-    "Njcbaseball08@gmail.com"
-  ),
-  password = c(
-    "pcu2025",
-    "pcu2025",
-    "pcu2025",
-    "pcu2025"
-  ),
-  admin = c(TRUE, TRUE, FALSE, FALSE),
-  email = c(
-    "jgaynor@pitchingcoachu.com",
-    "banni17@yahoo.com",
-    "adam.racine@aol.com",
-    "Njcbaseball08@gmail.com"
-  ),
-  stringsAsFactors = FALSE
+# Coach emails - these users can see ALL data but don't have admin features
+coach_emails <- c(
+  "jgaynor@pitchingcoachu.com",
+  "jared.s.gaynor@gmail.com",
+  "banni17@yahoo.com",
+  "adam.racine@aol.com",
+  "Njcbaseball08@gmail.com"
 )
 
-# Initialize credentials database (MySQL if configured, else SQLite)
-if (!is.null(sm_db_config)) {
-  # MySQL path disabled for now
-} else if (!file.exists(credentials_path)) {
-  create_db(
-    credentials_data = initial_credentials,
-    sqlite_path = credentials_path,
-    passphrase = "cbu_baseball_2024_secure_passphrase"  # Keep this secret!
-  )
-  
-  message("✓ Credentials database created: credentials.sqlite")
-  message("✓ Admin users created - use emails as usernames")
-  message("⚠ IMPORTANT: Change default passwords after first login!")
-}
-
-# Ensure seed users exist (idempotent)
-ensure_seed_users <- function(seed_df, db_cfg, sqlite_path) {
-  for (i in seq_len(nrow(seed_df))) {
-    u <- seed_df$user[i]; pwd <- seed_df$password[i]; adm <- isTRUE(seed_df$admin[i]); em <- seed_df$email[i]
-    exists <- FALSE
-    con <- if (file.exists(sqlite_path)) try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE) else NULL
-    if (!inherits(con, "try-error") && !is.null(con)) {
-      on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
-      tbl <- try(DBI::dbReadTable(con, "credentials"), silent = TRUE)
-      if (!inherits(tbl, "try-error") && nrow(tbl)) {
-        exists <- any(tolower(tbl$user) == tolower(u))
-      }
-    }
-    if (!exists) {
-      try(shinymanager::create_user(
-        user = u,
-        password = pwd,
-        admin = adm,
-        comment = em,
-        db = sqlite_path,
-        passphrase = "cbu_baseball_2024_secure_passphrase"
-      ), silent = TRUE)
-    }
-  }
-}
-
-ensure_seed_users(initial_credentials, sm_db_config, credentials_path)
-
-# Enforce admin flags: only these users stay admins
-enforce_admin_flags <- function(admin_users, db_cfg, sqlite_path) {
-  con <- if (file.exists(sqlite_path)) try(DBI::dbConnect(RSQLite::SQLite(), sqlite_path), silent = TRUE) else NULL
-  if (inherits(con, "try-error") || is.null(con)) return()
-  on.exit(try(DBI::dbDisconnect(con), silent = TRUE), add = TRUE)
-  admin_list <- paste(sprintf("'%s'", tolower(admin_users)), collapse = ",")
-  try(DBI::dbExecute(con, sprintf("UPDATE credentials SET admin = 0 WHERE LOWER(user) NOT IN (%s)", admin_list)), silent = TRUE)
-  try(DBI::dbExecute(con, sprintf("UPDATE credentials SET admin = 1 WHERE LOWER(user) IN (%s)", admin_list)), silent = TRUE)
-}
-
-enforce_admin_flags(c("jgaynor@pitchingcoachu.com","banni17@yahoo.com"), sm_db_config, credentials_path)
+# Players are identified by their email being in the lookup_table.csv Email column
+# They will only see data where Email matches their login email
 
 
 ui <- tagList(
   # --- Custom navbar colors & styling ---
   tags$head(
-    # Page title
-    tags$title("PCU Dashboard"),
     # Apple iOS home screen icon
     tags$link(rel = "apple-touch-icon", href = "PCUlogo.png"),
     tags$link(rel = "apple-touch-icon", sizes = "152x152", href = "PCUlogo.png"),
     tags$link(rel = "apple-touch-icon", sizes = "180x180", href = "PCUlogo.png"),
     tags$link(rel = "apple-touch-icon", sizes = "167x167", href = "PCUlogo.png"),
-    # Favicons for browser tabs (multiple sizes for better display)
-    tags$link(rel = "icon", type = "image/png", sizes = "16x16", href = "PCUlogo.png"),
-    tags$link(rel = "icon", type = "image/png", sizes = "32x32", href = "PCUlogo.png"),
-    tags$link(rel = "icon", type = "image/png", sizes = "96x96", href = "PCUlogo.png"),
+    # Standard favicon
     tags$link(rel = "icon", type = "image/png", href = "PCUlogo.png"),
     # Apple mobile web app settings
     tags$meta(name = "apple-mobile-web-app-capable", content = "yes"),
@@ -17156,52 +17109,7 @@ ui <- tagList(
         document.addEventListener('shiny:recalculating', function() { setTimeout(init, 200); });
       });
     ")),
-    # Persist shinymanager token in localStorage so users stay logged in across visits
-    tags$script(HTML("
-      (function() {
-        var KEY = 'sm_token';
-        var params = new URLSearchParams(window.location.search || '');
-        var current = (params.get('token') || '').replace(/\"/g, '');
-
-        // Save the current token after login
-        if (current) {
-          try { localStorage.setItem(KEY, current); } catch (e) {}
-        } else {
-          // If no token in URL, try to reattach a saved one
-          var saved = null;
-          try { saved = localStorage.getItem(KEY); } catch (e) {}
-          if (saved) {
-            params.set('token', saved);
-            var qs = params.toString();
-            var target = window.location.origin + window.location.pathname + '?' + qs + window.location.hash;
-            if (window.location.search !== '?' + qs) {
-              window.location.replace(target);
-              return;
-            }
-          }
-        }
-
-        // Clear saved token if we land on the login screen with a bad token
-        document.addEventListener('DOMContentLoaded', function() {
-          var onAuthPage = !!document.querySelector('.panel-auth');
-          if (onAuthPage && current) {
-            try { localStorage.removeItem(KEY); } catch (e) {}
-            params.delete('token');
-            var qs = params.toString();
-            var clean = window.location.origin + window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
-            window.history.replaceState({}, '', clean);
-          }
-        });
-
-        // Clear saved token when the user clicks logout
-        document.addEventListener('click', function(e) {
-          var btn = e.target.closest('[id=\".shinymanager_logout\"]');
-          if (btn) {
-            try { localStorage.removeItem(KEY); } catch (err) {}
-          }
-        }, true);
-      })();
-    ")),
+    # Custom authentication disabled - no need for token persistence
     tags$style(HTML("
       /* ===== MODERN PROFESSIONAL DESIGN ===== */
       
@@ -18151,509 +18059,40 @@ ui <- tagList(
   )
 )
 
-# Wrap UI with beautiful custom authentication
-ui <- secure_app(ui,
-                 enable_admin = FALSE,  # Hide shinymanager admin panel
-                 enable_reset_password = TRUE,  # Enable "Forgot Password" functionality
-                 
-                 # Email configuration for password reset
-                 mail_from = Sys.getenv("MAIL_FROM", "noreply@pitchingcoachu.com"),
-                 mail_subject = Sys.getenv("MAIL_SUBJECT", "PCU Dashboard - Password Reset Request"),
-                 
-                 # Custom header for login page - Clean and Professional
-                 tags_top = tags$div(
-                   class = "login-header",
-                   # PCU Logo
-                   tags$div(
-                     class = "logo-container",
-                     tags$img(src = "PCUlogo.png", width = 280,
-                              style = "display: block; margin: 0 auto 40px auto;")
-                   ),
-                   # Main title - CLEAN AND PROFESSIONAL
-                   tags$h1(
-                     "PCU DASHBOARD",
-                     class = "main-title",
-                     style = "text-align: center; color: #000000; font-weight: 700; 
-               margin: 0 0 25px 0; font-size: 48px; letter-spacing: 4px;
-               text-transform: uppercase;
-               font-family: 'Helvetica Neue', 'Arial', sans-serif;
-               text-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);"
-                   ),
-                   # Simple underline
-                   tags$div(
-                     class = "title-underline",
-                     style = "width: 250px; height: 3px; margin: 0 auto 0 auto;
-               background: #FF1744;
-               box-shadow: 0 0 15px rgba(255, 23, 68, 0.5);"
-                   )
-                 ),
-                 
-                 # Custom footer for login page
-                 tags_bottom = tags$div(
-                   tags$div(
-                     class = "footer-line",
-                     style = "width: 150px; height: 2px; margin: 35px auto 20px auto;
-               background: linear-gradient(90deg, 
-                 transparent 0%, 
-                 rgba(220, 20, 60, 0.5) 50%, 
-                 transparent 100%);"
-                   ),
-                   tags$p("Powered by Pitching Coach U", 
-                          style = "text-align: center; color: rgba(255, 255, 255, 0.5); 
-                    margin-top: 12px; font-size: 12px; letter-spacing: 2px;
-                    font-weight: 500;"),
-                   tags$p("© 2024 • All Rights Reserved", 
-                          style = "text-align: center; color: rgba(255, 255, 255, 0.3); 
-                    font-size: 10px; margin-top: 8px; letter-spacing: 1px;")
-                 ),
-                 
-                 # Dark background with subtle pattern
-                 background = "linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%)",
-                 
-                 # Custom CSS for sleek, modern look
-                 tags_head = tags$head(
-                   tags$style(HTML("
-      /* Force dark background everywhere on login page */
-      html[data-panel='auth'],
-      body[data-panel='auth'],
-      .container-fluid[data-panel='auth'] {
-        background: #0a0a0a !important;
-        background-color: #0a0a0a !important;
-        background-image: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%) !important;
-      }
-      
-      /* Dark background with diagonal stripes */
-      body[data-panel='auth'] {
-        background: linear-gradient(135deg, #0a0a0a 0%, #1a1a1a 100%) !important;
-        background-attachment: fixed !important;
-        position: relative;
-        overflow: hidden;
-        min-height: 100vh !important;
-      }
-      
-      /* Subtle animated background pattern */
-      body[data-panel='auth']::before {
-        content: '';
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background-image: 
-          repeating-linear-gradient(
-            45deg,
-            transparent,
-            transparent 35px,
-            rgba(220, 20, 60, 0.02) 35px,
-            rgba(220, 20, 60, 0.02) 70px
-          );
-        z-index: 0;
-        pointer-events: none;
-      }
-      
-      /* Radial gradient overlay */
-      body[data-panel='auth']::after {
-        content: '';
-        position: fixed;
-        top: 50%;
-        left: 50%;
-        transform: translate(-50%, -50%);
-        width: 800px;
-        height: 800px;
-        background: radial-gradient(
-          circle,
-          rgba(220, 20, 60, 0.08) 0%,
-          transparent 70%
-        );
-        z-index: 0;
-        pointer-events: none;
-        animation: breathe 4s ease-in-out infinite;
-      }
-      
-      @keyframes breathe {
-        0%, 100% { opacity: 0.5; transform: translate(-50%, -50%) scale(1); }
-        50% { opacity: 0.8; transform: translate(-50%, -50%) scale(1.1); }
-      }
-      
-      @keyframes glowPulse {
-        0%, 100% { 
-          opacity: 1;
-          box-shadow: 0 0 15px rgba(220, 20, 60, 0.6);
-        }
-        50% { 
-          opacity: 0.7;
-          box-shadow: 0 0 25px rgba(220, 20, 60, 0.9);
-        }
-      }
-      
-      /* Logo glow animation */
-      .logo-container img {
-        filter: drop-shadow(0 0 25px rgba(220, 20, 60, 0.4));
-        animation: logoFloat 3s ease-in-out infinite;
-      }
-      
-      @keyframes logoFloat {
-        0%, 100% { transform: translateY(0px); }
-        50% { transform: translateY(-10px); }
-      }
-      
-      /* Login container - Modern glass morphism with STRONG red accent */
-      .panel-auth {
-        background: rgba(20, 20, 20, 0.95) !important;
-        border: 2px solid #FF1744 !important;
-        border-radius: 25px !important;
-        box-shadow: 
-          0 20px 60px rgba(0, 0, 0, 0.9),
-          0 0 0 1px rgba(255, 23, 68, 0.3),
-          0 0 40px rgba(255, 23, 68, 0.3),
-          inset 0 1px 0 rgba(255, 255, 255, 0.05) !important;
-        padding: 50px 45px !important;
-        backdrop-filter: blur(30px) saturate(180%);
-        max-width: 480px !important;
-        margin: 50px auto !important;
-        position: relative;
-        z-index: 10;
-      }
-      
-      /* Strong top border glow */
-      .panel-auth::before {
-        content: '';
-        position: absolute;
-        top: -2px;
-        left: 10%;
-        right: 10%;
-        height: 3px;
-        background: linear-gradient(90deg,
-          transparent 0%,
-          #FF1744 20%,
-          #FF1744 80%,
-          transparent 100%);
-        box-shadow: 0 0 20px rgba(255, 23, 68, 0.8);
-        border-radius: 3px;
-      }
-      
-      /* Panel heading */
-      .panel-auth .panel-heading {
-        background: transparent !important;
-        border: none !important;
-        padding-bottom: 20px !important;
-      }
-
-      
-      /* Hide Please authenticate text */
-      .panel-auth .panel-heading h3,
-      .panel-auth .panel-heading .panel-title {
-        display: none !important;
-      }
-      
-      /* Input fields - Sleek modern style with stronger effects */
-      .panel-auth input.form-control {
-        background: rgba(0, 0, 0, 0.6) !important;
-        border: 2px solid rgba(255, 23, 68, 0.3) !important;
-        border-radius: 12px !important;
-        padding: 16px 22px !important;
-        font-size: 16px !important;
-        color: #ffffff !important;
-        font-family: 'Helvetica Neue', 'Arial', sans-serif !important;
-        font-weight: 400 !important;
-        transition: all 0.3s ease !important;
-        box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.5) !important;
-      }
-      
-      .panel-auth input.form-control::placeholder {
-        color: rgba(255, 255, 255, 0.4) !important;
-        font-weight: 400;
-      }
-      
-      .panel-auth input.form-control:focus {
-        border-color: #FF1744 !important;
-        background: rgba(0, 0, 0, 0.8) !important;
-        box-shadow: 
-          0 0 0 4px rgba(255, 23, 68, 0.15),
-          inset 0 2px 6px rgba(0, 0, 0, 0.5),
-          0 0 30px rgba(255, 23, 68, 0.3) !important;
-        outline: none !important;
-      }
-      
-      /* Login button - BOLD AND DRAMATIC */
-      .panel-auth button[type='submit'] {
-        background: linear-gradient(135deg, 
-          #FF1744 0%, 
-          #D50000 100%) !important;
-        border: none !important;
-        border-radius: 12px !important;
-        padding: 18px !important;
-        font-weight: 700 !important;
-        font-size: 16px !important;
-        letter-spacing: 3px !important;
-        text-transform: uppercase !important;
-        transition: all 0.3s ease !important;
-        margin-top: 25px !important;
-        width: 100% !important;
-        color: #ffffff !important;
-        font-family: 'Helvetica Neue', 'Arial', sans-serif !important;
-        box-shadow: 
-          0 6px 25px rgba(255, 23, 68, 0.5),
-          0 0 30px rgba(255, 23, 68, 0.3),
-          inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
-        position: relative;
-        overflow: hidden;
-      }
-      
-      .panel-auth button[type='submit']::after {
-        content: '';
-        position: absolute;
-        top: 50%;
-        left: 50%;
-        width: 0;
-        height: 0;
-        border-radius: 50%;
-        background: rgba(255, 255, 255, 0.2);
-        transform: translate(-50%, -50%);
-        transition: width 0.6s, height 0.6s;
-      }
-      
-      .panel-auth button[type='submit']:hover {
-        transform: translateY(-3px) scale(1.02);
-        box-shadow: 
-          0 10px 40px rgba(255, 23, 68, 0.7),
-          0 0 50px rgba(255, 23, 68, 0.5),
-          inset 0 1px 0 rgba(255, 255, 255, 0.3) !important;
-      }
-      
-      .panel-auth button[type='submit']:hover::after {
-        width: 300px;
-        height: 300px;
-      }
-      
-      .panel-auth button[type='submit']:active {
-        transform: translateY(0);
-      }
-
-      /* Forgot Password button */
-      .panel-auth .forgot-password-btn,
-      body[data-panel='auth'] .forgot-password-btn {
-        margin-top: 14px !important;
-        width: 100% !important;
-        border: 2px solid #FF1744 !important;
-        background: transparent !important;
-        color: #FF1744 !important;
-        border-radius: 12px !important;
-        padding: 14px !important;
-        font-weight: 700 !important;
-        letter-spacing: 2px !important;
-        text-transform: uppercase !important;
-        transition: all 0.25s ease !important;
-        box-shadow: 0 6px 20px rgba(255, 23, 68, 0.25);
-      }
-      .panel-auth .forgot-password-btn:hover {
-        background: rgba(255, 23, 68, 0.12) !important;
-        transform: translateY(-2px);
-        box-shadow: 0 10px 26px rgba(255, 23, 68, 0.35);
-      }
-      .panel-auth .forgot-password-btn:active {
-        transform: translateY(0);
-        box-shadow: 0 6px 20px rgba(255, 23, 68, 0.25);
-      }
-
-      /* Hide shinymanager default heading */
-      body[data-panel='auth'] h3[data-i18n='please-authenticate'],
-      body[data-panel='auth'] .panel-heading h3,
-      body[data-panel='auth'] .panel-title,
-      h3[data-i18n='please-authenticate'],
-      h3.shinymanager-title,
-      .panel-auth .panel-heading h3,
-      .panel-auth .panel-heading .panel-title {
-        display: none !important;
-      }
-      
-      /* Labels - Clean style */
-      .panel-auth label {
-        font-weight: 600 !important;
-        color: rgba(255, 255, 255, 0.8) !important;
-        margin-bottom: 8px !important;
-        font-size: 13px !important;
-        text-transform: uppercase !important;
-        letter-spacing: 1px !important;
-        font-family: 'Helvetica Neue', 'Arial', sans-serif !important;
-      }
-      
-      /* Checkbox (Remember me) */
-      .panel-auth .checkbox label {
-        font-weight: 400 !important;
-        color: rgba(255, 255, 255, 0.5) !important;
-        font-size: 13px !important;
-        text-transform: none !important;
-        letter-spacing: 0.5px !important;
-      }
-      
-      /* Forgot Password link - Make it VISIBLE and PROMINENT */
-      .panel-auth .pull-right a,
-      .panel-auth a[data-target='#shinymanager-ask-change'],
-      .panel-auth a[href='#shinymanager-ask-change'] {
-        color: #FF1744 !important;
-        font-weight: 600 !important;
-        font-size: 14px !important;
-        transition: all 0.2s ease !important;
-        text-decoration: none !important;
-        font-family: 'Helvetica Neue', 'Arial', sans-serif !important;
-        display: inline-block !important;
-        margin-top: 15px !important;
-      }
-      
-      .panel-auth .pull-right a:hover,
-      .panel-auth a[data-target='#shinymanager-ask-change']:hover,
-      .panel-auth a[href='#shinymanager-ask-change']:hover {
-        color: #ffffff !important;
-        text-shadow: 0 0 10px rgba(255, 23, 68, 0.6);
-        text-decoration: underline !important;
-      }
-      
-      /* Make sure password reset link container is visible */
-      .panel-auth .pull-right {
-        display: block !important;
-        text-align: right !important;
-        margin-top: 15px !important;
-      }
-      
-      /* Error messages */
-      .panel-auth .alert {
-        background: rgba(220, 20, 60, 0.15) !important;
-        border: 1px solid rgba(220, 20, 60, 0.4) !important;
-        border-radius: 10px !important;
-        color: rgba(255, 255, 255, 0.9) !important;
-        font-family: 'Rajdhani', sans-serif !important;
-        font-weight: 500 !important;
-      }
-      
-      /* Admin button */
-      .panel-auth .btn-primary {
-        background: rgba(220, 20, 60, 0.15) !important;
-        border: 1px solid rgba(220, 20, 60, 0.3) !important;
-        border-radius: 10px !important;
-        transition: all 0.3s ease !important;
-        color: #DC143C !important;
-        font-family: 'Rajdhani', sans-serif !important;
-        font-weight: 700 !important;
-        text-transform: uppercase !important;
-        letter-spacing: 1px !important;
-      }
-      
-      /* Labels */
-      .panel-auth label {
-        font-weight: 600 !important;
-        color: #333 !important;
-        margin-bottom: 8px !important;
-        font-size: 14px !important;
-      }
-      
-      /* Checkbox (Remember me) */
-      .panel-auth .checkbox label {
-        font-weight: 400 !important;
-        color: #666 !important;
-        font-size: 13px !important;
-      }
-      
-      /* Forgot Password link */
-      .panel-auth .pull-right a,
-      .panel-auth a[data-target='#shinymanager-ask-change'] {
-        color: #2c5364 !important;
-        font-weight: 600 !important;
-        font-size: 13px !important;
-        transition: all 0.2s ease !important;
-        text-decoration: none !important;
-      }
-      
-      .panel-auth .pull-right a:hover,
-      .panel-auth a[data-target='#shinymanager-ask-change']:hover {
-        color: #0f2027 !important;
-        text-decoration: underline !important;
-      }
-      
-      /* Error messages */
-      .panel-auth .alert {
-        border-radius: 10px !important;
-        border: none !important;
-      }
-      
-      /* Admin button */
-      .panel-auth .btn-primary {
-        background: #2c5364 !important;
-        border: none !important;
-        border-radius: 10px !important;
-        transition: all 0.3s ease !important;
-      }
-      
-      .panel-auth .btn-primary:hover {
-        background: rgba(220, 20, 60, 0.4) !important;
-        border-color: rgba(220, 20, 60, 0.6) !important;
-        box-shadow: 0 0 20px rgba(220, 20, 60, 0.3) !important;
-        transform: translateY(-2px);
-      }
-    ")),
-                   tags$script(HTML("
-      (function() {
-        function inject() {
-          var form = document.querySelector(\"body[data-panel='auth'] form\") ||
-                     document.querySelector(\"form#auth-login\") ||
-                     document.querySelector(\"form[action='auth']\") ||
-                     document.querySelector(\"form[action='']\");
-          if (!form) return;
-          if (form.dataset.forgotInjected === 'true') return;
-          form.dataset.forgotInjected = 'true';
-
-          // Hide default heading if it slipped through
-          var headings = form.querySelectorAll('h3, .panel-title');
-          headings.forEach(function(h) {
-            if ((h.dataset && h.dataset.i18n === 'please-authenticate') ||
-                (h.textContent && h.textContent.toLowerCase().indexOf('please authenticate') !== -1)) {
-              h.style.display = 'none';
-            }
-          });
-
-          var submit = form.querySelector(\"button[type='submit']\") || form.querySelector('.btn-primary');
-          var btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'btn forgot-password-btn';
-          btn.setAttribute('data-toggle', 'modal');
-          btn.setAttribute('data-target', '#shinymanager-ask-reset');
-          btn.textContent = 'Forgot Password';
-
-          if (submit && submit.parentNode) {
-            submit.insertAdjacentElement('afterend', btn);
-          } else {
-            form.appendChild(btn);
-          }
-        }
-
-        document.addEventListener('DOMContentLoaded', function() {
-          inject();
-          var observer = new MutationObserver(function() { inject(); });
-          observer.observe(document.body, { childList: true, subtree: true });
-        });
-      })();
-    "))
-                 )
-)
+# Custom authentication disabled - using shinyapps.io native authentication
 
 
 # Server logic
 server <- function(input, output, session) {
   
-  # Initialize authentication
-  res_auth <- secure_server(
-    check_credentials = check_credentials(
-      credentials_path,
-      passphrase = "cbu_baseball_2024_secure_passphrase"
-    ),
-    timeout = 0,       # never auto-logout from inactivity
-    keep_token = TRUE  # keep token in query string so we can persist it client-side
-  )
-  
-  # Get current authenticated user info
-  auth_user <- reactive({
-    reactiveValuesToList(res_auth)
+  # Get user email from shinyapps.io authentication
+  # In shinyapps.io, session$user contains the authenticated user's email
+  user_email <- reactive({
+    # Try to get email from session
+    email <- session$user
+    
+    # If no session user (running locally), return NA
+    if (is.null(email) || !nzchar(email)) {
+      return(NA_character_)
+    }
+    
+    as.character(email)
   })
+  
+  # Check if current user is admin (only jgaynor@pitchingcoachu.com)
+  is_admin <- reactive({
+    u <- user_email()
+    !is.na(u) && u %in% admin_emails
+  })
+  
+  # Check if current user is a coach (can see all data)
+  is_coach <- reactive({
+    u <- user_email()
+    !is.na(u) && tolower(trimws(u)) %in% tolower(trimws(coach_emails))
+  })
+  
+  # Helper to normalize email for comparison
+  norm_email <- function(x) tolower(trimws(as.character(x)))
   
   # Initialize database on startup
   init_modifications_db()
@@ -19059,46 +18498,8 @@ server <- function(input, output, session) {
     }
   }, ignoreInit = TRUE)
   
-  admin_emails <- c("jgaynor@pitchingcoachu.com", "banni17@yahoo.com")
-  # helper to normalize email
-  norm_email <- function(x) tolower(trimws(x))
-  
-  user_email <- reactive({
-    # 1) Try authenticated user email from shinymanager
-    user_info <- auth_user()
-    if (!is.null(user_info$email) && nzchar(user_info$email)) {
-      return(user_info$email)
-    }
-    
-    # 2) Try username if no email
-    if (!is.null(user_info$user) && nzchar(user_info$user)) {
-      return(user_info$user)
-    }
-    
-    # 3) Fallback to platform user (works if you enabled auth in shinyapps.io)
-    u <- session$user
-    if (!is.null(u) && nzchar(u)) return(u)
-    
-    # 4) Last resort: URL query param
-    qs <- tryCatch(parseQueryString(isolate(session$clientData$url_search)), error = function(e) NULL)
-    e <- if (!is.null(qs)) qs[["email"]] else NULL
-    if (!is.null(e) && nzchar(e)) return(e)
-    
-    NA_character_
-  })
-  
-  
-  is_admin <- reactive({
-    # 1) Check if user has admin flag from shinymanager
-    user_info <- auth_user()
-    if (!is.null(user_info$admin) && isTRUE(user_info$admin)) {
-      return(TRUE)
-    }
-    
-    # 2) Fallback: check email against admin list
-    u <- user_email()
-    !is.na(u) && u %in% admin_emails
-  })
+  # user_email and is_admin are now defined at the start of server function
+  # (removed duplicate definitions here)
   
   tooltip_css <- "color:#fff !important;font-weight:600;padding:6px;border-radius:8px;text-shadow:0 1px 1px rgba(0,0,0,.4);"
   
@@ -19643,56 +19044,62 @@ server <- function(input, output, session) {
     df_base <- if (input$sessionType == "All") pitch_data_pitching else
       dplyr::filter(pitch_data_pitching, SessionType == input$sessionType)
     
-    # Apply team filtering
+    # Apply team filtering to get the available pitchers
     if (input$teamType == "Campers") {
       df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_CAMPERS)
-      # Create name map for campers
-      raw_names_team <- sort(unique(df_base$Pitcher))
-      display_names_team <- ifelse(
-        grepl(",", raw_names_team),
-        vapply(strsplit(raw_names_team, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-        raw_names_team
-      )
-      name_map_team <- setNames(raw_names_team, display_names_team)
     } else if (input$teamType == "GCU") {
       # Filter to only GCU allowed pitchers (exclude campers)
       df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_PITCHERS)
-      raw_names_team <- sort(unique(df_base$Pitcher))
-      display_names_team <- ifelse(
-        grepl(",", raw_names_team),
-        vapply(strsplit(raw_names_team, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-        raw_names_team
-      )
-      name_map_team <- setNames(raw_names_team, display_names_team)
+    }
+    # If "All" is selected, df_base already contains all pitchers
+    
+    # Create name map for the filtered dataset
+    raw_names_team <- sort(unique(df_base$Pitcher))
+    display_names_team <- ifelse(
+      grepl(",", raw_names_team),
+      vapply(strsplit(raw_names_team, ",\\s*"), function(x) paste(x[2], x[1]), ""),
+      raw_names_team
+    )
+    name_map_team <- setNames(raw_names_team, display_names_team)
+    
+    # Determine which pitchers the user can see:
+    # - Admins: all pitchers
+    # - Coaches: all pitchers  
+    # - Players: only pitchers where Email matches their login email
+    if (is_admin() || is_coach()) {
+      # Coaches and admins see all pitchers in filtered dataset
+      sel_raw <- unique(df_base$Pitcher) %>% na.omit()
     } else {
-      # "All" - show all pitchers (both GCU and Campers)
-      raw_names_team <- sort(unique(df_base$Pitcher))
-      display_names_team <- ifelse(
-        grepl(",", raw_names_team),
-        vapply(strsplit(raw_names_team, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-        raw_names_team
-      )
-      name_map_team <- setNames(raw_names_team, display_names_team)
+      # Players see only their own data (matched by email)
+      sel_raw <- unique(df_base$Pitcher[norm_email(df_base$Email) == norm_email(user_email())]) %>% na.omit()
     }
     
-    sel_raw <- unique(df_base$Pitcher[norm_email(df_base$Email) == norm_email(user_email())]) %>% na.omit()
-    
-    if (is_admin()) {
+    # Admins AND coaches get the "All" option
+    if (is_admin() || is_coach()) {
+      # Check if current selection is still valid, otherwise default to "All"
+      current_selection <- isolate(input$pitcher)
+      if (is.null(current_selection) || !(current_selection %in% c("All", raw_names_team))) {
+        current_selection <- "All"
+      }
+      
       selectInput(
         "pitcher", "Select Pitcher:",
         choices  = c("All" = "All", name_map_team),
-        selected = "All"
+        selected = current_selection
       )
     } else if (length(sel_raw) > 0) {
-      disp <- if (input$teamType == "Campers") {
-        display_names_team[raw_names_team %in% sel_raw]
-      } else {
-        display_names_p[raw_names_p %in% sel_raw]
-      }
-      map2 <- setNames(sel_raw, disp)
-      selectInput("pitcher", "Select Pitcher:", choices = map2, selected = sel_raw[1])
+      # Players see only their pitchers (filtered by email)
+      # Use the team-specific name map, but only show their pitchers
+      player_display_names <- display_names_team[raw_names_team %in% sel_raw]
+      player_map <- setNames(sel_raw, player_display_names)
+      
+      selectInput("pitcher", "Select Pitcher:", 
+                  choices = player_map, 
+                  selected = sel_raw[1])
     } else {
-      selectInput("pitcher", "Select Pitcher:", choices = "No data", selected = "No data")
+      selectInput("pitcher", "Select Pitcher:", 
+                  choices = "No data", 
+                  selected = "No data")
     }
   })
   
@@ -19765,8 +19172,14 @@ server <- function(input, output, session) {
     
     # Pitcher & hand
     pick <- input$pitcher
-    if (!is.null(pick) && pick != "All") {
+    if (!is.null(pick) && pick != "All" && pick != "No data") {
+      # Filter by exact pitcher name match
       df <- dplyr::filter(df, Pitcher == pick)
+      # If no data after filtering, might be a name format mismatch - log warning
+      if (nrow(df) == 0) {
+        message("Warning: No data found for pitcher '", pick, "'. Available pitchers: ", 
+                paste(unique(pitch_data_pitching$Pitcher)[1:min(5, length(unique(pitch_data_pitching$Pitcher)))], collapse = ", "))
+      }
     }
     
     # Opponent Hitter filter
@@ -19798,8 +19211,8 @@ server <- function(input, output, session) {
     if (nnz(input$pcMin)) df <- dplyr::filter(df, PitchNumber >= input$pcMin)
     if (nnz(input$pcMax)) df <- dplyr::filter(df, PitchNumber <= input$pcMax)
     
-    # Per-user visibility
-    if (!is_admin()) {
+    # Per-user visibility: Coaches see all, Players see only their own data
+    if (!is_admin() && !is_coach()) {
       ue <- user_email()
       if (!is.na(ue)) df <- dplyr::filter(df, norm_email(Email) == norm_email(ue))
     }
@@ -24808,6 +24221,7 @@ server <- function(input, output, session) {
            "Stuff+"            = ggiraph::girafeOutput("stuffTrendPlot",   height = "350px"),
            "Ctrl+"             = ggiraph::girafeOutput("commandTrendPlot", height = "350px"),
            "QP+"               = ggiraph::girafeOutput("qpTrendPlot",      height = "350px"),
+           "QP%"               = ggiraph::girafeOutput("qpPctTrendPlot",   height = "350px"),
            "Pitching+"         = ggiraph::girafeOutput("pitchingTrendPlot",height = "350px"),
            "IVB"               = ggiraph::girafeOutput("ivbTrendPlot",     height = "350px"),
            "HB"                = ggiraph::girafeOutput("hbTrendPlot",      height = "350px"),
@@ -24922,6 +24336,29 @@ server <- function(input, output, session) {
     
     validate(need(any(is.finite(df$qp_score)), "No QP+ values for current filters"))
     trend_plot(df, qp_score, "QP+", "QP+", mean, digits = 1)
+  })
+  
+  # ---------- QP% (percentage of pitches with QP+ >= 100) ----------
+  output$qpPctTrendPlot <- ggiraph::renderGirafe({
+    df <- filtered_data(); req(nrow(df) > 0)
+    df <- dplyr::ungroup(df)
+    
+    # Calculate QP+ values using compute_qp_points
+    qp_values <- compute_qp_points(df) * 200  # QP+ is QP points * 200
+    df <- df %>% dplyr::mutate(qp_plus = qp_values)
+    
+    # Create binary indicator: 1 if QP+ >= 100, 0 otherwise
+    df <- df %>% dplyr::mutate(quality_pitch = ifelse(qp_plus >= 100, 1, 0))
+    
+    # Use trend_plot with percentage calculation
+    trend_plot(
+      df, 
+      quality_pitch, 
+      "QP%", 
+      "Percentage",
+      function(x) mean(x, na.rm = TRUE) * 100,
+      digits = 1
+    )
   })
   
   # ---------- Pitching+ (prefer QP+; fallback to Ctrl+) ----------
@@ -25417,6 +24854,20 @@ server <- function(input, output, session) {
       cat("Invalid domain:", input$corr_domain, "\n")
       return(NULL)
     }
+    
+    # Apply three-tier filtering for players (admins and coaches see all)
+    tryCatch({
+      if (!is_admin() && !is_coach()) {
+        ue <- user_email()
+        if (!is.na(ue) && "Email" %in% names(data)) {
+          data_before_user_filter <- nrow(data)
+          data <- data %>% dplyr::filter(norm_email(Email) == norm_email(ue))
+          cat("User email filter applied: ", data_before_user_filter, "->", nrow(data), "\n")
+        }
+      }
+    }, error = function(e) {
+      cat("Note: Could not apply user filtering:", e$message, "\n")
+    })
     
     # Apply team filtering based on Team selector
     team_type <- input$corr_teamType %||% "All"
@@ -26422,8 +25873,8 @@ server <- function(input, output, session) {
     # Use the whitelist-filtered pitch_data_pitching for consistency with other modules
     players <- sort(unique(pitch_data_pitching$Pitcher))
     
-    # Filter by admin/user permissions
-    if (!is_admin()) {
+    # Filter by user role: Coaches see all, Players see only themselves
+    if (!is_admin() && !is_coach()) {
       ue <- user_email()
       if (!is.na(ue)) {
         visible_players <- unique(pitch_data_pitching$Pitcher[norm_email(pitch_data_pitching$Email) == norm_email(ue)])
@@ -27315,7 +26766,7 @@ server <- function(input, output, session) {
       dplyr::filter(is.finite(InducedVertBreak), is.finite(HorzBreak)) %>%
       dplyr::mutate(
         TaggedPitchType = as.character(TaggedPitchType),
-        HB_adj = HorzBreak,  # Use HorzBreak directly to match other suites
+        HB_adj = ifelse(PitcherThrows == "Left", HorzBreak, -HorzBreak),
         tt     = make_hover_tt(.),
         rid    = dplyr::row_number()
       )
@@ -27345,7 +26796,7 @@ server <- function(input, output, session) {
       target_data <- lapply(types_chr, function(pt) {
         tgt <- get_target_shape(pitcher_name, pt, input$pp_date_range)
         if (is.null(tgt)) return(NULL)
-        hb_plot <- tgt$HB  # Use HB directly to match other suites
+        hb_plot <- ifelse(pitcher_hand == "Left", tgt$HB, -tgt$HB)
         data.frame(
           TaggedPitchType = pt,
           HB_Target = hb_plot,
