@@ -22896,6 +22896,7 @@ server <- function(input, output, session) {
       legend.position = "bottom",
       legend.text = element_text(size = 14, color = axis_col)
     )
+    p <- p & transparent_bg_theme  # keep patchwork canvas transparent to match other pages
     
     girafe_transparent(
       ggobj = p,
