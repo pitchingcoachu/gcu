@@ -2461,7 +2461,7 @@ get_color_scale <- function(value, column_name, pitch_type) {
   avg  <- thresholds$avg
   great <- thresholds$great
   
-  reverse_scale <- column_name %in% c("EV","Barrel%","BB%")
+  reverse_scale <- column_name %in% c("EV","Barrel%","BB%","RV/100")
   if (reverse_scale) {
     if (value >= poor) return(list(bg = "#0066CC", text = "white"))
     if (value >= (poor + avg)/2) return(list(bg = "#66B2FF", text = "black"))
