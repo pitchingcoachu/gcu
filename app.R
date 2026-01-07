@@ -2218,11 +2218,11 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
     if (enable_color_mode) {
       color_cols <- switch(
         mode,
-        "Process" = c("InZone%","Comp%","Strike%","Swing%","FPS%","E+A%","QP%","Ctrl+","QP+","Pitching+"),
+        "Process" = c("InZone%","Comp%","Strike%","Swing%","FPS%","E+A%","QP%","Ctrl+","QP+","Pitching+","RV/100"),
         "Live"    = c("InZone%","Strike%","FPS%","E+A%","QP+","Ctrl+","Pitching+","K%","BB%","Whiff%"),
         "Results" = c("Whiff%","K%","BB%","CSW%","GB%","Barrel%","EV"),
         "Bullpen" = c("InZone%","Comp%","Ctrl+","Stuff+"),
-        "Banny"   = c("Strike%","QP%","InZone%","Comp%","Stuff+","QP+","Pitching+"),
+        "Banny"   = c("Strike%","QP%","InZone%","Comp%","Stuff+","QP+","Pitching+","RV/100"),
         character(0)
       )
       available_cols <- intersect(color_cols, names(df))
@@ -2532,6 +2532,18 @@ get_process_thresholds <- function(column_name, pitch_type) {
   if (column_name == "Barrel%") return(list(poor = 20, avg = 15, great = 10))
   if (column_name == "EV") return(list(poor = 95, avg = 85, great = 75))
   if (column_name == "Stuff+") return(list(poor = 90, avg = 100, great = 110))
+  if (column_name == "RV/100") {
+    # lower is better for RV/100
+    if (pitch_type == "fastball")   return(list(poor = 1.5, avg = 0.7,  great = -0.1))
+    if (pitch_type == "sinker")     return(list(poor = 2.3, avg = 0.9,  great = -0.5))
+    if (pitch_type == "cutter")     return(list(poor = 0.9, avg = -0.2, great = -1.3))
+    if (pitch_type == "slider")     return(list(poor = -0.4, avg = -1.1, great = -1.8))
+    if (pitch_type == "curveball")  return(list(poor = -0.1, avg = -1.3, great = -2.5))
+    if (pitch_type == "changeup")   return(list(poor = 0.7, avg = -0.5, great = -1.7))
+    if (pitch_type == "splitter")   return(list(poor = 0.0, avg = -1.4, great = -2.8))
+    # default / All
+    return(list(poor = 0.7, avg = 0.0, great = -0.7))
+  }
   NULL
 }
 
