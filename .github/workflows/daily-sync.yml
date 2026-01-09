@@ -1,10 +1,10 @@
 name: Daily GCU Data Sync and Deploy
 
 on:
-  # schedule:
-  #   - cron: '0 21 * * *'   # 5:00 PM ET
-  #   - cron: '0 2 * * *'    # 10:00 PM ET
-  #   - cron: '0 12 * * *'   # 8:00 AM ET
+  schedule:
+    - cron: '0 21 * * *'   # 5:00 PM ET
+    - cron: '0 2 * * *'    # 10:00 PM ET
+    - cron: '0 12 * * *'   # 8:00 AM ET
   workflow_dispatch:
 
 jobs:
