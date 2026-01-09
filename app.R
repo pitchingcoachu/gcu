@@ -18160,6 +18160,17 @@ server <- function(input, output, session) {
   target_shapes <- reactiveVal()
   target_shapes_version <- reactiveVal(0)  # Trigger for re-rendering
   target_shapes_global <- target_shapes  # alias for module-wide access
+
+  target_shape_rows <- reactiveVal(
+    tibble::tibble(
+      PitchType = character(),
+      IVB = numeric(),
+      HB = numeric(),
+      RowID = character(),
+      IsCustom = logical()
+    )
+  )
+  target_shape_pitch_types <- reactiveVal(character())
   
   # Load existing target shapes or create empty dataframe
   loaded_shapes <- load_target_shapes_db()
@@ -18179,6 +18190,44 @@ server <- function(input, output, session) {
     }
   }
   target_shapes(loaded_shapes)
+
+  calc_default_target_shape <- function(pitcher_name, pitch_type, date_range = NULL) {
+    if (is.null(pitcher_name) || pitcher_name == "All" || is.null(pitch_type)) return(NULL)
+    data <- pitch_data_pitching
+    if (!"Stuff+" %in% names(data)) return(NULL)
+    pitch_data_filtered <- data %>%
+      dplyr::filter(Pitcher == pitcher_name, TaggedPitchType == pitch_type)
+    if (!is.null(date_range) && length(date_range) == 2) {
+      pitch_data_filtered <- pitch_data_filtered %>%
+        dplyr::filter(Date >= date_range[1], Date <= date_range[2])
+    }
+    pitch_data_filtered <- pitch_data_filtered %>%
+      dplyr::filter(!is.na(`Stuff+`), !is.na(InducedVertBreak), !is.na(HorzBreak))
+    if (!nrow(pitch_data_filtered)) return(NULL)
+    n_pitches <- min(10, nrow(pitch_data_filtered))
+    top_pitches <- pitch_data_filtered %>%
+      dplyr::arrange(desc(`Stuff+`)) %>%
+      dplyr::slice(1:n_pitches)
+    list(
+      IVB = mean(top_pitches$InducedVertBreak, na.rm = TRUE),
+      HB = mean(top_pitches$HorzBreak, na.rm = TRUE),
+      count = n_pitches
+    )
+  }
+
+  make_target_row_id <- function(pitch_type, existing = character()) {
+    base <- gsub("[^A-Za-z0-9]", "_", pitch_type)
+    base <- gsub("_+", "_", base)
+    base <- gsub("^_+|_+$", "", base)
+    if (!nzchar(base)) base <- "pitch"
+    candidate <- base
+    counter <- 1L
+    while (candidate %in% existing) {
+      counter <- counter + 1L
+      candidate <- paste0(base, "_", counter)
+    }
+    candidate
+  }
   
   # Function to save target shapes to CSV
   save_target_shapes <- function() {
@@ -18193,7 +18242,7 @@ server <- function(input, output, session) {
   
   # Function to get target shape for a pitcher/pitch type
   # Returns list with IVB_Target and HB_Target
-  get_target_shape <- function(pitcher_name, pitch_type, date_range = NULL) {
+  get_target_shape <- function(pitcher_name, pitch_type, date_range = NULL, auto_save = TRUE) {
     if (is.null(pitcher_name) || pitcher_name == "All" || is.null(pitch_type)) {
       return(NULL)
     }
@@ -18210,61 +18259,28 @@ server <- function(input, output, session) {
                   IsCustom = existing$IsCustom[1]))
     }
     
-    # Calculate default from top 10 Stuff+
-    # Use pitch_data_pitching directly since it has Stuff+ column
-    data <- pitch_data_pitching
+    defaults <- calc_default_target_shape(pitcher_name, pitch_type, date_range)
+    if (is.null(defaults)) return(NULL)
     
-    # Check if Stuff+ column exists
-    if (!"Stuff+" %in% names(data)) {
-      return(NULL)
-    }
-    
-    # Filter by pitcher and pitch type
-    pitch_data_filtered <- data %>%
-      dplyr::filter(Pitcher == pitcher_name, TaggedPitchType == pitch_type)
-    
-    # Apply date range if provided
-    if (!is.null(date_range) && length(date_range) == 2) {
-      pitch_data_filtered <- pitch_data_filtered %>%
-        dplyr::filter(Date >= date_range[1], Date <= date_range[2])
-    }
-    
-    # Need Stuff+, InducedVertBreak, HorzBreak
-    pitch_data_filtered <- pitch_data_filtered %>%
-      dplyr::filter(!is.na(`Stuff+`), !is.na(InducedVertBreak), !is.na(HorzBreak))
-    
-    if (nrow(pitch_data_filtered) == 0) {
-      return(NULL)
-    }
-    
-    # Get top 10 (or all if less than 10)
-    n_pitches <- min(10, nrow(pitch_data_filtered))
-    top_pitches <- pitch_data_filtered %>%
-      dplyr::arrange(desc(`Stuff+`)) %>%
-      dplyr::slice(1:n_pitches)
-    
-    # Calculate average IVB and HB
-    avg_ivb <- mean(top_pitches$InducedVertBreak, na.rm = TRUE)
-    avg_hb <- mean(top_pitches$HorzBreak, na.rm = TRUE)
-    
-    # Debug output
     message(sprintf("Auto-calculated target for %s %s: IVB=%.2f, HB=%.2f (from %d pitches)", 
-                    pitcher_name, pitch_type, avg_ivb, avg_hb, n_pitches))
+                    pitcher_name, pitch_type, defaults$IVB, defaults$HB, defaults$count))
     
-    # Save as auto-calculated default
-    new_row <- data.frame(
-      Pitcher = pitcher_name,
-      PitchType = pitch_type,
-      IVB_Target = avg_ivb,
-      HB_Target = avg_hb,
-      IsCustom = FALSE,
-      stringsAsFactors = FALSE
-    )
-    shapes_df <- rbind(shapes_df, new_row)
-    target_shapes(shapes_df)
-    save_target_shapes()  # Save to CSV
+    if (isTRUE(auto_save)) {
+      new_row <- data.frame(
+        Pitcher = pitcher_name,
+        PitchType = pitch_type,
+        IVB_Target = defaults$IVB,
+        HB_Target = defaults$HB,
+        IsCustom = FALSE,
+        stringsAsFactors = FALSE
+      )
+      shapes_df <- rbind(shapes_df, new_row)
+      target_shapes(shapes_df)
+      save_target_shapes()
+      target_shapes_version(target_shapes_version() + 1L)
+    }
     
-    return(list(IVB = avg_ivb, HB = avg_hb, IsCustom = FALSE))
+    return(list(IVB = defaults$IVB, HB = defaults$HB, IsCustom = FALSE))
   }
   
   # Function to set custom target shape
@@ -18302,8 +18318,7 @@ server <- function(input, output, session) {
     save_target_shapes()
     target_shapes_version(target_shapes_version() + 1L)
     
-    # Recalculate auto default (this will save it)
-    get_target_shape(pitcher_name, pitch_type, date_range)
+    calc_default_target_shape(pitcher_name, pitch_type, date_range)
   }
   
   # Global persistent date range - initializes to most recent date on startup
@@ -19675,7 +19690,12 @@ server <- function(input, output, session) {
     df_i <- df %>%
       dplyr::filter(is.finite(RelSide), is.finite(RelHeight)) %>%
       dplyr::mutate(
-        tt = make_hover_tt(.),
+        tt = paste0(
+          "Session: ", sess_lbl,
+          "<br>Height: ", sprintf("%.1f ft", RelHeight),
+          "<br>Side: ", sprintf("%.1f ft", RelSide),
+          "<br>Extension: ", sprintf("%.1f ft", Extension)
+        ),
         rid = dplyr::row_number()
       )
     
@@ -22769,14 +22789,24 @@ server <- function(input, output, session) {
     df_i <- df %>%
       dplyr::filter(is.finite(RelSide), is.finite(RelHeight)) %>%
       dplyr::mutate(
-        tt = make_hover_tt(.),
+        tt = paste0(
+          "Session: ", sess_lbl,
+          "<br>Height: ", sprintf("%.1f ft", RelHeight),
+          "<br>Side: ", sprintf("%.1f ft", RelSide),
+          "<br>Extension: ", sprintf("%.1f ft", Extension)
+        ),
         rid = dplyr::row_number()
       )
     
     df_i_ext <- df %>%
       dplyr::filter(is.finite(Extension), is.finite(RelHeight)) %>%
       dplyr::mutate(
-        tt = make_hover_tt(.),
+        tt = paste0(
+          "Session: ", sess_lbl,
+          "<br>Height: ", sprintf("%.1f ft", RelHeight),
+          "<br>Side: ", sprintf("%.1f ft", RelSide),
+          "<br>Extension: ", sprintf("%.1f ft", Extension)
+        ),
         rid = dplyr::row_number()
       )
     
@@ -23151,6 +23181,59 @@ server <- function(input, output, session) {
     session$userData$selected_for_edit <- selected_pitches
   })
   
+  output$target_shape_rows_ui <- renderUI({
+    rows <- target_shape_rows()
+    if (!nrow(rows)) {
+      return(tags$p("No saved target shapes yet. Use the form below to add a pitch type.", style = "color:#555;"))
+    }
+
+    tagList(
+      lapply(seq_len(nrow(rows)), function(i) {
+        row <- rows[i, , drop = FALSE]
+        row_id <- row$RowID[1]
+        status <- if (isTRUE(row$IsCustom[1])) "Custom" else "Auto"
+        tags$div(
+          style = "border:1px solid #e2e8f0; border-radius:8px; padding:12px; margin-bottom:12px; background:#f9fafb;",
+          tags$div(
+            style = "display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;",
+            tags$div(
+              tags$strong(row$PitchType[1]),
+              tags$span(paste0(" (", status, ")"), style = "color:#64748b;font-size:0.85rem;")
+            ),
+            tags$div(
+              tags$button(
+                type = "button",
+                class = "btn btn-sm btn-link text-danger",
+                style = "padding:.25rem .5rem;",
+                onclick = sprintf("Shiny.setInputValue('target_shape_remove', '%s', {priority: 'event'})", row_id),
+                "Remove"
+              ),
+              tags$button(
+                type = "button",
+                class = "btn btn-sm btn-link text-primary",
+                style = "padding:.25rem .5rem;",
+                onclick = sprintf("Shiny.setInputValue('target_shape_reset', '%s', {priority: 'event'})", row_id),
+                "Reset to Auto"
+              )
+            )
+          ),
+          fluidRow(
+            column(6,
+                   numericInput(paste0("target_ivb_", row_id), "IVB Target:",
+                                value = round(ifelse(is.na(row$IVB[1]), 0, row$IVB[1]), 1),
+                                step = 0.5, width = "100%")
+            ),
+            column(6,
+                   numericInput(paste0("target_hb_", row_id), "HB Target:",
+                                value = round(ifelse(is.na(row$HB[1]), 0, row$HB[1]), 1),
+                                step = 0.5, width = "100%")
+            )
+          )
+        )
+      })
+    )
+  })
+
   # Shared helper to open Target Shapes Settings modal (used across pages)
   open_target_shapes_modal <- function(pitcher_name, date_range, data_override = NULL) {
     if (is.null(pitcher_name) || length(pitcher_name) != 1 || pitcher_name %in% c("", "All")) {
@@ -23182,51 +23265,165 @@ server <- function(input, output, session) {
       return()
     }
     
-    pitch_type_inputs <- lapply(pitch_types, function(pt) {
-      target <- get_target_shape(pitcher_name, pt, date_range)
-      ivb_val <- if (!is.null(target)) round(target$IVB, 1) else 0
-      hb_val <- if (!is.null(target)) round(target$HB, 1) else 0
-      is_custom <- if (!is.null(target)) target$IsCustom else FALSE
-      
-      status_text <- if (is_custom) "(Custom)" else "(Auto: Top 10 Stuff+)"
-      
-      div(
-        style = "border: 1px solid #ddd; padding: 10px; margin-bottom: 10px; border-radius: 4px;",
-        h4(paste(pt, status_text), style = "margin-top: 0;"),
-        fluidRow(
-          column(6,
-                 numericInput(paste0("target_ivb_", pt), "IVB Target:", 
-                              value = ivb_val, step = 0.5, width = "100%")
-          ),
-          column(6,
-                 numericInput(paste0("target_hb_", pt), "HB Target:", 
-                              value = hb_val, step = 0.5, width = "100%")
-          )
-        ),
-        actionButton(paste0("reset_target_", pt), "Reset to Auto", 
-                     size = "xs", style = "margin-top: 5px;")
-      )
-    })
-    
+    assigned <- target_shapes() %>%
+      dplyr::filter(Pitcher == pitcher_name, PitchType %in% pitch_types)
+    rows <- tibble::tibble(
+      PitchType = character(),
+      IVB = numeric(),
+      HB = numeric(),
+      RowID = character(),
+      IsCustom = logical()
+    )
+    row_ids <- character()
+    if (nrow(assigned) > 0) {
+      for (i in seq_len(nrow(assigned))) {
+        pt <- assigned$PitchType[i]
+        new_id <- make_target_row_id(pt, existing = row_ids)
+        row_ids <- c(row_ids, new_id)
+        rows <- dplyr::bind_rows(rows, tibble::tibble(
+          PitchType = pt,
+          IVB = assigned$IVB_Target[i],
+          HB = assigned$HB_Target[i],
+          RowID = new_id,
+          IsCustom = assigned$IsCustom[i]
+        ))
+      }
+    }
+
+    target_shape_rows(rows)
+    target_shape_pitch_types(pitch_types)
+    available_types <- setdiff(pitch_types, rows$PitchType)
+
+    add_choices <- if (length(available_types)) available_types else c("No pitch types available" = "")
+    selected_add <- if (length(available_types)) available_types[1] else ""
+    add_defaults <- if (nzchar(selected_add)) calc_default_target_shape(pitcher_name, selected_add, date_range) else NULL
+    add_ivb_init <- if (!is.null(add_defaults)) round(add_defaults$IVB, 1) else 0
+    add_hb_init <- if (!is.null(add_defaults)) round(add_defaults$HB, 1) else 0
+
     showModal(modalDialog(
       title = paste("Target Shapes for", pitcher_name),
       size = "l",
       div(
-        p("Set target movement shapes for each pitch type. Targets default to the average of the top 10 Stuff+ pitches within the selected date range."),
-        pitch_type_inputs
+        p("Set target movement shapes for the pitch types you care about. Add one entry per pitch type you want to customize."),
+        uiOutput("target_shape_rows_ui"),
+        tags$div(
+          style = "border:1px dashed #cbd5f5; padding:12px; border-radius:8px; margin-top:12px;",
+          tags$h4("Add a target shape", style = "margin-top:0;"),
+          fluidRow(
+            column(4,
+                   selectInput("target_shape_add_pitch_type", "Pitch Type:", 
+                               choices = add_choices, selected = selected_add)
+            ),
+            column(4,
+                   numericInput("target_shape_add_ivb", "IVB Target:", 
+                                value = add_ivb_init, step = 0.5, width = "100%")
+            ),
+            column(4,
+                   numericInput("target_shape_add_hb", "HB Target:", 
+                                value = add_hb_init, step = 0.5, width = "100%")
+            )
+          ),
+          tagList(
+            tagAppendAttributes(
+              actionButton("target_shape_add_btn", "Add Target Shape", class = "btn-primary"),
+              disabled = if (!length(available_types)) "disabled" else NULL
+            ),
+            if (!length(available_types)) {
+              tags$span("Remove a saved target to unlock more pitch types.", 
+                        style = "margin-left:12px;color:#64748b;")
+            }
+          )
+        )
       ),
       footer = tagList(
         modalButton("Cancel"),
-        actionButton("save_target_shapes_btn", "Save All Targets", class = "btn-primary")
+        actionButton("save_target_shapes_btn", "Save Target Shapes", class = "btn-primary")
       ),
       easyClose = FALSE
     ))
     
-    session$userData$current_pitcher_for_targets <- pitcher_name
-    session$userData$current_pitch_types_for_targets <- pitch_types
-    session$userData$current_target_date_range <- date_range
-  }
-  
+  session$userData$current_pitcher_for_targets <- pitcher_name
+  session$userData$current_pitch_types_for_targets <- rows$PitchType
+  session$userData$current_target_date_range <- date_range
+}
+
+  observeEvent(target_shape_rows(), ignoreNULL = FALSE, {
+    rows <- target_shape_rows()
+    pitch_types <- target_shape_pitch_types()
+    available <- setdiff(pitch_types, rows$PitchType)
+    choices <- if (length(available)) available else c("No pitch types available" = "")
+    selected <- if (length(available)) available[1] else ""
+    if (!is.null(session$input$target_shape_add_pitch_type)) {
+      updateSelectInput(session, "target_shape_add_pitch_type", choices = choices, selected = selected)
+    }
+    session$userData$current_pitch_types_for_targets <- rows$PitchType
+  })
+
+  observeEvent(input$target_shape_add_pitch_type, ignoreInit = TRUE, {
+    pt <- input$target_shape_add_pitch_type
+    pitcher <- session$userData$current_pitcher_for_targets
+    date_range <- session$userData$current_target_date_range
+    if (is.null(pt) || !nzchar(pt) || is.null(pitcher) || pitcher == "All") return()
+    defaults <- calc_default_target_shape(pitcher, pt, date_range)
+    ivb_val <- if (!is.null(defaults)) round(defaults$IVB, 1) else 0
+    hb_val <- if (!is.null(defaults)) round(defaults$HB, 1) else 0
+    if (!is.null(session$input$target_shape_add_ivb)) {
+      updateNumericInput(session, "target_shape_add_ivb", value = ivb_val)
+    }
+    if (!is.null(session$input$target_shape_add_hb)) {
+      updateNumericInput(session, "target_shape_add_hb", value = hb_val)
+    }
+  })
+
+  observeEvent(input$target_shape_add_btn, ignoreNULL = TRUE, ignoreInit = TRUE, {
+    pitcher <- session$userData$current_pitcher_for_targets
+    if (is.null(pitcher) || pitcher == "All") {
+      showNotification("Select a valid pitcher before adding a target shape.", type = "warning")
+      return()
+    }
+    pt <- input$target_shape_add_pitch_type
+    if (is.null(pt) || !nzchar(pt)) {
+      showNotification("Pick a pitch type to add.", type = "warning")
+      return()
+    }
+    rows <- target_shape_rows()
+    if (pt %in% rows$PitchType) {
+      showNotification(paste(pt, "already has a target shape."), type = "warning")
+      return()
+    }
+    ivb_val <- input$target_shape_add_ivb %||% 0
+    hb_val <- input$target_shape_add_hb %||% 0
+    new_row <- tibble::tibble(
+      PitchType = pt,
+      IVB = round(ivb_val, 1),
+      HB = round(hb_val, 1),
+      RowID = make_target_row_id(pt, existing = rows$RowID),
+      IsCustom = TRUE
+    )
+    target_shape_rows(dplyr::bind_rows(rows, new_row))
+    showNotification(paste("Added target shape for", pt), type = "message")
+  })
+
+  observeEvent(input$target_shape_remove, ignoreNULL = TRUE, ignoreInit = TRUE, {
+    row_id <- input$target_shape_remove
+    rows <- target_shape_rows()
+    if (!nrow(rows)) return()
+    updated <- rows[rows$RowID != row_id, , drop = FALSE]
+    target_shape_rows(updated)
+  })
+
+  observeEvent(input$target_shape_reset, ignoreNULL = TRUE, ignoreInit = TRUE, {
+    row_id <- input$target_shape_reset
+    rows <- target_shape_rows()
+    row <- rows[rows$RowID == row_id, , drop = FALSE]
+    if (!nrow(row)) return()
+    pitcher <- session$userData$current_pitcher_for_targets
+    date_range <- session$userData$current_target_date_range
+    reset_target_shape(pitcher, row$PitchType[1], date_range)
+    target_shape_rows(rows[rows$RowID != row_id, , drop = FALSE])
+    showNotification(paste("Reset", row$PitchType[1], "to automatic target."), type = "message")
+  })
+
   # Target Shapes Settings Modal triggers
   observeEvent(input$targetShapesSettings, {
     pitcher_sel <- input$pitcher
@@ -23250,65 +23447,33 @@ server <- function(input, output, session) {
   # Save target shapes from modal
   observeEvent(input$save_target_shapes_btn, {
     pitcher_name <- session$userData$current_pitcher_for_targets
-    pitch_types <- session$userData$current_pitch_types_for_targets
+    rows <- target_shape_rows()
     
-    if (is.null(pitcher_name) || is.null(pitch_types)) return()
+    if (is.null(pitcher_name) || nrow(rows) == 0) {
+      showNotification("Add at least one pitch type before saving.", type = "warning")
+      return()
+    }
     
     # Track if any changes were made
     changes_made <- FALSE
     
-    for (pt in pitch_types) {
-      ivb_input <- input[[paste0("target_ivb_", pt)]]
-      hb_input <- input[[paste0("target_hb_", pt)]]
+    for (i in seq_len(nrow(rows))) {
+      row <- rows[i, , drop = FALSE]
+      ivb_input <- input[[paste0("target_ivb_", row$RowID[1])]]
+      hb_input <- input[[paste0("target_hb_", row$RowID[1])]]
       
       if (!is.null(ivb_input) && !is.null(hb_input)) {
-        set_target_shape(pitcher_name, pt, ivb_input, hb_input)
+        set_target_shape(pitcher_name, row$PitchType[1], ivb_input, hb_input)
         changes_made <- TRUE
       }
     }
     
     if (changes_made) {
-      # Trigger re-render of plots
       target_shapes_version(target_shapes_version() + 1)
-      
       showNotification("Target shapes saved successfully!", type = "message", duration = 3)
     }
     
     removeModal()
-  })
-  
-  # Reset individual target shapes - create observers for each pitch type
-  observe({
-    pitcher_name <- session$userData$current_pitcher_for_targets
-    pitch_types <- session$userData$current_pitch_types_for_targets
-    date_range <- session$userData$current_target_date_range
-    
-    if (!is.null(pitcher_name) && !is.null(pitch_types)) {
-      lapply(pitch_types, function(pt) {
-        local({
-          pitch_type <- pt  # Capture in local scope
-          force(pitch_type)  # Force evaluation
-          
-          observeEvent(input[[paste0("reset_target_", pitch_type)]], {
-            reset_target_shape(pitcher_name, pitch_type, date_range)
-            
-            # Get updated target
-            target <- get_target_shape(pitcher_name, pitch_type, date_range)
-            
-            if (!is.null(target)) {
-              updateNumericInput(session, paste0("target_ivb_", pitch_type), value = round(target$IVB, 1))
-              updateNumericInput(session, paste0("target_hb_", pitch_type), value = round(target$HB, 1))
-            }
-            
-            # Trigger re-render of plots
-            target_shapes_version(target_shapes_version() + 1)
-            
-            showNotification(paste("Reset", pitch_type, "to automatic target"), 
-                             type = "message", duration = 2)
-          }, ignoreInit = TRUE, ignoreNULL = TRUE, once = FALSE)
-        })
-      })
-    }
   })
   
   # Observer for display options changes to trigger re-rendering
