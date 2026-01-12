@@ -43,10 +43,66 @@ GLOBAL_SCOPE <- "GLOBAL"
 current_school <- function() {
   sc <- Sys.getenv("TEAM_CODE", unset = TEAM_CODE)
   if (is.null(sc) || !nzchar(sc)) sc <- TEAM_CODE
-  if (is.null(sc) || !nzchar(sc)) sc <- "GCU"
+  if (is.null(sc) || !nzchar(sc)) sc <- "OSU"
   toupper(sc)
 }
 allowed_school_codes <- function() unique(c(current_school(), GLOBAL_SCOPE))
+
+# Load per-school configuration overrides (keeps app.R shared).
+config_path <- file.path("config", "school_config.R")
+if (file.exists(config_path)) {
+  source(config_path)
+}
+if (!exists("school_config")) school_config <- list()
+
+school_setting <- function(name, default = NULL) {
+  if (!is.null(school_config[[name]])) return(school_config[[name]])
+  default
+}
+
+# School-scoped overrides
+TEAM_CODE <- school_setting("team_code", TEAM_CODE)
+if (!nzchar(TEAM_CODE)) TEAM_CODE <- "OSU"
+TEAM_CHOICES <- c("All" = "All",
+                  TEAM_CODE = TEAM_CODE,
+                  "Opponents" = "Opponents",
+                  "Campers" = "Campers")
+
+default_colors <- list(
+  primary = "#0a2240",
+  accent = "#e35205",
+  accent_secondary = "#ff8c1a",
+  background = "#f5f7fa",
+  background_secondary = "#e8ecf1"
+)
+user_colors <- school_setting("colors", list())
+school_colors <- modifyList(default_colors, user_colors)
+accent_color <- school_colors$accent
+accent_secondary_color <- school_colors$accent_secondary
+if (is.null(accent_secondary_color) || !nzchar(accent_secondary_color)) {
+  accent_secondary_color <- accent_color
+}
+background_color <- school_colors$background
+if (is.null(background_color) || !nzchar(background_color)) {
+  background_color <- "#f5f7fa"
+}
+background_secondary_color <- school_colors$background_secondary
+if (is.null(background_secondary_color) || !nzchar(background_secondary_color)) {
+  background_secondary_color <- background_color
+}
+
+school_logo <- school_setting("logo", "PCUlogo.png")
+school_extra <- school_setting("extra", list())
+school_display_name <- school_extra$school_name
+if (is.null(school_display_name) || !nzchar(school_display_name)) {
+  school_display_name <- TEAM_CODE
+}
+
+coach_emails <- school_setting("coaches_emails", c("coach@example.com"))
+default_notes_api <- list(base_url = "", token = "")
+notes_api <- modifyList(default_notes_api, school_setting("notes_api", list()))
+NOTES_API_URL <- notes_api$base_url
+NOTES_API_TOKEN <- notes_api$token
 
 # ---- Heatmap constants and functions for Player Plans ----
 HEAT_BINS <- 10  # Increased from 6 for smoother gradients like TruMedia
@@ -1336,13 +1392,25 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
   }
   on.exit(dbDisconnect(con), add = TRUE)
   selected_pitches <- ensure_pitch_keys(selected_pitches)
-  if (is.null(new_pitcher) || !nzchar(new_pitcher)) {
-    new_pitcher_vec <- as.character(selected_pitches$Pitcher)
-  } else {
+  # Drop any aggregate/summary rows that lack a concrete pitch key
+  selected_pitches <- selected_pitches[!is.na(selected_pitches$PitchKey) & nzchar(as.character(selected_pitches$PitchKey)), , drop = FALSE]
+  if (!nrow(selected_pitches)) {
+    return(list(success = FALSE, error = "No valid pitch rows selected (missing pitch key)."))
+  }
+  # Normalize pitcher fields to avoid NULL/NA inserts
+  pitcher_vec <- as.character(selected_pitches$Pitcher)
+  pitcher_vec[is.na(pitcher_vec) | pitcher_vec %in% c("NA","NaN","")] <- "Unknown"
+  if (!is.null(new_pitcher) && nzchar(new_pitcher)) {
+    # Fill any missing pitcher with the override and use override for new_pitcher column
+    pitcher_vec[!nzchar(pitcher_vec) | is.na(pitcher_vec)] <- new_pitcher
     new_pitcher_vec <- rep(new_pitcher, nrow(selected_pitches))
+  } else {
+    # No override provided; still ensure we don't insert blanks
+    pitcher_vec[!nzchar(pitcher_vec) | is.na(pitcher_vec) | pitcher_vec %in% c("NA","NaN")] <- "Unknown"
+    new_pitcher_vec <- pitcher_vec
   }
   new_mods <- data.frame(
-    pitcher = selected_pitches$Pitcher,
+    pitcher = pitcher_vec,
     date = as.character(selected_pitches$Date),
     rel_speed = suppressWarnings(as.numeric(selected_pitches$RelSpeed)),
     horz_break = suppressWarnings(as.numeric(selected_pitches$HorzBreak)),
@@ -1354,10 +1422,20 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
     pitch_key = as.character(selected_pitches$PitchKey),
     stringsAsFactors = FALSE
   )
+  # Sanitize required NOT NULL fields
+  new_mods$date[is.na(new_mods$date) | new_mods$date %in% c("", "NA", "NaN")] <- NA
+  new_mods$pitcher[is.na(new_mods$pitcher) | new_mods$pitcher %in% c("", "NA", "NaN")] <- "Unknown"
+  new_mods$new_pitcher[is.na(new_mods$new_pitcher) | new_mods$new_pitcher %in% c("", "NA", "NaN")] <- new_mods$pitcher[is.na(new_mods$new_pitcher) | new_mods$new_pitcher %in% c("", "NA", "NaN")]
   new_mods$pitch_key[is.na(new_mods$pitch_key)] <- ""
-  new_mods <- new_mods[nzchar(new_mods$pitch_key), , drop = FALSE]
+  # Keep only rows with required fields: pitch_key, pitcher, date
+  new_mods <- new_mods[
+    nzchar(new_mods$pitch_key) &
+      nzchar(new_mods$pitcher) &
+      !is.na(new_mods$date),
+    , drop = FALSE
+  ]
   if (!nrow(new_mods)) {
-    return(list(success = FALSE, error = "No pitch identifiers available for the selected rows."))
+    return(list(success = FALSE, error = "No valid pitch rows available (missing key/pitcher/date)."))
   }
   res <- tryCatch({
     dbExecute(con, "BEGIN IMMEDIATE")
@@ -1733,10 +1811,6 @@ js_sort <-
   paste0("  }\n") %>%
   paste0("  return data;\n") %>%
   paste0("}")
-
-# ---- Notes API config ----
-NOTES_API_URL   <- "https://script.google.com/macros/s/AKfycbwuftWhRZGV7f1lWFJnC5mBcxaXh7P7Xhlc7_Lvr5r6ZO_GYKbv6YxCp7B0AXsvCKY0/exec"
-NOTES_API_TOKEN <- "GCUbaseball"
 
 # small helper
 # Replace the old %or% with this scalar-safe version
@@ -2160,6 +2234,13 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
     if (length(hide_idx)) {
       defs <- c(defs, list(list(visible = FALSE, targets = hide_idx)))
     }
+    idx_hash <- which(names(df) == "#") - 1
+    if (length(idx_hash)) {
+      defs <- c(defs, list(list(
+        className = "dt-center clickable-cell",
+        targets = idx_hash
+      )))
+    }
     # Force two-state sorting (asc/desc) on all columns to avoid inconsistent tri-state toggles
     defs <- c(defs, list(list(targets = "_all", orderSequence = c("asc", "desc"))))
     
@@ -2194,7 +2275,7 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
     
     dt <- build_dt(df)
     
-    color_modes <- c("Process","Live","Results","Bullpen","Banny")
+    color_modes <- c("Process","Live","Results","Bullpen")
     if (identical(mode, "Usage")) {
       color_modes <- setdiff(color_modes, "Usage")
     }
@@ -2222,7 +2303,6 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
         "Live"    = c("InZone%","Strike%","FPS%","E+A%","QP+","Ctrl+","Pitching+","K%","BB%","Whiff%"),
         "Results" = c("Whiff%","K%","BB%","CSW%","GB%","Barrel%","EV"),
         "Bullpen" = c("InZone%","Comp%","Ctrl+","Stuff+"),
-        "Banny"   = c("Strike%","QP%","InZone%","Comp%","Stuff+","QP+","Pitching+","RV/100"),
         character(0)
       )
       available_cols <- intersect(color_cols, names(df))
@@ -2303,11 +2383,10 @@ results_cols_live <- c("Pitch","#","BF","K%","BB%","GB%","Whiff%","CSW%","EV","L
 bullpen_cols      <- c("Pitch","#","Velo","Max","IVB","HB","Spin","bTilt","Height","Side","Ext","InZone%","Comp%","Ctrl+","Stuff+")
 live_cols         <- c("Pitch","#","Velo","Max","IVB","HB","FPS%","E+A%","InZone%","Strike%","Whiff%","K%","BB%","QP+")
 usage_cols        <- c("Pitch","#","Usage","0-0","Behind","Even","Ahead","<2K","2K")
-banny_cols        <- c("Pitch","Usage","Strike%","QP%","InZone%","Comp%","Velo","Max","IVB","HB","Stuff+","QP+","Pitching+")
 perf_cols         <- c("Pitch","#","BF","RV/100","InZone%","Comp%","Strike%","FPS%","E+A%","K%","BB%","Whiff%","CSW%","EV","LA","Ctrl+","QP+","Pitching+")
 
 # ---- unified list for the pickers + a helper to compute visibility
-all_table_cols <- unique(c(stuff_cols, process_cols, results_cols, results_cols_live, bullpen_cols, live_cols, usage_cols, banny_cols, perf_cols, "Overall"))
+all_table_cols <- unique(c(stuff_cols, process_cols, results_cols, results_cols_live, bullpen_cols, live_cols, usage_cols, perf_cols, "Overall"))
 
 visible_set_for <- function(mode, custom = character(0), session_type = NULL) {
   if (identical(mode, "Process")) return(process_cols)
@@ -2315,7 +2394,6 @@ visible_set_for <- function(mode, custom = character(0), session_type = NULL) {
   if (identical(mode, "Bullpen")) return(bullpen_cols)
   if (identical(mode, "Live"))    return(live_cols)
   if (identical(mode, "Usage"))   return(usage_cols)
-  if (identical(mode, "Banny"))   return(banny_cols)
   if (identical(mode, "Raw Data")) return(c("Pitch","IP","P","BF","P/IP","P/BF","H","XBH","Barrels","BB","HBP","K","Whiffs"))
   if (identical(mode, "Custom"))  return(c("Pitch", custom[!duplicated(custom)]))
   stuff_cols
@@ -2357,7 +2435,7 @@ custom_tables(load_custom_tables())
 
 update_custom_table_choices <- function(session) {
   nms <- names(custom_tables())
-  base_modes <- c("Stuff","Process","Results","Swing Decisions","Bullpen","Live","Usage","Banny","Raw Data","Batted Ball Data")
+  base_modes <- c("Stuff","Process","Results","Swing Decisions","Bullpen","Live","Usage","Raw Data","Batted Ball Data")
   pitch_modes <- setdiff(base_modes, "Swing Decisions")
   safe_update <- function(id) {
     try(updateSelectInput(session, id, choices = c("", nms)), silent = TRUE)
@@ -2697,13 +2775,14 @@ fill_all_qp_pct <- function(df_table, src_df) {
   }
   
   missing_qp <- which(is.na(df_table$`QP%`) | df_table$`QP%` == "")
-  if (!any(idx) && length(missing_qp) == 1) {
+  idx_any <- isTRUE(any(idx))
+  if (!idx_any && length(missing_qp) == 1) {
     idx[missing_qp] <- TRUE
   }
-  if (!any(idx) && length(missing_qp) > 1) {
+  if (!idx_any && length(missing_qp) > 1) {
     idx[missing_qp] <- TRUE
   }
-  if (!any(idx)) return(df_table)
+  if (!isTRUE(any(idx))) return(df_table)
   
   qp_val <- safe_pct(
     sum((compute_qp_points(src_df) * 200) >= 100, na.rm = TRUE),
@@ -4473,10 +4552,11 @@ need_cols <- c(
   "InducedVertBreak","HorzBreak","RelSpeed","ReleaseTilt","BreakTilt",
   "SpinEfficiency","SpinRate","RelHeight","RelSide","Extension",
   "VertApprAngle","HorzApprAngle","PlateLocSide","PlateLocHeight",
-  "PitchCall","KorBB","Balls","Strikes","SessionType",
+  "PitchCall","KorBB","Balls","Strikes","SessionType","PlayID",
   "ExitSpeed","Angle","BatterSide",
   "PlayResult","TaggedHitType","OutsOnPlay",
-  "Batter", "Catcher"   # ← add this
+  "Batter", "Catcher",
+  "VideoClip","VideoClip2","VideoClip3"
 )
 
 
@@ -4529,6 +4609,83 @@ pitch_data <- pitch_data %>%
   ) %>%
   dplyr::filter(!is.na(TaggedPitchType) & tolower(TaggedPitchType) != "undefined") %>%
   force_pitch_levels()
+
+# ---- Attach Cloudinary video URLs when available ----
+video_map_path <- file.path(data_parent, "video_map.csv")
+manual_map_path <- file.path(data_parent, "video_map_manual.csv")
+if (!"VideoClip"  %in% names(pitch_data)) pitch_data$VideoClip  <- NA_character_
+if (!"VideoClip2" %in% names(pitch_data)) pitch_data$VideoClip2 <- NA_character_
+if (!"VideoClip3" %in% names(pitch_data)) pitch_data$VideoClip3 <- NA_character_
+
+# Combine EdgeR and manual/iPhone video maps
+video_maps <- list()
+if (file.exists(video_map_path)) {
+  edger_raw <- suppressMessages(readr::read_csv(video_map_path, show_col_types = FALSE))
+  if (nrow(edger_raw) > 0) {
+    video_maps[["edger"]] <- edger_raw
+    message("📹 Loaded ", nrow(edger_raw), " EdgeR videos")
+  }
+}
+if (file.exists(manual_map_path)) {
+  manual_raw <- suppressMessages(readr::read_csv(manual_map_path, show_col_types = FALSE))
+  if (nrow(manual_raw) > 0) {
+    video_maps[["manual"]] <- manual_raw
+    message("📱 Loaded ", nrow(manual_raw), " iPhone videos")
+  }
+}
+
+if (length(video_maps) > 0) {
+  vm_raw <- dplyr::bind_rows(video_maps) %>% dplyr::distinct()
+  message("🎬 Combined total: ", nrow(vm_raw), " videos available")
+  if (nrow(vm_raw)) {
+    vm_wide <- vm_raw %>%
+      dplyr::mutate(
+        play_id = tolower(as.character(play_id)),
+        camera_slot = dplyr::case_when(
+          camera_slot %in% c("VideoClip","VideoClip2","VideoClip3") ~ camera_slot,
+          TRUE ~ NA_character_
+        ),
+        uploaded_at = suppressWarnings(lubridate::ymd_hms(uploaded_at, quiet = TRUE, tz = "UTC"))
+      ) %>%
+      dplyr::filter(
+        nzchar(play_id),
+        !is.na(camera_slot),
+        nzchar(cloudinary_url)
+      ) %>%
+      dplyr::arrange(play_id, camera_slot, dplyr::desc(uploaded_at)) %>%
+      dplyr::group_by(play_id, camera_slot) %>%
+      dplyr::slice_head(n = 1) %>%
+      dplyr::ungroup() %>%
+      tidyr::pivot_wider(
+        id_cols = play_id,
+        names_from = camera_slot,
+        values_from = cloudinary_url
+      )
+    
+    if (nrow(vm_wide)) {
+      pitch_data <- pitch_data %>%
+        dplyr::mutate(.play_lower = tolower(as.character(PlayID))) %>%
+        dplyr::left_join(vm_wide, by = c(".play_lower" = "play_id"), suffix = c("", ".vm")) %>%
+        { 
+          vm_cols <- paste0(c("VideoClip","VideoClip2","VideoClip3"), ".vm")
+          for (vm_col in vm_cols) {
+            if (!vm_col %in% names(.)) .[[vm_col]] <- NA_character_
+          }
+          .
+        } %>%
+        dplyr::mutate(
+          VideoClip  = dplyr::coalesce(.data[["VideoClip.vm"]],  VideoClip),
+          VideoClip2 = dplyr::coalesce(.data[["VideoClip2.vm"]], VideoClip2),
+          VideoClip3 = dplyr::coalesce(.data[["VideoClip3.vm"]], VideoClip3)
+        ) %>%
+        dplyr::select(-dplyr::ends_with(".vm"), -.play_lower)
+      matched_videos <- sum(nzchar(pitch_data$VideoClip %||% ""))
+      message("✅ Attached videos for ", matched_videos, " pitches from combined maps")
+    } else {
+      message("⚠️  Video maps loaded but no rows matched PlayID in pitch data.")
+    }
+  }
+}
 
 pitch_data <- ensure_pitch_keys(pitch_data)
 
@@ -4591,84 +4748,100 @@ catcher_map <- setNames(raw_catchers, catch_display)
 
 
 # ==== PITCHERS-ONLY WHITELIST ====
-ALLOWED_PITCHERS <- c(
-  "Lee, Aidan",
-  "Limas, Jacob",
-  "Higginbottom, Elijah",
-  "Cunnings, Cam",
-  "Moeller, Luke",
-  "Smith, Jace",
-  "Frey, Chase",
-  "Ahern, Garrett",
-  "McGuire, Tommy",
-  "Robb, Nicholas",
-  "Guerrero, JT",
-  "Gregory, Billy",
-  "Penzkover, Gunnar",
-  "Lewis, JT",
-  "Kiemele, Cody",
-  "Cohen, Andrew",
-  "Lyon, Andrew",
-  "Johns, Tanner",
-  "Toney, Brock",
-  "Sloan, Landon",
-  "Key, Chance",
-  "Orr, Dillon",
-  "Yates, Zach",
-  "New, Cody"
-)
+ALLOWED_PITCHERS <- school_setting("allowed_pitchers", c(
+  "Wentworth, TP",
+  "LeBlanc, Bryce",
+  "Lund, Ethan",
+  "Fyke, Kai",
+  "Rhodes, Stormy",
+  "Wech, Noah",
+  "Brown, Matthew",
+  "Phillips, Brennan",
+  "Blake, Drew",
+  "Glendinning, Lucas",
+  "Golden, Josiah",
+  "Kennedy, Jake",
+  "Barrett, Hudson",
+  "Zagar, Kyler",
+  "Albright, Gaige",
+  "Sramek, Caden",
+  "Jennings, Parker",
+  "Burns, Zane",
+  "Winslow, Drew",
+  "Pearcy, Kyle",
+  "Turner, Cael",
+  "Pesca, Mario",
+  "Watkins, Hunter",
+  "Thompson, Brock",
+  "Meola, Aidan",
+  "Bowen, Terrance",
+  "Smithwick, Campbell",
+  "Shull, Garrett",
+  "Indomenico, Remo",
+  "Ortiz, Avery",
+  "Wallace, Danny",
+  "Brueggemann, Colin",
+  "Ritchie, Kollin",
+  "Conover, Alex",
+  "Norman, Sebastian",
+  "Essex, Ezra",
+  "Saunders, Evan",
+  "Pladson, Cole",
+  "Schambow, Quinn",
+  "Kennedy, Ty",
+  "Francisco, Brady",
+  "Pomeroy, Deacon",
+  "Kennedy, Jacob"
+))
 
 # Mirror list for hitters (GCU hitters)
-ALLOWED_HITTERS <- c(
-  "Aaron, Parker",
-  "Ahern, Garrett",
-  "Alexander, Aspen",
-  "Anderson, Dillon",
-  "Bates, Camden",
-  "Bianchina, Vince",
-  "Boever, Cael",
-  "Cameron, Griffin",
-  "Chacon, Dominic",
-  "Charles, Max",
-  "Cohen, Andrew",
-  "Cunnings, Cam",
-  "Frey, Chase",
-  "Galvan, Marcus",
-  "Gregory, Billy",
-  "Guerrero, JT",
-  "Higginbottom, Elijah",
-  "Huff, Kade",
-  "Johns, Tanner",
-  "Key, Chance",
-  "Kiemele, Cody",
-  "Lee, Aidan",
-  "Lewis, JT",
-  "Limas, Jacob",
-  "Lopez, Jose",
-  "Lyon, Andrew",
-  "Matranga, Austin",
-  "McGuire, Tommy",
-  "Moeller, Luke",
-  "Nielsen, Jarret",
-  "Ohland, Carson",
-  "Orr, Dillon",
-  "Owens, Austin",
-  "Peery, Cannon",
-  "Penzkover, Gunnar",
-  "Perez, Jaime",
-  "Reynolds, Braiden",
-  "Robb, Nicholas",
-  "Sanders, Troy",
-  "Sanko, Jake",
-  "Scaldeferri, Billy",
-  "Schmidt, Trevor",
-  "Sloan, Landon",
-  "Smith, Jace",
-  "Toney, Brock"
-)
+ALLOWED_HITTERS <- school_setting("allowed_hitters", c(
+  "Wentworth, TP",
+  "LeBlanc, Bryce",
+  "Lund, Ethan",
+  "Fyke, Kai",
+  "Rhodes, Stormy",
+  "Wech, Noah",
+  "Brown, Matthew",
+  "Phillips, Brennan",
+  "Blake, Drew",
+  "Glendinning, Lucas",
+  "Golden, Josiah",
+  "Kennedy, Jake",
+  "Barrett, Hudson",
+  "Zagar, Kyler",
+  "Albright, Gaige",
+  "Sramek, Caden",
+  "Jennings, Parker",
+  "Burns, Zane",
+  "Winslow, Drew",
+  "Pearcy, Kyle",
+  "Turner, Cael",
+  "Pesca, Mario",
+  "Watkins, Hunter",
+  "Thompson, Brock",
+  "Meola, Aidan",
+  "Bowen, Terrance",
+  "Smithwick, Campbell",
+  "Shull, Garrett",
+  "Indomenico, Remo",
+  "Ortiz, Avery",
+  "Wallace, Danny",
+  "Brueggemann, Colin",
+  "Ritchie, Kollin",
+  "Conover, Alex",
+  "Norman, Sebastian",
+  "Essex, Ezra",
+  "Saunders, Evan",
+  "Pladson, Cole",
+  "Schambow, Quinn",
+  "Kennedy, Ty",
+  "Francisco, Brady",
+  "Pomeroy, Deacon"
+))
 
 # CAMPS SUITE - Allowed campers for camps module
-ALLOWED_CAMPERS <- c(
+ALLOWED_CAMPERS <- school_setting("allowed_campers", c(
   "Bowman, Brock",
   "Daniels, Tyke",
   "Pearson, Blake",
@@ -4699,7 +4872,7 @@ ALLOWED_CAMPERS <- c(
   "Peltz, Zayden",
   "Huff, Tyler",
   "Moseman, Cody"
-)
+))
 
 
 `%in_ci%` <- function(x, y) tolower(x) %in% tolower(y)
@@ -4873,9 +5046,36 @@ compute_usage_by_count <- function(df, original_df = NULL) {
 
 # ---- NEW: calculator for Process/Results metrics per pitch type (+ All) ----
 compute_process_results <- function(df, mode = "All") {
-  # Determine which column to use for pitch type grouping
-  # Prefer SplitColumn if it exists (Split By mode), otherwise use TaggedPitchType
-  pitch_col <- if ("SplitColumn" %in% names(df)) "SplitColumn" else "TaggedPitchType"
+  return(tryCatch({
+    # Flatten any list columns early to avoid list inputs in downstream sums
+    df <- flatten_metrics_df(df)
+    # Force key fields to atomic types
+    chr_fields <- intersect(c("PitchCall","PlayResult","TaggedHitType","KorBB","SessionType","SplitColumn","TaggedPitchType"), names(df))
+    num_fields <- intersect(c("ExitSpeed","Angle","OutsOnPlay","Balls","Strikes"), names(df))
+    for (nm in chr_fields) {
+      if (is.list(df[[nm]])) {
+        df[[nm]] <- vapply(df[[nm]], function(v) if (length(v)) as.character(v[[1]]) else NA_character_, character(1))
+      } else {
+        df[[nm]] <- as.character(df[[nm]])
+      }
+    }
+    for (nm in num_fields) {
+      if (is.list(df[[nm]])) {
+        df[[nm]] <- vapply(df[[nm]], function(v) if (length(v)) suppressWarnings(as.numeric(v[[1]])) else NA_real_, numeric(1))
+      } else {
+        df[[nm]] <- suppressWarnings(as.numeric(df[[nm]]))
+      }
+    }
+    # Last sweep: collapse any remaining list columns to character
+    for (nm in names(df)) {
+      if (is.list(df[[nm]])) {
+        df[[nm]] <- vapply(df[[nm]], function(v) if (length(v)) as.character(v[[1]]) else NA_character_, character(1))
+      }
+    }
+    
+    # Determine which column to use for pitch type grouping
+    # Prefer SplitColumn if it exists (Split By mode), otherwise use TaggedPitchType
+    pitch_col <- if ("SplitColumn" %in% names(df)) "SplitColumn" else "TaggedPitchType"
   
   calc_run_value <- function(pitch_call, play_result, korbb = NA) {
     pitch_call  <- as.character(pitch_call)
@@ -4912,6 +5112,25 @@ compute_process_results <- function(df, mode = "All") {
   )
   
   calc_one <- function(dfi) {
+    # Per-group safety: flatten again after split
+    dfi <- as.data.frame(dfi, stringsAsFactors = FALSE, check.names = FALSE)
+    for (nm in names(dfi)) {
+      col <- dfi[[nm]]
+      if (is.list(col)) {
+        # If list of scalars, unlist; else take first element
+        if (all(lengths(col) <= 1)) {
+          dfi[[nm]] <- vapply(col, function(v) if (length(v)) v[[1]] else NA, FUN.VALUE = NA_character_)
+        } else {
+          dfi[[nm]] <- vapply(col, function(v) if (length(v)) as.character(v[[1]]) else NA_character_, character(1))
+        }
+      }
+    }
+    # Coerce key fields per group
+    chr_fields_g <- intersect(c("PitchCall","PlayResult","TaggedHitType","KorBB","SessionType","SplitColumn", pitch_col), names(dfi))
+    num_fields_g <- intersect(c("Balls","Strikes","OutsOnPlay","ExitSpeed","Angle"), names(dfi))
+    for (nm in chr_fields_g) dfi[[nm]] <- as.character(dfi[[nm]])
+    for (nm in num_fields_g) dfi[[nm]] <- suppressWarnings(as.numeric(dfi[[nm]]))
+
     # label for this group (force character, fall back to "Undefined")
     pitch_lab <- dfi[[pitch_col]][1]
     if (is.factor(pitch_lab)) pitch_lab <- as.character(pitch_lab)
@@ -5065,6 +5284,24 @@ compute_process_results <- function(df, mode = "All") {
     dplyr::mutate(PitchType = "All")
   
   dplyr::bind_rows(out, all_row)
+  }, error = function(e) {
+    message("compute_process_results fallback (error): ", conditionMessage(e))
+    tibble::tibble(
+      PitchType = character(0),
+      `CSW%`    = character(0),
+      IP        = character(0),
+      BABIP     = character(0),
+      `GB%`     = character(0),
+      `Barrel%` = character(0),
+      AVG       = character(0),
+      SLG       = character(0),
+      xWOBA     = character(0),
+      xISO      = character(0),
+      FIP       = character(0),
+      WHIP      = character(0),
+      `RV/100`  = character(0)
+    )
+  }))
 }
 
 # ---- Global table helpers shared by Pitching & Hitting ----
@@ -5400,14 +5637,14 @@ pitch_ui <- function(show_header = FALSE) {
   # ⬇️ Pitching UI (updated: ggiraphOutput → girafeOutput)
   fluidPage(
     tags$head(
-      tags$style(HTML(
+    tags$style(HTML(colorize_css(
         '@media print { .tab-content>.tab-pane{display:block!important;opacity:1!important;page-break-after:always;} .tab-content>.tab-pane:last-child{page-break-after:auto;} .nav-tabs,.sidebar,.form-group,#printBtn{display:none!important;} }
         #pitchingSidebarToggle { 
           position: fixed; 
           bottom: 20px; 
           left: 20px; 
           z-index: 1000; 
-          background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+          background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
           color: white; 
           border: none; 
           padding: 15px 18px; 
@@ -5425,7 +5662,7 @@ pitch_ui <- function(show_header = FALSE) {
         #pitchingSidebarToggle:hover { 
           transform: translateY(-2px);
           box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
-          background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+          background: linear-gradient(135deg, #ff8c1a 0%, #e35205 100%);
         }
         #pitchingSidebarToggle:active {
           transform: translateY(0);
@@ -5521,13 +5758,17 @@ pitch_ui <- function(show_header = FALSE) {
           max-width: 100% !important;
         }
         /* Force tab content to full width */
-        .pitching-sidebar-hidden .tab-pane,
-        .pitching-sidebar-hidden .tab-pane.active {
+        .pitching-sidebar-hidden .tab-pane {
           width: 100% !important;
           max-width: 100% !important;
+        }
+        .pitching-sidebar-hidden .tab-pane:not(.active) {
+          display: none !important;
+        }
+        .pitching-sidebar-hidden .tab-pane.active {
           display: block !important;
-        }'
-      )),
+        }',
+      accent_color, accent_secondary_color, background_color, background_secondary_color))),
       tags$script(HTML("
         $(document).ready(function() {
           $('#pitchingSidebarToggle').click(function() {
@@ -5613,7 +5854,7 @@ pitch_ui <- function(show_header = FALSE) {
         column(
           2,
           div(style = "text-align:right; margin-top:10px;",
-              tags$img(src = "GCUlogo.png", height = "80px"))
+              tags$img(src = school_logo, height = "80px", alt = school_display_name))
         )
       )
     },
@@ -5625,8 +5866,13 @@ pitch_ui <- function(show_header = FALSE) {
           selected = "All"
         ),
         selectInput(
+          "withVideo", "With Video:",
+          choices = c("All", "Yes", "No"),
+          selected = "All"
+        ),
+        selectInput(
           "teamType", "Team:",
-          choices = c("All" = "All", "GCU" = "GCU", "Opponents" = "Opponents", "Campers" = "Campers"),
+          choices = TEAM_CHOICES,
           selected = "All"
         ),
         uiOutput("pitcher_ui"),
@@ -5742,14 +5988,21 @@ pitch_ui <- function(show_header = FALSE) {
         hr(),
         div(
           style = "text-align:center; margin: 10px 0;",
+          radioButtons(
+            "pitch_click_action",
+            label = NULL,
+            choices = c("Play video" = "video", "Edit pitch" = "edit"),
+            selected = "video",
+            inline = TRUE,
+            width = "100%"
+          ),
           actionButton(
             "refreshModifications", 
             "Refresh Pitch Edits",
             icon = icon("refresh"),
             class = "btn-info btn-sm",
-            style = "margin-bottom: 5px;"
+            style = "margin: 6px 0 4px 0;"
           ),
-          br(),
           downloadButton(
             "downloadPitchMods",
             "Download Pitch Edits",
@@ -6113,7 +6366,7 @@ mod_hit_ui <- function(id, show_header = FALSE) {
         column(
           2,
           div(style = "text-align:right; margin-top:10px;",
-              tags$img(src = "GCUlogo.png", height = "80px"))
+              tags$img(src = school_logo, height = "80px", alt = school_display_name))
         )
       )
     },
@@ -6123,7 +6376,7 @@ mod_hit_ui <- function(id, show_header = FALSE) {
         selectInput(ns("oppPitcher"), "Select Pitcher:", choices = c("All" = "All", opponent_pitcher_map), selected = "All"),
         selectInput(
           ns("teamType"), "Team:",
-          choices = c("All" = "All", "GCU" = "GCU", "Opponents" = "Opponents", "Campers" = "Campers"),
+          choices = TEAM_CHOICES,
           selected = "All"
         ),
         dateRangeInput(ns("dates"), "Date Range:",
@@ -6334,6 +6587,63 @@ safe_for_dt <- function(df) {
   as.data.frame(out, stringsAsFactors = FALSE, check.names = FALSE)
 }
 
+# Flatten list columns (preferring numeric when possible) so downstream math
+# never sees list/NULL values (bullpen data occasionally carries nested cells)
+flatten_metrics_df <- function(df) {
+  if (!is.data.frame(df) || !nrow(df)) return(df)
+
+  # NUCLEAR OPTION: Force to plain data.frame first
+  df <- as.data.frame(df, stringsAsFactors = FALSE)
+
+  flatten_col <- function(col) {
+    if (is.factor(col)) col <- as.character(col)
+    # Use is.atomic to catch all non-atomic types
+    if (is.atomic(col) && !is.list(col)) return(col)
+
+    # First pass: extract first element from each list item
+    vals <- lapply(col, function(x) {
+      if (is.null(x) || length(x) == 0) return(NA)
+      # Handle nested lists
+      val <- x[[1]]
+      if (is.list(val)) val <- val[[1]]
+      if (is.null(val) || length(val) == 0) return(NA)
+      val
+    })
+
+    vals_chr <- vapply(vals, function(v) {
+      if (is.null(v) || length(v) == 0 || (length(v) == 1 && is.na(v))) return(NA_character_)
+      as.character(v[1])
+    }, character(1))
+    vals_num <- suppressWarnings(as.numeric(vals_chr))
+
+    if (sum(!is.na(vals_num)) >= sum(!is.na(vals_chr)) * 0.6) {
+      vals_num
+    } else {
+      vals_chr
+    }
+  }
+
+  # Apply flattening to all columns
+  df[] <- lapply(df, flatten_col)
+
+  # Second pass: ensure no non-atomic columns remain
+  for (nm in names(df)) {
+    col <- df[[nm]]
+    if (!is.atomic(col) || is.list(col)) {
+      df[[nm]] <- tryCatch({
+        vapply(col, function(x) {
+          if (is.null(x) || length(x) == 0) NA_character_
+          else as.character(x[[1]])
+        }, character(1))
+      }, error = function(e) {
+        as.character(unlist(col))
+      })
+    }
+  }
+
+  df
+}
+
 mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_range = NULL) {
   moduleServer(id, function(input, output, session) {
     # Global dark-mode flag (root scope toggle)
@@ -6502,7 +6812,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         if (input$teamType == "Campers") {
           # Filter to only allowed campers (as batters)
           d <- dplyr::filter(d, Batter %in% ALLOWED_CAMPERS)
-        } else if (input$teamType == "GCU") {
+        } else if (input$teamType == TEAM_CODE) {
           # For GCU hitting: show all non-camper batters
           d <- dplyr::filter(d, !(Batter %in% ALLOWED_CAMPERS))
         } else if (input$teamType == "Opponents") {
@@ -8572,7 +8882,7 @@ mod_catch_ui <- function(id, show_header = FALSE) {
         column(
           2,
           div(style = "text-align:right; margin-top:10px;",
-              tags$img(src = "GCUlogo.png", height = "80px"))
+              tags$img(src = school_logo, height = "80px", alt = school_display_name))
         )
       )
     },
@@ -8583,7 +8893,7 @@ mod_catch_ui <- function(id, show_header = FALSE) {
         selectInput(ns("catcher"), "Select Catcher:", choices = c("All" = "All", catcher_map), selected = "All"),
         selectInput(
           ns("teamType"), "Team:",
-          choices = c("All" = "All", "GCU" = "GCU", "Campers" = "Campers"),
+          choices = TEAM_CHOICES,
           selected = "All"
         ),
         dateRangeInput(ns("dates"), "Date Range:",
@@ -8814,17 +9124,17 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       
       # ⛔️ Team filtering - Filter by team selection ⛔️
       if (!is.null(input$teamType)) {
-        all_gcu_and_campers <- unique(c(ALLOWED_PITCHERS, ALLOWED_CAMPERS))
+        all_osu_and_campers <- unique(c(ALLOWED_PITCHERS, ALLOWED_CAMPERS))
         
         if (input$teamType == "Campers") {
           # Filter to only allowed campers (as pitchers)
           df <- dplyr::filter(df, Pitcher %in% ALLOWED_CAMPERS)
-        } else if (input$teamType == "GCU") {
+        } else if (input$teamType == TEAM_CODE) {
           # Filter to GCU allowed pitchers
           df <- dplyr::filter(df, Pitcher %in% ALLOWED_PITCHERS)
         } else if (input$teamType == "Opponents") {
           # Show only opponent pitchers (anyone NOT in GCU or Campers lists)
-          df <- dplyr::filter(df, !(Pitcher %in% all_gcu_and_campers))
+          df <- dplyr::filter(df, !(Pitcher %in% all_osu_and_campers))
         }
         # If "All" is selected, don't filter - show all data
       }
@@ -10150,7 +10460,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
         div(style = "display: flex; align-items: center; gap: 15px;",
             div(style = "flex: 0 0 auto;",
                 selectInput(ns("campSummaryMode"), label = NULL,
-                            choices = c("Stuff","Process","Results","Banny","Raw Data","Custom"),
+                            choices = c("Stuff","Process","Results","Raw Data","Custom"),
                             selected = sel, width = "120px")
             ),
             div(style = "flex: 0 0 auto;",
@@ -10245,10 +10555,8 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       df_table <- fill_all_qp_pct(df_table, df)
       
       # Column reordering (same as main Pitching Summary)
-      if (!identical(mode, "Banny")) {
-        df_table <- enforce_process_order(df_table)
-        df_table <- enforce_stuff_order(df_table)
-      }
+      df_table <- enforce_process_order(df_table)
+      df_table <- enforce_stuff_order(df_table)
       
       visible_set <- visible_set_for(mode, custom)
       datatable_with_colvis(
@@ -10915,14 +11223,14 @@ mod_leader_ui <- function(id, show_header = FALSE) {
         column(
           2,
           div(style = "text-align:right; margin-top:10px;",
-              tags$img(src = "GCUlogo.png", height = "80px"))
+              tags$img(src = school_logo, height = "80px", alt = school_display_name))
         )
       )
     },
     sidebarLayout(
       sidebarPanel(
         selectInput(ns("domain"), "Leaderboard Domain:", choices = c("Pitching","Hitting","Catching"), selected = "Pitching"),
-        selectInput(ns("teamType"), "Team:", choices = c("All", "GCU", "Campers"), selected = "All"),
+        selectInput(ns("teamType"), "Team:", choices = TEAM_CHOICES, selected = "All"),
         
         # --- Common filters (apply to all domains) ---
         selectInput(ns("sessionType"), "Session Type:", choices = c("All","Bullpen","Live"), selected = "All"),
@@ -11098,7 +11406,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         } else {
           dplyr::filter(base, Pitcher %in% ALLOWED_CAMPERS)
         }
-      } else if (input$teamType == "GCU") {
+      } else if (input$teamType == TEAM_CODE) {
         if (identical(input$domain, "Hitting")) {
           dplyr::filter(base, Batter %in% ALLOWED_HITTERS)
         } else {
@@ -11110,14 +11418,13 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
     })
     
     
-    # Default the date range to MIN and MAX for chosen domain/sessionType (LSU-only)
+    # Default the date range to the most recent date with data for the chosen domain/sessionType
     observe({
       req(is_active())
       base <- team_base()
-      first_date <- suppressWarnings(min(base$Date, na.rm = TRUE))
-      last_date  <- suppressWarnings(max(base$Date, na.rm = TRUE))
-      if (is.finite(first_date) && is.finite(last_date)) {
-        updateDateRangeInput(session, "dates", start = first_date, end = last_date)
+      last_date <- suppressWarnings(max(base$Date, na.rm = TRUE))
+      if (is.finite(last_date)) {
+        updateDateRangeInput(session, "dates", start = last_date, end = last_date)
       }
     })
     
@@ -11212,7 +11519,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         div(style = "display: flex; align-items: center; gap: 15px;",
             div(style = "flex: 0 0 auto;",
                 selectInput(ns("lbMode"), label = NULL,
-                            choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data", ct_names, "Custom"),
+                            choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data", ct_names, "Custom"),
                             selected = sel, width = "120px")
             ),
             div(style = "flex: 0 0 auto;",
@@ -11444,16 +11751,40 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         original_data <- if (identical(mode, "Usage")) filtered_lb_before_pitch_type() else NULL
         
         rows <- lapply(by_player, function(dfi) {
+          # Flatten any list-cols that break downstream summaries
+          dfi <- dfi %>% dplyr::mutate(dplyr::across(where(is.list), ~unlist(.x)))
           base_row <- build_all_row(dfi)
+          coerce_extras_types <- function(df_ex) {
+            if (!"IP" %in% names(df_ex)) df_ex$IP <- NA_character_
+            df_ex$IP <- as.character(df_ex$IP)
+            pct_cols <- intersect(c("GB%","Barrel%"), names(df_ex))
+            if (length(pct_cols)) {
+              df_ex[pct_cols] <- lapply(df_ex[pct_cols], function(z) {
+                z_chr <- as.character(z)
+                z_chr[z_chr == ""] <- NA_character_
+                z_chr
+              })
+            }
+            num_cols <- intersect(c("BABIP","AVG","SLG","xWOBA","xISO","FIP","WHIP","RV/100"), names(df_ex))
+            for (nm in num_cols) df_ex[[nm]] <- suppressWarnings(as.numeric(df_ex[[nm]]))
+            df_ex
+          }
           extras_all <- compute_process_results(dfi) %>%
             dplyr::filter(PitchType == "All") %>%
-            dplyr::select(IP, BABIP, `GB%`, `Barrel%`, AVG, SLG, xWOBA, xISO, FIP, WHIP, `RV/100`)
+            dplyr::select(IP, BABIP, `GB%`, `Barrel%`, AVG, SLG, xWOBA, xISO, FIP, WHIP, `RV/100`) %>%
+            coerce_extras_types()
           if (!nrow(extras_all)) {
             extras_all <- tibble::tibble(
-              IP = NA_real_, BABIP = NA_real_, `GB%` = NA_real_, `Barrel%` = NA_real_,
+              IP = NA_character_, BABIP = NA_real_, `GB%` = NA_real_, `Barrel%` = NA_real_,
               AVG = NA_real_, SLG = NA_real_, xWOBA = NA_real_, xISO = NA_real_,
               FIP = NA_real_, WHIP = NA_real_, `RV/100` = NA_real_
             )
+          }
+          # normalize GB%/Barrel% to character to avoid type clashes across players
+          for (nm in c("GB%","Barrel%")) {
+            if (nm %in% names(extras_all)) {
+              extras_all[[nm]] <- as.character(extras_all[[nm]])
+            }
           }
           out_row <- dplyr::bind_cols(
             tibble::tibble(Player = as.character(dfi[[player_col]][1])),
@@ -11477,6 +11808,9 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         })
         
         out_tbl <- dplyr::bind_rows(rows) %>% dplyr::relocate(Player)
+        if ("IP" %in% names(out_tbl)) {
+          out_tbl$IP <- as.character(out_tbl$IP)
+        }
         # Reorder columns for custom
         if (identical(mode, "Custom")) {
           order_cols <- unique(c("Player", custom))
@@ -11485,8 +11819,29 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         }
         
         if (identical(mode, "Process")) {
-          out_tbl <- enforce_process_order(out_tbl)
-          out_tbl <- fill_all_qp_pct(out_tbl, df)
+          out_tbl <- tryCatch(
+            enforce_process_order(out_tbl),
+            error = function(e) {
+              message("leaderboard enforce_process_order error: ", conditionMessage(e))
+              out_tbl
+            }
+          )
+          out_tbl <- tryCatch(
+            fill_all_qp_pct(out_tbl, df),
+            error = function(e) {
+              message("leaderboard fill_all_qp_pct error: ", conditionMessage(e))
+              out_tbl
+            }
+          )
+        }
+        if (identical(mode, "Stuff")) {
+          out_tbl <- tryCatch(
+            enforce_stuff_order(out_tbl),
+            error = function(e) {
+              message("leaderboard enforce_stuff_order error: ", conditionMessage(e))
+              out_tbl
+            }
+          )
         }
         
         visible_set <- visible_set_for_lb(mode, custom)
@@ -11976,13 +12331,13 @@ mod_comp_ui <- function(id, show_header = FALSE) {
           )
         ),
         column(2, div(style = "text-align:right; margin-top:10px;",
-                      tags$img(src = "GCUlogo.png", height = "80px")))
+                      tags$img(src = school_logo, height = "80px", alt = school_display_name)))
       )
     },
     sidebarLayout(
       sidebarPanel(
         selectInput(ns("domain"), "Player Type:", choices = c("Pitcher","Hitter","Catcher"), selected = "Pitcher"),
-        selectInput(ns("teamType"), "Team:", choices = c("All", "GCU", "Campers"), selected = "All"),
+        selectInput(ns("teamType"), "Team:", choices = TEAM_CHOICES, selected = "All"),
         width = 2
       ),
       mainPanel(
@@ -12536,7 +12891,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
           "Catcher" = dplyr::filter(df, Catcher %in% ALLOWED_CAMPERS),
           df
         )
-      } else if (team_type == "GCU") {
+      } else if (team_type == TEAM_CODE) {
         # GCU team only
         df <- switch(
           dom,
@@ -13762,6 +14117,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
         
         # Column already renamed above, no need to rename again
         visible_set <- names(df_raw)
+        table_cache <- df_raw
         return(datatable_with_colvis(
           df_raw,
           lock            = split_col_name,
@@ -14198,7 +14554,7 @@ correlations_ui <- function() {
              # Team selection
              div(class = "correlation-controls",
                  selectInput("corr_teamType", "Team:",
-                             choices = c("All", "GCU", "Campers"),
+                             choices = TEAM_CHOICES,
                              selected = "All")
              ),
              
@@ -14928,11 +15284,11 @@ custom_reports_server <- function(id) {
                         sprintf("input['%s'] == 'Summary Table'", ns(paste0("cell_type_", cell_id))),
                         tagList(
                           selectInput(ns(paste0("cell_table_mode_", cell_id)), "Table:", 
-                                      choices = if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data",
+                                      choices = if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data",
                                                                                                                                    names(custom_tables()), "Custom"),
                                       selected = {
-                                        ch <- if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data",
-                                                                                                                                 names(custom_tables()), "Custom")
+                                        ch <- if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data",
+                                                                                                                                names(custom_tables()), "Custom")
                                         if (!is.null(sel$table_mode) && sel$table_mode %in% ch) sel$table_mode else ch[[1]]
                                       }),
                           selectInput(ns(paste0("cell_filter_", cell_id)), "Split By:", 
@@ -16793,7 +17149,7 @@ player_plans_ui <- function() {
                 ),
                 column(2,
                        div(style = "text-align: right; padding-top: 30px;",
-                           tags$img(src = "GCUlogo.png", style = "height: 40px; max-width: 100%;")
+                           tags$img(src = school_logo, style = "height: 40px; max-width: 100%;", alt = school_display_name)
                        )
                 )
               ),
@@ -16908,15 +17264,7 @@ admin_emails <- c(
   "ahalverson@pitchingcoachu.com"
 )
 
-# Coach emails - these users can see ALL data but don't have admin features
-coach_emails <- c(
-  "jgaynor@pitchingcoachu.com",
-  "jared.s.gaynor@gmail.com",
-  "banni17@yahoo.com",
-  "adam.racine@aol.com",
-  "Njcbaseball08@gmail.com"
-)
-
+# Coach emails - defined per-school via `config/school_config.R`
 # Players are identified by their email being in the lookup_table.csv Email column
 # They will only see data where Email matches their login email
 
@@ -17125,7 +17473,7 @@ ui <- tagList(
       });
     ")),
     # Custom authentication disabled - no need for token persistence
-    tags$style(HTML("
+    tags$style(HTML(colorize_css("
       /* ===== MODERN PROFESSIONAL DESIGN ===== */
       
       /* Global Styles */
@@ -17173,7 +17521,7 @@ ui <- tagList(
         filter: drop-shadow(0 2px 4px rgba(0,0,0,0.3));
       }
       .navbar-inverse .navbar-brand .brand-title {
-        background: linear-gradient(135deg, #fff 0%, #a8dadc 100%);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -17248,7 +17596,7 @@ ui <- tagList(
         left: 0;
         right: 0;
         bottom: 0;
-        background: linear-gradient(135deg, rgba(255,255,255,0.1) 0%, rgba(255,255,255,0.05) 100%);
+        background: linear-gradient(135deg, rgba(227,82,5,0.18) 0%, rgba(255,140,26,0.12) 100%);
         opacity: 0;
         transition: opacity 0.3s ease;
       }
@@ -17258,9 +17606,9 @@ ui <- tagList(
       .navbar-inverse .navbar-nav > li > a:hover,
       .navbar-inverse .navbar-nav > li > a:focus { 
         color: #ffffff !important;
-        background: rgba(255, 255, 255, 0.15);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
         transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.25);
       }
 
       /* Active tab - vibrant gradient */
@@ -17268,8 +17616,8 @@ ui <- tagList(
       .navbar-inverse .navbar-nav > .active > a:hover,
       .navbar-inverse .navbar-nav > .active > a:focus {
         color: #ffffff !important;
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
+        box-shadow: 0 4px 15px rgba(227, 82, 5, 0.4);
         transform: translateY(-2px);
       }
       /* Charts/graphs: keep backgrounds transparent globally */
@@ -17395,7 +17743,7 @@ ui <- tagList(
         background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%) !important;
         border: none !important;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08) !important;
-        border-left: 4px solid #667eea !important;
+        border-left: 4px solid #e35205 !important;
       }
       /* Tables: allow full width */
       .dataTables_wrapper { width: 100% !important; }
@@ -17431,7 +17779,7 @@ ui <- tagList(
       
       .sidebar .well, .col-sm-3 .well, .col-sm-4 .well {
         background: linear-gradient(135deg, #ffffff 0%, #f8f9fa 100%);
-        border-left: 4px solid #667eea;
+        border-left: 4px solid #e35205;
       }
       
       /* Form Controls - Modern inputs */
@@ -17444,7 +17792,7 @@ ui <- tagList(
         background: #ffffff;
       }
       .form-control:focus, .selectize-input.focus {
-        border-color: #667eea;
+        border-color: #e35205;
         box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
         outline: none;
       }
@@ -17471,7 +17819,7 @@ ui <- tagList(
       }
       .selectize-dropdown-content .option:hover,
       .selectize-dropdown-content .option.active {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
         color: white;
       }
       
@@ -17497,17 +17845,17 @@ ui <- tagList(
         position: relative;
       }
       .nav-tabs > li > a:hover {
-        background: rgba(102, 126, 234, 0.1);
-        color: #667eea;
+        background: linear-gradient(135deg, rgba(227,82,5,0.12) 0%, rgba(255,140,26,0.08) 100%);
+        color: #e35205;
         border: none;
       }
       .nav-tabs > li.active > a,
       .nav-tabs > li.active > a:hover,
       .nav-tabs > li.active > a:focus {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
         color: white;
         border: none;
-        box-shadow: 0 -2px 10px rgba(102, 126, 234, 0.3);
+        box-shadow: 0 -2px 10px rgba(227, 82, 5, 0.3);
       }
       /* Dark mode tabs (page-level) */
       body.theme-dark .nav-tabs {
@@ -17526,10 +17874,10 @@ ui <- tagList(
       body.theme-dark .nav-tabs > li.active > a,
       body.theme-dark .nav-tabs > li.active > a:hover,
       body.theme-dark .nav-tabs > li.active > a:focus {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
         color: #ffffff;
         border: none;
-        box-shadow: 0 -2px 12px rgba(102,126,234,0.35);
+        box-shadow: 0 -2px 12px rgba(227,82,5,0.35);
       }
       
       /* ===== BUTTONS ===== */
@@ -17550,11 +17898,11 @@ ui <- tagList(
       }
       
       .btn-primary {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
         color: white;
       }
       .btn-primary:hover, .btn-primary:focus {
-        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        background: linear-gradient(135deg, #ff8c1a 0%, #e35205 100%);
         color: white;
       }
       
@@ -17565,8 +17913,8 @@ ui <- tagList(
       }
       .btn-default:hover {
         background: #f7fafc;
-        border-color: #667eea;
-        color: #667eea;
+        border-color: #e35205;
+        color: #e35205;
       }
       
       /* Add Note button */
@@ -17575,7 +17923,7 @@ ui <- tagList(
         padding: 12px 14px;
         font-size: 18px;
         box-shadow: 0 4px 20px rgba(85, 43, 154, 0.4);
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
       }
       #openNote:hover {
         box-shadow: 0 6px 25px rgba(85, 43, 154, 0.6);
@@ -17657,11 +18005,11 @@ ui <- tagList(
         background: #f1f1f1;
       }
       ::-webkit-scrollbar-thumb {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
         border-radius: 10px;
       }
       ::-webkit-scrollbar-thumb:hover {
-        background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+        background: linear-gradient(135deg, #ff8c1a 0%, #e35205 100%);
       }
 
       /* ===== DARK MODE OVERRIDES ===== */
@@ -17674,7 +18022,7 @@ ui <- tagList(
         box-shadow: 0 6px 24px rgba(0,0,0,0.5);
       }
       body.theme-dark .navbar-inverse .navbar-brand .brand-title {
-        background: linear-gradient(135deg, #c084fc 0%, #a78bfa 100%);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
         -webkit-background-clip: text;
         -webkit-text-fill-color: transparent;
         background-clip: text;
@@ -17707,7 +18055,7 @@ ui <- tagList(
       body.theme-dark .navbar-inverse .navbar-nav > .active > a,
       body.theme-dark .navbar-inverse .navbar-nav > .active > a:hover,
       body.theme-dark .navbar-inverse .navbar-nav > .active > a:focus {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
         box-shadow: 0 6px 18px rgba(102,126,234,0.45);
       }
       body.theme-dark .container-fluid {
@@ -17734,7 +18082,7 @@ ui <- tagList(
       }
       body.theme-dark .form-control:focus,
       body.theme-dark .selectize-input.focus {
-        border-color: #764ba2 !important;
+        border-color: #ff8c1a !important;
         box-shadow: 0 0 0 3px rgba(118, 75, 162, 0.25) !important;
       }
       body.theme-dark .form-group label {
@@ -17746,7 +18094,7 @@ ui <- tagList(
         border: 1px solid #1f2937 !important;
       }
       body.theme-dark .btn-primary {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%) !important;
         color: #fff !important;
         box-shadow: 0 4px 14px rgba(102,126,234,0.35);
       }
@@ -17804,7 +18152,7 @@ ui <- tagList(
         background: #fff; border-radius: 50%; box-shadow: 0 2px 6px rgba(0,0,0,0.3);
         transition: transform 0.2s ease;
       }
-      .dark-toggle input#dark_mode:checked + .switch-track { background: #764ba2; }
+      .dark-toggle input#dark_mode:checked + .switch-track { background: #ff8c1a; }
       .dark-toggle input#dark_mode:checked + .switch-track .switch-thumb { transform: translateX(24px); }
       .dark-toggle .switch-text { font-weight:600; color:#e5e7eb; }
       
@@ -17819,7 +18167,7 @@ ui <- tagList(
       }
       body.theme-dark .selectize-input input { color: #e5e7eb !important; }
       body.theme-dark .selectize-input > .item {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%) !important;
         color: #fff !important;
         border-radius: 6px;
         padding: 2px 6px;
@@ -17832,7 +18180,7 @@ ui <- tagList(
       body.theme-dark .selectize-dropdown .option { color: #e5e7eb !important; }
       body.theme-dark .selectize-dropdown .option:hover,
       body.theme-dark .selectize-dropdown .option.active {
-        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+        background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%) !important;
         color: #fff !important;
       }
       
@@ -17892,7 +18240,7 @@ ui <- tagList(
       body.theme-dark #creports-sidebar_column .well,
       body.theme-dark #creports-main_column .well {
         background: radial-gradient(circle at top left, #1f2937 0%, #0f172a 60%, #0b0f19 100%) !important;
-        border-left: 4px solid #764ba2 !important;
+        border-left: 4px solid #ff8c1a !important;
         color: #e5e7eb !important;
       }
       body.theme-dark #creports-main_column .panel,
@@ -17995,7 +18343,7 @@ ui <- tagList(
       body.theme-dark .modal-title {
         color: #000000 !important;
       }
-    "))
+    ", accent_color, accent_secondary_color, background_color, background_secondary_color)))
   ),
   
   # --- Global click handler for Notes → jump back to saved view ---
@@ -18025,10 +18373,10 @@ ui <- tagList(
   
   shinyjs::useShinyjs(),
   
-  tags$style(HTML("
+  tags$style(HTML(colorize_css("
     /* Custom note button - already styled in main CSS */
     #openNote.btn-note {
-      background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+      background: linear-gradient(135deg, #e35205 0%, #ff8c1a 100%);
       border: none;
       color: #fff;
     }
@@ -18036,12 +18384,21 @@ ui <- tagList(
     #openNote.btn-note:focus,
     #openNote.btn-note:active,
     #openNote.btn-note:active:focus {
-      background: linear-gradient(135deg, #764ba2 0%, #667eea 100%);
+      background: linear-gradient(135deg, #ff8c1a 0%, #e35205 100%);
       border: none;
       color: #fff;
       outline: none;
     }
-  ")),
+    /* Make the # column look like a link */
+    td.clickable-cell, td.clickable-cell a, .pitch-count-link {
+      color: #0d6efd !important;
+      text-decoration: underline;
+      cursor: pointer;
+    }
+    td.clickable-cell:hover, td.clickable-cell a:hover, .pitch-count-link:hover {
+      color: #0a58ca !important;
+    }
+  ", accent_color, accent_secondary_color, background_color, background_secondary_color))),
   # --- Floating "Add Note" button (top-right, all pages) ---
   absolutePanel(
     style = "background:transparent; border:none; box-shadow:none; z-index:2000;",
@@ -18051,7 +18408,7 @@ ui <- tagList(
   ),
   navbarPage(
     title = tagList(
-      tags$img(src = "GCUlogo.png", class = "brand-logo", alt = "GCU"),
+      tags$img(src = school_logo, class = "brand-logo", alt = school_display_name),
       tags$span("Dashboard", class = "brand-title"),
       tags$img(src = "PCUlogo.png", class = "pcu-right", alt = "PCU")
     ),
@@ -18154,13 +18511,1260 @@ server <- function(input, output, session) {
       options = list(dom = 't'), rownames = FALSE
     )
   }
+
+  # ---- Video helpers (PCU-style modal with metrics/compare/multi-angle) ----
+  guess_video_type <- function(name_or_url) {
+    nm <- tolower(as.character(name_or_url %||% ""))
+    if (grepl("\\.mp4(\\?.*)?$", nm)) "video/mp4"
+    else if (grepl("\\.mov(\\?.*)?$", nm)) "video/quicktime"
+    else "video"
+  }
+
+  # Map a clip name to a served URL, respecting subfolders by source (Edger/Behind/Side)
+  # Robust to extension case (.MOV/.MP4) and container swaps.
+  video_url_for <- function(clip, source = NULL) {
+    # Normalize input
+    if (is.null(clip) || length(clip) == 0) return("")
+    clip_chr <- trimws(as.character(clip)[1])
+    if (!nzchar(clip_chr)) return("")
+    
+    # If a full URL was stored, use it as-is (Cloudinary, S3, etc.)
+    if (grepl("^https?://", clip_chr)) return(clip_chr)
+    
+    # Base directory configured by addResourcePath(...) at startup
+    vdir <- getOption("PCU_VIDEOS_DIR", NA_character_)
+    if (is.na(vdir) || !nzchar(vdir)) return("")
+    
+    # Build candidate filenames with case and container variants
+    make_candidates <- function(fname) {
+      # Split name and extension (case-insensitive)
+      ext0  <- tools::file_ext(fname)              # may be "" or "MOV" etc.
+      base0 <- if (nzchar(ext0)) sub(sprintf("\\.%s$", ext0), "", fname, ignore.case = TRUE) else fname
+      
+      # Try both containers if none or if it's mov/mp4
+      if (!nzchar(ext0) || grepl("^(?i)(mov|mp4)$", ext0)) {
+        exts <- c("mov", "mp4")                    # try MOV & MP4
+      } else {
+        exts <- ext0                               # unknown ext -> just use given
+      }
+      
+      # Case variants for base and ext
+      bases <- unique(c(base0, tolower(base0), toupper(base0)))
+      extsL <- unique(c(exts, tolower(exts), toupper(exts)))
+      
+      # If original had an extension, include the original string as-is first
+      cand <- character(0)
+      if (nzchar(ext0)) cand <- c(cand, fname)
+      
+      # Then all base×ext combinations (both lower/upper ext)
+      for (b in bases) for (e in extsL) cand <- c(cand, paste0(b, ".", e))
+      
+      # If there was no extension at all, also include bare bases (some users store raw names)
+      if (!nzchar(ext0)) cand <- c(cand, bases)
+      
+      unique(cand)
+    }
+    
+    # Helper: construct served URL under /videos/... and ensure the file exists on disk
+    make_url_if_exists <- function(path_parts, fname) {
+      abs_path <- do.call(file.path, c(list(vdir), as.list(path_parts), list(fname)))
+      if (file.exists(abs_path)) {
+        prefix <- paste(c("videos", path_parts), collapse = "/")
+        return(paste0(prefix, "/", utils::URLencode(fname)))
+      }
+      ""
+    }
+    
+    # Optional source → subfolder mapping
+    src_map <- c(Edger = "Edger", Behind = "Behind", Side = "Side")
+    
+    # 1) If a source was given (Edger/Behind/Side), try videos/<Source>/<file>
+    if (!is.null(source) && nzchar(source)) {
+      subdir <- src_map[[as.character(source)]]
+      if (!is.null(subdir)) {
+        for (nm in make_candidates(clip_chr)) {
+          url <- make_url_if_exists(subdir, nm)
+          if (nzchar(url)) return(url)
+        }
+      }
+    }
+    
+    # 2) Backward compatibility: try root videos/<file> (no subfolder)
+    for (nm in make_candidates(clip_chr)) {
+      url <- make_url_if_exists(character(0), nm)
+      if (nzchar(url)) return(url)
+    }
+    
+    ""
+  }
+
+  fmt_num <- function(digits = 1, unit = "") {
+    function(x) {
+      x_num <- suppressWarnings(as.numeric(x))
+      if (length(x_num) == 0 || all(is.na(x_num))) return("\u2014")
+      v <- x_num[1]; if (is.na(v)) return("\u2014")
+      out <- format(round(v, digits), nsmall = digits, trim = TRUE)
+      if (nzchar(unit)) paste0(out, unit) else out
+    }
+  }
+  
+  fmt_pct <- function(digits = 1) {
+    function(x) {
+      x_num <- suppressWarnings(as.numeric(x))
+      if (length(x_num) == 0 || all(is.na(x_num))) return("\u2014")
+      v <- x_num[1]; if (is.na(v)) return("\u2014")
+      if (v <= 1) v <- v * 100
+      paste0(format(round(v, digits), nsmall = digits), "%")
+    }
+  }
+  
+  metric_val <- function(row, col, fmt = NULL) {
+    v <- tryCatch(row[[col]], error = function(e) NULL)
+    if (is.null(v) || length(v) == 0) return(tags$span(style="opacity:.6;", "\u2014"))
+    v1 <- v[1]
+    
+    if (is.null(fmt)) {
+      txt <- as.character(v1)
+      if (!nzchar(txt)) tags$span(style="opacity:.6;", "\u2014") else txt
+    } else {
+      out <- tryCatch(fmt(v1), error = function(e) "\u2014")
+      if (!nzchar(as.character(out))) tags$span(style="opacity:.6;", "\u2014") else out
+    }
+  }
+  
+  # 180° = 12:00, 270° = 3:00, 0° = 6:00, 90° = 9:00
+  # If already "H:MM", pass through unchanged.
+  deg_to_clock <- function(x) {
+    if (is.character(x) && length(x) && grepl("^\\s*\\d{1,2}:\\d{2}\\s*$", x[1])) {
+      return(trimws(x[1]))
+    }
+    d <- suppressWarnings(as.numeric(x))
+    if (length(d) == 0 || is.na(d)) return("\u2014")
+    a <- (d + 180) %% 360
+    hour   <- floor(a / 30)
+    minute <- round((a %% 30) / 30 * 60)
+    if (minute == 60) { minute <- 0; hour <- hour + 1 }
+    hour <- hour %% 12; if (hour == 0) hour <- 12
+    sprintf("%d:%02d", hour, minute)
+  }
+
+  # --- helpers ---
+  format_name_first_last <- function(x) {
+    s <- as.character(x %||% "")
+    if (!nzchar(s)) return("\u2014")
+    # If "Last, First", flip it
+    if (grepl(",", s, fixed = TRUE)) {
+      parts <- trimws(strsplit(s, ",", fixed = TRUE)[[1]])
+      if (length(parts) >= 2) return(paste(parts[2], parts[1]))
+    }
+    s
+  }
+
+  # Helpers (keep these near your other helpers)
+  get_first_col <- function(row, candidates) {
+    for (nm in candidates) if (!is.null(row[[nm]])) return(row[[nm]])
+    NULL
+  }
+
+  metric_row <- function(label, value_html) {
+    # Bold ONLY the label, value regular. Center the whole line.
+    tags$div(
+      style = "margin:6px 0; text-align:center;",
+      tags$span(style="font-weight:800;", paste0(label, ": ")),
+      tags$span(style="font-weight:600;", value_html)
+    )
+  }
+
+  metric_value_only <- function(value_html) {
+    # No label; show value bold & centered (for Velocity/Spin)
+    tags$div(style = "margin:6px 0; text-align:center; font-weight:800;", value_html)
+  }
+
+  # --- panel ---
+  build_metrics_panel <- function(row) {
+    # Name (First Last) and Date
+    name_text <- format_name_first_last(
+      row[["Pitcher"]] %||% row[["pitcher_name"]] %||% row[["PlayerName"]] %||% "\u2014"
+    )
+    raw_date <- row[["GameDate"]] %||% row[["Date"]] %||% row[["datetime"]] %||% NA
+    date_text <- (function(x) {
+      d <- suppressWarnings(as.Date(x))
+      if (!is.na(d)) return(format(d, "%-m/%-d/%y"))
+      px <- suppressWarnings(as.POSIXct(x, tz = "UTC"))
+      if (!is.na(px)) return(format(as.Date(px), "%-m/%-d/%y"))
+      "\u2014"
+    })(raw_date)
+    
+    # Metrics (ordered as requested)
+    pitch_type <- as.character(row[["TaggedPitchType"]] %||% "\u2014")
+    
+    velo_val <- metric_val(row, "RelSpeed", fmt_num(1, " mph"))              # value only
+    ivb_val  <- metric_val(row, "InducedVertBreak", fmt_num(1, "\""))
+    hb_val   <- metric_val(row, "HorzBreak",        fmt_num(1, "\""))
+    spin_val <- metric_val(row, "SpinRate",         fmt_num(0, " rpm"))       # value only
+    
+    se_col   <- get_first_col(row, c("SpinEfficiency", "SpinEff", "SpinEffPct"))
+    spin_eff <- {
+      if (is.null(se_col)) tags$span("\u2014") else {
+        val <- tryCatch(se_col, error = function(e) NA)
+        if (is.null(val)) tags$span("\u2014") else tags$span(fmt_pct(1)(val))
+      }
+    }
+    
+    tilt_src <- get_first_col(row, c("BreakTilt", "bTilt", "ReleaseTilt", "rTilt"))
+    btilt    <- tags$span(deg_to_clock(tilt_src))
+    
+    # Use RelHeight / RelSide (1 decimal)
+    height_v <- metric_val(row, "RelHeight", fmt_num(1, ""))
+    side_v   <- metric_val(row, "RelSide",   fmt_num(1, ""))
+    
+    tags$div(
+      # Header: name & date centered and bold
+      tags$div(style = "font-weight:900; font-size:1.15rem; text-align:center;", name_text),
+      tags$div(style = "font-weight:800; opacity:.9; text-align:center; margin-bottom:6px;", date_text),
+      tags$hr(),
+      # Metrics (stacked)
+      tags$div(
+        style = "text-align:center;",
+        # Pitch Type (value only)
+        tags$div(style = "font-weight:900; margin:8px 0;", pitch_type),
+        # Velocity (value only)
+        metric_value_only(velo_val),
+        # IVB / HB with bold titles
+        metric_row("IVB",  ivb_val),
+        metric_row("HB",   hb_val),
+        # Spin (value only)
+        metric_value_only(spin_val),
+        # SpinEff / bTilt / Height / Side with bold titles
+        metric_row("SpinEff", spin_eff),
+        metric_row("bTilt",   btilt),
+        metric_row("Height",  height_v),
+        metric_row("Side",    side_v)
+      )
+    )
+  }
+
+  show_pitch_video_modal_multi <- function(row, right_ui = NULL, dataset = NULL, dataset_idx = NA_integer_) {
+    data_full <- dataset
+    if (is.null(data_full)) {
+      data_full <- tryCatch(as.data.frame(row, stringsAsFactors = FALSE), error = function(e) NULL)
+      if (is.null(data_full) || !nrow(data_full)) {
+        data_full <- data.frame()
+      }
+      dataset_idx <- 1L
+    }
+    data_full <- as.data.frame(data_full, stringsAsFactors = FALSE)
+    start_idx <- suppressWarnings(as.integer(dataset_idx))
+    if (!is.finite(start_idx) || start_idx < 1L) {
+      rn <- rownames(row)
+      if (length(rn)) {
+        start_idx <- suppressWarnings(as.integer(rn[1]))
+      }
+      if (!is.finite(start_idx) || start_idx < 1L) start_idx <- 1L
+    }
+    lbl <- tryCatch(as.character(row$TaggedPitchType)[1], error = function(e) NULL)
+    show_pitch_video_sequence(
+      rows = data_full,
+      label = lbl,
+      start_index = start_idx,
+      compare_pool = data_full,
+      primary_pool_idx = start_idx
+    )
+  }
+
+  # Bigger video (4fr) | narrower metrics (1fr) | centered logo low in metrics column
+  show_pitch_video_modal <- function(video_url, mime_type = "video", right_ui = NULL) {
+    has_video <- nzchar(video_url)
+    
+    # Video (or placeholder)
+    video_core <- if (has_video) {
+      tags$video(
+        src = video_url, controls = NA, autoplay = NA, type = mime_type,
+        style = "width:100%; max-height:78vh; background:#000;"
+      )
+    } else {
+      tags$div(
+        "No video available",
+        style = paste(
+          "display:flex; align-items:center; justify-content:center;",
+          "width:100%; max-height:78vh; height:60vh;",
+          "background:#0b0b0b; color:#fff; font-weight:700; border-radius:8px;"
+        )
+      )
+    }
+    
+    # Right pane: metrics (scrollable) + logo centered at bottom
+    right_pane <- if (is.null(right_ui)) NULL else {
+      tags$div(
+        style = paste(
+          "display:flex; flex-direction:column;",
+          "max-height:78vh; min-height:48vh;",
+          "text-align:center; padding:0;"         # no extra bottom padding
+        ),
+        # Metrics content fills available space; no bottom padding so logo sits lower
+        tags$div(style = "overflow:auto; flex:1 1 auto; padding:0 0 4px 0;", right_ui),
+        # Logo: centered and nudged closer to the bottom
+        tags$img(
+          src = "PCUlogo.png", alt = "PCU",
+          style = paste(
+            "align-self:center;",                  # center horizontally
+            "margin-top:auto; margin-bottom:2px;", # push to bottom and tuck close
+            "width:72px; height:auto; opacity:0.95;",
+            "filter: drop-shadow(0 1px 2px rgba(0,0,0,.6));",
+            "pointer-events:none; user-select:none;"
+          )
+        )
+      )
+    }
+    
+    body <- if (is.null(right_pane)) {
+      video_core
+    } else {
+      tags$div(
+        style = paste(
+          "display:grid;",
+          "grid-template-columns: 4fr 1fr;",    # wider video, narrower metrics
+          "gap:24px; align-items:start;"
+        ),
+        video_core,
+        right_pane
+      )
+    }
+
+    modal_css <- tags$style(HTML(
+      ".modal-dialog.pseq-wide{width:96%;max-width:1400px;}"
+    ))
+    showModal(tagList(modal_css, modalDialog(body, easyClose = TRUE, footer = NULL, size = "l", class = "pseq-wide")))
+  }
+
+  # Normalize ggiraph selection to a single integer (use the MOST RECENT click)
+  safe_selected <- function(x) {
+    if (is.null(x) || length(x) == 0) return(NA_integer_)
+    # ggiraph may send a vector (c("23","17")) or a comma string "23,17"
+    x_last <- x[[length(x)]]                 # take last element if vector
+    s <- as.character(x_last %||% "")
+    parts <- strsplit(s, ",", fixed = TRUE)[[1]]
+    s_last <- trimws(parts[length(parts)])   # take last token if comma-separated
+    suppressWarnings(as.integer(s_last))
+  }
+
+  pitch_rows_for_label <- function(df, label, split_choice = NULL) {
+    if (is.null(df) || !nrow(df)) return(df[0, , drop = FALSE])
+    lbl <- label %||% ""
+    lbl <- trimws(as.character(lbl))
+    if (!nzchar(lbl) || tolower(lbl) %in% c("all", "all pitches", "total", "totals")) return(df)
+    
+    if (!is.null(split_choice)) {
+      df_split <- tryCatch(apply_split_by(df, split_choice), error = function(e) df)
+      if (!is.null(df_split$SplitColumn)) {
+        matches <- df_split[df_split$SplitColumn == lbl, , drop = FALSE]
+        if (!nrow(matches)) {
+          matches <- df_split[tolower(df_split$SplitColumn) == tolower(lbl), , drop = FALSE]
+        }
+        if (nrow(matches)) return(matches)
+      }
+    }
+    
+    tp <- tryCatch(trimws(as.character(df$TaggedPitchType)), error = function(e) character(nrow(df)))
+    matches <- df[tp == lbl, , drop = FALSE]
+    if (!nrow(matches)) {
+      lbl_clean <- trimws(sub("\\s*\\(.*\\)$", "", lbl))
+      matches <- df[tp == lbl_clean, , drop = FALSE]
+    }
+    if (!nrow(matches)) {
+      matches <- df[tolower(tp) == tolower(lbl), , drop = FALSE]
+    }
+    matches
+  }
+
+  pitch_abbrev_for <- function(pt) {
+    pt_chr <- trimws(as.character(pt %||% ""))
+    if (!nzchar(pt_chr)) return("")
+    mapping <- c(
+      "Fastball" = "FB", "Four-Seam Fastball" = "FB", "4-Seam Fastball" = "FB",
+      "Sinker" = "SK", "Two-Seam Fastball" = "SK", "2-Seam Fastball" = "SK",
+      "Cutter" = "CT", "Cut Fastball" = "CT",
+      "Curveball" = "CB", "Curve" = "CB", "Knuckle Curve" = "CB",
+      "Slider" = "SL",
+      "Sweeper" = "SW",
+      "ChangeUp" = "CH", "Change Up" = "CH", "Changeup" = "CH",
+      "Splitter" = "SP", "Split Finger" = "SP", "Split-Finger" = "SP",
+      "Knuckleball" = "KN", "Knuckle Ball" = "KN",
+      "Gyro" = "SL", "Slurve" = "SL"
+    )
+    out <- mapping[pt_chr]
+    if (!is.na(out)) return(out)
+    parts <- strsplit(pt_chr, "[^A-Za-z]+")[[1]]
+    parts <- parts[nzchar(parts)]
+    if (!length(parts)) return(toupper(substr(pt_chr, 1, 2)))
+    abbr <- paste0(substring(parts, 1, 1), collapse = "")
+    toupper(substr(abbr, 1, 3))
+  }
+
+  format_initial_last <- function(name_chr) {
+    nm <- trimws(as.character(name_chr %||% ""))
+    if (!nzchar(nm)) return("")
+    nm_fmt <- format_name_first_last(nm)
+    parts <- strsplit(trimws(nm_fmt), "\\s+")[[1]]
+    parts <- parts[nzchar(parts)]
+    if (!length(parts)) return(nm_fmt)
+    if (length(parts) == 1) return(parts)
+    paste0(substr(parts[1], 1, 1), ". ", paste(parts[-1], collapse = " "))
+  }
+
+  make_pitch_option_label <- function(row, idx = NA_integer_) {
+    if (is.null(row) || !nrow(row)) return("Pitch")
+    date_val <- tryCatch(as.Date(row$Date[1]), error = function(e) NA)
+    date_txt <- if (inherits(date_val, "Date") && !is.na(date_val)) format(date_val, "%m/%d/%y") else ""
+    name_raw <- row$Pitcher[1] %||% row$PitcherName[1] %||% row$PlayerName[1]
+    name_txt <- format_initial_last(name_raw)
+    pt_txt <- pitch_abbrev_for(row$TaggedPitchType[1])
+    velo_val <- suppressWarnings(as.numeric(row$RelSpeed[1]))
+    ivb_val  <- suppressWarnings(as.numeric(row$InducedVertBreak[1]))
+    hb_val   <- suppressWarnings(as.numeric(row$HorzBreak[1]))
+    velo_txt <- if (is.finite(velo_val)) sprintf("%.1f mph", velo_val) else ""
+    ivb_txt  <- if (is.finite(ivb_val)) sprintf("%.1f\"", ivb_val) else ""
+    hb_txt   <- if (is.finite(hb_val)) sprintf("%.1f\"", hb_val) else ""
+    idx_txt  <- if (is.finite(idx)) paste0("#", idx) else ""
+    parts <- c(date_txt, name_txt, pt_txt, velo_txt, ivb_txt, hb_txt, idx_txt)
+    paste(parts[nzchar(parts)], collapse = " | ")
+  }
+
+  show_pitch_video_sequence <- function(rows, label = NULL, start_index = 1,
+                                        compare_pool = NULL, primary_pool_idx = NA_integer_) {
+    rows_df <- tryCatch(as.data.frame(rows), error = function(e) NULL)
+    if (is.null(rows_df) || !nrow(rows_df)) {
+      showModal(modalDialog("No video available for this selection.", easyClose = TRUE, footer = NULL))
+      return(invisible(FALSE))
+    }
+
+    rows_df <- as.data.frame(rows_df, stringsAsFactors = FALSE)
+    if (is.null(rownames(rows_df))) rownames(rows_df) <- as.character(seq_len(nrow(rows_df)))
+    n_total <- nrow(rows_df)
+    clip1 <- tryCatch(as.character(rows_df$VideoClip),  error = function(e) rep("", n_total))
+    clip2 <- tryCatch(as.character(rows_df$VideoClip2), error = function(e) rep("", n_total))
+    clip3 <- tryCatch(as.character(rows_df$VideoClip3), error = function(e) rep("", n_total))
+    has_video <- nzchar(clip1) | nzchar(clip2) | nzchar(clip3)
+    rows_vid <- rows_df[has_video, , drop = FALSE]
+    video_positions <- which(has_video)
+    if (!nrow(rows_vid)) {
+      showModal(modalDialog("No videos available for this selection.", easyClose = TRUE, footer = NULL))
+      return(invisible(FALSE))
+    }
+    pool_df <- if (!is.null(compare_pool)) {
+      tryCatch(as.data.frame(compare_pool, stringsAsFactors = FALSE), error = function(e) NULL)
+    } else rows_df
+    if (is.null(pool_df)) pool_df <- rows_df[0, , drop = FALSE]
+    if (is.null(rownames(pool_df))) rownames(pool_df) <- as.character(seq_len(nrow(pool_df)))
+
+    pool_clip1 <- tryCatch(as.character(pool_df$VideoClip),  error = function(e) rep("", nrow(pool_df)))
+    pool_clip2 <- tryCatch(as.character(pool_df$VideoClip2), error = function(e) rep("", nrow(pool_df)))
+    pool_clip3 <- tryCatch(as.character(pool_df$VideoClip3), error = function(e) rep("", nrow(pool_df)))
+    pool_has_video <- nzchar(pool_clip1) | nzchar(pool_clip2) | nzchar(pool_clip3)
+    pool_video_idx <- which(pool_has_video)
+    compare_available <- length(pool_video_idx) > 1
+
+    match_start <- match(suppressWarnings(as.integer(start_index)), video_positions)
+    if (is.na(match_start) || match_start < 1L) match_start <- 1L
+    if (match_start > nrow(rows_vid)) match_start <- nrow(rows_vid)
+
+    camera_display_labels <- c("Camera 1", "Camera 2", "Camera 3")
+    camera_source_map <- setNames(c("Edger", "Behind", "Side"), camera_display_labels)
+    make_pitch_label <- function(dat, idx = NA_integer_) make_pitch_option_label(dat, idx)
+
+    collect_urls <- function(row) {
+      if (is.null(row) || !nrow(row)) return(list())
+      clips <- c(
+        "Camera 1" = tryCatch(as.character(row$VideoClip)[1],  error = function(e) ""),
+        "Camera 2" = tryCatch(as.character(row$VideoClip2)[1], error = function(e) ""),
+        "Camera 3" = tryCatch(as.character(row$VideoClip3)[1], error = function(e) "")
+      )
+      clips <- clips[nzchar(clips)]
+      if (!length(clips)) return(list())
+      urls <- lapply(names(clips), function(display) {
+        clip <- clips[[display]]
+        source_tag <- camera_source_map[[display]] %||% display
+        video_url_for(clip, source = source_tag)
+      })
+      names(urls) <- names(clips)
+      urls[vapply(urls, nzchar, logical(1))]
+    }
+
+    metrics_block <- function(content) {
+      if (is.null(content)) return(NULL)
+      tags$div(
+        style = paste(
+          "display:flex;flex-direction:column;",
+          "max-height:68vh;min-height:40vh;",
+          "text-align:center;padding:0;"
+        ),
+        tags$div(style = "overflow:auto;flex:1 1 auto;padding:0 0 4px 0;", content),
+        tags$img(
+          src = "PCUlogo.png", alt = "PCU",
+          style = paste(
+            "align-self:center;margin-top:auto;margin-bottom:2px;",
+            "width:72px;height:auto;opacity:0.95;",
+            "filter:drop-shadow(0 1px 2px rgba(0,0,0,.6));",
+            "pointer-events:none;user-select:none;"
+          )
+        )
+      )
+    }
+
+    default_secondary_for <- function(primary_idx) {
+      if (!length(pool_video_idx)) return(NA_integer_)
+      candidates <- pool_video_idx
+      if (is.finite(primary_idx)) candidates <- candidates[candidates != primary_idx]
+      if (!length(candidates)) candidates <- pool_video_idx
+      candidates[1]
+    }
+
+    idx <- reactiveVal(match_start)
+    cam_sel <- reactiveVal("")
+    compare_mode <- reactiveVal(FALSE)
+    secondary_idx <- reactiveVal(NA_integer_)
+    cmp_cam_sel <- reactiveVal("")
+
+    uid_base  <- paste0("pseq_", as.integer((as.numeric(Sys.time()) * 1000) %% 1e9))
+    video_id  <- paste0(uid_base, "_video")
+    next_id   <- paste0(uid_base, "_next")
+    prev_id   <- paste0(uid_base, "_prev")
+    cam_prefix <- paste0(uid_base, "_cam")
+    primary_video_id   <- paste0(uid_base, "_video_primary")
+    secondary_video_id <- paste0(uid_base, "_video_secondary")
+    compare_toggle_id  <- paste0(uid_base, "_compare")
+    primary_select_id  <- paste0(uid_base, "_primary_select")
+    compare_select_id  <- paste0(uid_base, "_compare_select")
+    cmp_cam_prefix     <- paste0(uid_base, "_cmpcam")
+    primary_slider_id  <- paste0(uid_base, "_slider_primary")
+    secondary_slider_id <- paste0(uid_base, "_slider_secondary")
+    sync_slider_id     <- paste0(uid_base, "_slider_sync")
+    primary_play_id    <- paste0(uid_base, "_play_primary")
+    primary_pause_id   <- paste0(uid_base, "_pause_primary")
+    secondary_play_id  <- paste0(uid_base, "_play_secondary")
+    secondary_pause_id <- paste0(uid_base, "_pause_secondary")
+    sync_play_id       <- paste0(uid_base, "_play_sync")
+    sync_pause_id      <- paste0(uid_base, "_pause_sync")
+    download_single_id <- paste0(uid_base, "_download_single")
+    download_all_id    <- paste0(uid_base, "_download_all")
+
+    current_row <- reactive({
+      i <- idx()
+      if (!is.finite(i)) i <- 1L
+      i <- max(1L, min(nrow(rows_vid), i))
+      rows_vid[i, , drop = FALSE]
+    })
+
+    current_urls <- reactive(collect_urls(current_row()))
+
+    primary_pool_idx_reactive <- reactive({
+      if (!nrow(pool_df)) return(NA_integer_)
+      row <- current_row()
+      if (is.null(row) || !nrow(row)) return(NA_integer_)
+      rn <- rownames(row)
+      if (length(rn)) {
+        match_idx <- match(rn[1], rownames(pool_df))
+        if (is.finite(match_idx)) return(match_idx)
+      }
+      if (is.finite(primary_pool_idx) && primary_pool_idx >= 1L && primary_pool_idx <= nrow(pool_df)) {
+        return(primary_pool_idx)
+      }
+      if (length(pool_video_idx)) pool_video_idx[1] else 1L
+    })
+
+    cmp_current_row <- reactive({
+      idx_val <- secondary_idx()
+      if (!is.finite(idx_val) || !nrow(pool_df)) return(NULL)
+      if (idx_val < 1L || idx_val > nrow(pool_df)) return(NULL)
+      if (!pool_has_video[idx_val]) return(NULL)
+      pool_df[idx_val, , drop = FALSE]
+    })
+
+    cmp_urls <- reactive(collect_urls(cmp_current_row()))
+
+    cam_names <- camera_display_labels
+
+    slugify <- function(text, fallback = "pitch") {
+      txt <- trimws(as.character(text %||% ""))
+      if (!nzchar(txt)) txt <- fallback
+      slug <- gsub("[^A-Za-z0-9]+", "-", txt)
+      slug <- gsub("-+", "-", slug)
+      slug <- gsub("(^-)|(-$)", "", slug)
+      slug <- tolower(slug)
+      if (!nzchar(slug)) tolower(fallback) else slug
+    }
+
+    file_ext_from_url <- function(url, default = ".mp4") {
+      if (!nzchar(url)) return(default)
+      clean <- sub("\\?.*$", "", url)
+      ext <- tools::file_ext(clean)
+      if (!nzchar(ext)) default else paste0(".", tolower(ext))
+    }
+
+    download_source_to <- function(url, dest) {
+      if (!nzchar(url)) stop("No source URL available", call. = FALSE)
+      dir.create(dirname(dest), recursive = TRUE, showWarnings = FALSE)
+      if (grepl("^https?://", url, ignore.case = TRUE)) {
+        req <- httr2::request(url)
+        tryCatch({
+          httr2::req_perform(req, path = dest)
+          TRUE
+        }, error = function(e) stop(sprintf("Failed to download %s", basename(url)), call. = FALSE))
+      } else {
+        rel <- sub("^/+", "", url)
+        rel <- utils::URLdecode(rel)
+        vdir <- getOption("PCU_VIDEOS_DIR", NA_character_)
+        if (is.na(vdir) || !nzchar(vdir)) {
+          stop("Local video directory is not configured", call. = FALSE)
+        }
+        parts <- strsplit(rel, "/", fixed = TRUE)[[1]]
+        if (length(parts) && identical(parts[1], "videos")) parts <- parts[-1]
+        abs_path <- do.call(file.path, c(list(vdir), as.list(parts)))
+        if (!length(parts) || !file.exists(abs_path)) {
+          stop("Video file not found on server", call. = FALSE)
+        }
+        if (!file.copy(abs_path, dest, overwrite = TRUE)) {
+          stop("Unable to copy video file", call. = FALSE)
+        }
+        TRUE
+      }
+    }
+
+    observeEvent(current_urls(), {
+      urls <- current_urls()
+      cur  <- cam_sel()
+      if (!length(urls)) {
+        cam_sel("")
+      } else if (!nzchar(cur) || !(cur %in% names(urls))) {
+        cam_sel(names(urls)[1])
+      }
+    }, ignoreNULL = FALSE, priority = 1)
+
+    observeEvent(cmp_urls(), {
+      urls <- cmp_urls()
+      cur <- cmp_cam_sel()
+      if (!length(urls)) {
+        cmp_cam_sel("")
+      } else if (!nzchar(cur) || !(cur %in% names(urls))) {
+        cmp_cam_sel(names(urls)[1])
+      }
+    }, ignoreNULL = FALSE, priority = 1)
+
+    for (nm in cam_names) local({
+      src <- nm
+      observeEvent(input[[paste0(cam_prefix, "_", src)]], {
+        urls <- current_urls()
+        if (length(urls) && !is.null(urls[[src]]) && nzchar(urls[[src]])) {
+          cam_sel(src)
+        }
+      }, ignoreNULL = TRUE)
+    })
+
+    for (nm in cam_names) local({
+      src <- nm
+      observeEvent(input[[paste0(cmp_cam_prefix, "_", src)]], {
+        urls <- cmp_urls()
+        if (length(urls) && !is.null(urls[[src]]) && nzchar(urls[[src]])) {
+          cmp_cam_sel(src)
+        }
+      }, ignoreNULL = TRUE)
+    })
+
+    observeEvent(input[[next_id]], {
+      cur <- idx()
+      if (is.finite(cur) && cur < nrow(rows_vid)) idx(cur + 1L)
+    }, ignoreNULL = TRUE)
+
+    observeEvent(input[[prev_id]], {
+      cur <- idx()
+      if (is.finite(cur) && cur > 1) idx(cur - 1L)
+    }, ignoreNULL = TRUE)
+
+    observeEvent(input[[compare_toggle_id]], {
+      if (!compare_available) return()
+      compare_mode(!compare_mode())
+    }, ignoreNULL = TRUE)
+
+    observeEvent(compare_mode(), {
+      if (compare_mode()) {
+        primary_idx <- primary_pool_idx_reactive()
+        secondary_idx(default_secondary_for(primary_idx))
+        if (compare_available && is.finite(primary_idx)) {
+          updateSelectizeInput(session, primary_select_id, selected = as.character(primary_idx))
+        }
+      } else {
+        secondary_idx(NA_integer_)
+      }
+    }, ignoreNULL = TRUE)
+
+    observeEvent(idx(), {
+      if (!compare_available) return()
+      if (!compare_mode()) return()
+      primary_idx <- primary_pool_idx_reactive()
+      current_sec <- secondary_idx()
+      if (!is.finite(current_sec) || !pool_has_video[current_sec] || identical(current_sec, primary_idx)) {
+        secondary_idx(default_secondary_for(primary_idx))
+      }
+      if (is.finite(primary_idx)) {
+        updateSelectizeInput(session, primary_select_id, selected = as.character(primary_idx))
+      }
+    }, ignoreNULL = TRUE)
+
+    observeEvent(secondary_idx(), {
+      if (!compare_available) return()
+      if (!compare_mode()) return()
+      val <- secondary_idx()
+      updateSelectizeInput(session, compare_select_id,
+                           selected = if (is.finite(val)) as.character(val) else NULL)
+    }, ignoreNULL = FALSE)
+
+    observeEvent(input[[primary_select_id]], {
+      if (!compare_available) return()
+      if (!compare_mode()) return()
+      val <- suppressWarnings(as.integer(input[[primary_select_id]]))
+      if (!is.finite(val)) return()
+      target_idx <- match(val, video_positions)
+      if (is.finite(target_idx)) idx(target_idx)
+    }, ignoreNULL = TRUE)
+
+    observeEvent(input[[compare_select_id]], {
+      if (!compare_available) return()
+      val <- suppressWarnings(as.integer(input[[compare_select_id]]))
+      if (is.finite(val) && val >= 1L && val <= nrow(pool_df) && pool_has_video[val]) {
+        secondary_idx(val)
+      }
+    }, ignoreNULL = TRUE)
+
+    output[[download_single_id]] <- downloadHandler(
+      filename = function() {
+        row <- current_row()
+        idx_val <- primary_pool_idx_reactive()
+        label <- make_pitch_option_label(row, idx_val)
+        cam <- cam_sel()
+        if (!nzchar(cam)) cam <- "video"
+        urls <- current_urls()
+        url <- urls[[cam]] %||% ""
+        ext <- file_ext_from_url(url)
+        paste0(slugify(label, fallback = "pitch"), "-", tolower(cam), ext)
+      },
+      content = function(file) {
+        urls <- current_urls()
+        sel <- cam_sel()
+        if (!length(urls) || !nzchar(sel) || is.null(urls[[sel]]) || !nzchar(urls[[sel]])) {
+          stop("No video available for download", call. = FALSE)
+        }
+        download_source_to(urls[[sel]], file)
+      }
+    )
+
+    output[[download_all_id]] <- downloadHandler(
+      filename = function() {
+        base <- if (!is.null(label) && nzchar(label)) label else "selection"
+        paste0(slugify(base, fallback = "pitch"), "-videos.zip")
+      },
+      content = function(file) {
+        if (!length(pool_video_idx)) {
+          stop("No videos available in this filter", call. = FALSE)
+        }
+        rows_all <- pool_df[pool_video_idx, , drop = FALSE]
+        if (!nrow(rows_all)) {
+          stop("No videos available in this filter", call. = FALSE)
+        }
+        tmpdir <- tempfile("pseq_dl_")
+        dir.create(tmpdir, recursive = TRUE, showWarnings = FALSE)
+        on.exit(unlink(tmpdir, recursive = TRUE, force = TRUE), add = TRUE)
+        
+        saved <- character(0)
+        done_map <- character(0)
+        
+        for (pos in seq_along(pool_video_idx)) {
+          idx_val <- pool_video_idx[pos]
+          row_now <- pool_df[idx_val, , drop = FALSE]
+          slug <- slugify(make_pitch_option_label(row_now, idx_val), fallback = sprintf("pitch-%03d", idx_val))
+          urls <- collect_urls(row_now)
+          if (!length(urls)) next
+          for (cam in names(urls)) {
+            url <- urls[[cam]]
+            if (!nzchar(url)) next
+            key <- paste(url, cam, sep = "::")
+            if (key %in% done_map) next
+            done_map <- c(done_map, key)
+            ext <- file_ext_from_url(url)
+            dest_name <- sprintf("%03d_%s_%s%s", pos, slug, tolower(cam), ext)
+            dest_path <- file.path(tmpdir, dest_name)
+            download_source_to(url, dest_path)
+            saved <- c(saved, dest_path)
+          }
+        }
+        
+        if (!length(saved)) {
+          stop("No downloadable videos were found", call. = FALSE)
+        }
+        
+        zipfile <- normalizePath(file, mustWork = FALSE)
+        oldwd <- getwd()
+        setwd(tmpdir)
+        on.exit(setwd(oldwd), add = TRUE)
+        utils::zip(zipfile = zipfile, files = basename(saved))
+      }
+    )
+
+    output[[video_id]] <- renderUI({
+      i <- idx()
+      if (!is.finite(i)) i <- 1L
+      i <- max(1L, min(nrow(rows_vid), i))
+      row <- rows_vid[i, , drop = FALSE]
+      urls <- current_urls()
+      sel <- cam_sel()
+      if ((!nzchar(sel) || !(sel %in% names(urls))) && length(urls)) {
+        sel <- names(urls)[1]
+      }
+      url <- if (length(urls) && nzchar(sel) && !is.null(urls[[sel]])) urls[[sel]] else ""
+      if (nzchar(url)) {
+        cache_tag <- as.integer(as.numeric(Sys.time()))
+        url <- paste0(url, if (grepl("\\?", url)) "&" else "?", "v=", cache_tag)
+      }
+      
+      right <- build_metrics_panel(row)
+      seq_txt <- sprintf("%d of %d", i, nrow(rows_vid))
+      
+      compare_btn_label <- if (isTRUE(compare_mode())) tagList(icon("video"), "Single View") else tagList(icon("columns"), "Side-by-Side")
+      compare_btn <- actionButton(
+        compare_toggle_id,
+        label = compare_btn_label,
+        class = "btn btn-sm btn-outline-secondary",
+        style = "min-width:128px;font-weight:600;",
+        disabled = if (compare_available) NULL else "disabled"
+      )
+      
+      download_controls <- tags$div(
+        style = "display:flex;justify-content:center;gap:12px;margin-bottom:12px;flex-wrap:wrap;",
+        downloadButton(
+          download_single_id,
+          label = tagList(icon("download"), "Download Pitch"),
+          class = "btn btn-sm btn-outline-secondary"
+        ),
+        downloadButton(
+          download_all_id,
+          label = tagList(icon("file-archive"), "Download Filter"),
+          class = "btn btn-sm btn-outline-secondary",
+          title = "Downloads all available camera angles in this filter as a ZIP"
+        )
+      )
+      
+      header <- tags$div(
+        style = "display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px;",
+        actionButton(
+          prev_id,
+          label = tagList(icon("chevron-left"), "Prev"),
+          class = "btn-light btn-sm",
+          style = "min-width:92px;",
+          disabled = if (i <= 1) "disabled" else NULL
+        ),
+        tags$div(
+          style = "flex:1;text-align:center;",
+          tags$div(style = "font-size:0.9rem;font-weight:600;opacity:0.75;", seq_txt)
+        ),
+        actionButton(
+          next_id,
+          label = tagList("Next", icon("chevron-right")),
+          class = "btn-light btn-sm",
+          style = "min-width:92px;",
+          disabled = if (i >= nrow(rows_vid)) "disabled" else NULL
+        )
+      )
+      
+      cam_buttons <- lapply(cam_names, function(src) {
+        u <- urls[[src]]
+        if (is.null(u) || !nzchar(u)) return(NULL)
+        btn_class <- if (identical(sel, src)) "btn-sm btn-primary" else "btn-sm btn-outline-secondary"
+        actionButton(
+          paste0(cam_prefix, "_", src),
+          label = src,
+          class = btn_class,
+          style = "min-width:82px;font-weight:600;"
+        )
+      })
+      cam_buttons <- Filter(Negate(is.null), cam_buttons)
+      cam_row <- if (length(cam_buttons)) {
+        tags$div(
+          style = "display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;justify-content:center;",
+          cam_buttons
+        )
+      } else NULL
+      
+      video_style <- if (isTRUE(compare_mode())) "width:100%;max-height:60vh;background:#000;" else "width:100%;max-height:78vh;background:#000;"
+      placeholder_style <- if (isTRUE(compare_mode()))
+        "display:flex;align-items:center;justify-content:center;width:100%;max-height:60vh;height:44vh;background:#0b0b0b;color:#fff;font-weight:700;border-radius:8px;"
+      else
+        "display:flex;align-items:center;justify-content:center;width:100%;max-height:78vh;height:60vh;background:#0b0b0b;color:#fff;font-weight:700;border-radius:8px;"
+      
+      video_core <- if (nzchar(url)) {
+        tags$video(
+          id = primary_video_id,
+          src = url,
+          controls = NA,
+          autoplay = NA,
+          type = guess_video_type(url),
+          style = video_style
+        )
+      } else {
+        tags$div("No video available", style = placeholder_style)
+      }
+      
+      compare_choices <- if (compare_available) {
+        labs <- vapply(pool_video_idx, function(idx_val) make_pitch_option_label(pool_df[idx_val, , drop = FALSE], idx_val), character(1))
+        stats::setNames(as.character(pool_video_idx), labs)
+      } else character(0)
+      
+      if (!isTRUE(compare_mode())) {
+        right_pane <- metrics_block(right)
+        main_layout <- if (is.null(right_pane)) {
+          video_core
+        } else {
+          tags$div(
+            style = paste(
+              "display:grid;",
+              "grid-template-columns:4fr 1fr;",
+              "gap:24px;align-items:start;"
+            ),
+            video_core,
+            right_pane
+          )
+        }
+        
+        tagList(
+          header,
+          tags$div(style = "display:flex;justify-content:center;margin-bottom:10px;", compare_btn),
+          cam_row,
+          download_controls,
+          main_layout
+        )
+      } else {
+        cmp_row <- cmp_current_row()
+        cmp_sel <- cmp_cam_sel()
+        cmp_urls_now <- cmp_urls()
+        if ((!nzchar(cmp_sel) || !(cmp_sel %in% names(cmp_urls_now))) && length(cmp_urls_now)) {
+          cmp_sel <- names(cmp_urls_now)[1]
+        }
+        cmp_url <- if (length(cmp_urls_now) && nzchar(cmp_sel) && !is.null(cmp_urls_now[[cmp_sel]])) cmp_urls_now[[cmp_sel]] else ""
+        if (nzchar(cmp_url)) {
+          cache_tag <- as.integer(as.numeric(Sys.time()))
+          cmp_url <- paste0(cmp_url, if (grepl("\\?", cmp_url)) "&" else "?", "v=", cache_tag)
+        }
+        
+        cmp_cam_buttons <- lapply(cam_names, function(src) {
+          u <- cmp_urls_now[[src]]
+          if (is.null(u) || !nzchar(u)) return(NULL)
+          btn_class <- if (identical(cmp_sel, src)) "btn-sm btn-primary" else "btn-sm btn-outline-secondary"
+          actionButton(
+            paste0(cmp_cam_prefix, "_", src),
+            label = src,
+            class = btn_class,
+            style = "min-width:82px;font-weight:600;"
+          )
+        })
+        cmp_cam_buttons <- Filter(Negate(is.null), cmp_cam_buttons)
+        cmp_cam_row <- if (length(cmp_cam_buttons)) {
+          tags$div(
+            style = "display:flex;flex-wrap:wrap;gap:8px;margin-bottom:10px;justify-content:center;",
+            cmp_cam_buttons
+          )
+        } else NULL
+        
+        cmp_video_core <- if (nzchar(cmp_url)) {
+          tags$video(
+            id = secondary_video_id,
+            src = cmp_url,
+            controls = NA,
+            autoplay = NA,
+            type = guess_video_type(cmp_url),
+            style = video_style
+          )
+        } else {
+          tags$div("Select a pitch", style = placeholder_style)
+        }
+        
+        left_metrics_block <- metrics_block(right)
+        right_metrics_block <- metrics_block(if (!is.null(cmp_row)) build_metrics_panel(cmp_row) else NULL)
+        
+        primary_selected_val <- primary_pool_idx_reactive()
+        secondary_selected_val <- secondary_idx()
+        
+        selector <- if (compare_available) {
+          tags$div(
+            style = "display:flex;justify-content:center;gap:16px;margin-bottom:12px;flex-wrap:wrap;",
+            tags$div(
+              style = "display:flex;flex-direction:column;min-width:220px;gap:4px;",
+              tags$label("Primary Pitch", `for` = primary_select_id, style = "margin:0;font-weight:600;"),
+              selectizeInput(
+                primary_select_id,
+                label = NULL,
+                choices = compare_choices,
+                selected = {
+                  if (is.finite(primary_selected_val)) as.character(primary_selected_val)
+                  else if (length(compare_choices)) compare_choices[[1]] else NULL
+                },
+                options = list(placeholder = "Choose primary pitch")
+              )
+            ),
+            tags$div(
+              style = "display:flex;flex-direction:column;min-width:220px;gap:4px;",
+              tags$label("Secondary Pitch", `for` = compare_select_id, style = "margin:0;font-weight:600;"),
+              selectizeInput(
+                compare_select_id,
+                label = NULL,
+                choices = compare_choices,
+                selected = {
+                  if (is.finite(secondary_selected_val)) as.character(secondary_selected_val)
+                  else if (length(compare_choices)) compare_choices[[1]] else NULL
+                },
+                options = list(placeholder = "Choose secondary pitch")
+              )
+            )
+          )
+        } else NULL
+        
+        primary_controls <- if (compare_available) {
+          tags$div(
+            style = "display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;justify-content:center;",
+            actionButton(primary_play_id, label = "Play", icon = icon("play"), class = "btn btn-sm btn-outline-secondary"),
+            actionButton(primary_pause_id, label = "Pause", icon = icon("pause"), class = "btn btn-sm btn-outline-secondary"),
+            tags$input(
+              id = primary_slider_id,
+              type = "range",
+              min = "0",
+              max = "1",
+              step = "0.01",
+              value = "0",
+              style = "flex:1 1 260px;min-width:220px;"
+            )
+          )
+        } else NULL
+        
+        secondary_controls <- if (compare_available) {
+          tags$div(
+            style = "display:flex;align-items:center;gap:10px;margin-bottom:8px;flex-wrap:wrap;justify-content:center;",
+            actionButton(secondary_play_id, label = "Play", icon = icon("play"), class = "btn btn-sm btn-outline-secondary"),
+            actionButton(secondary_pause_id, label = "Pause", icon = icon("pause"), class = "btn btn-sm btn-outline-secondary"),
+            tags$input(
+              id = secondary_slider_id,
+              type = "range",
+              min = "0",
+              max = "1",
+              step = "0.01",
+              value = "0",
+              style = "flex:1 1 260px;min-width:220px;"
+            )
+          )
+        } else NULL
+        
+        sync_controls <- if (compare_available) {
+          tags$div(
+            style = "display:flex;align-items:center;gap:12px;margin:-4px 0 12px 0;flex-wrap:wrap;justify-content:center;",
+            tags$label(
+              "Sync Scrub",
+              `for` = sync_slider_id,
+              style = "margin:0;font-weight:600;min-width:96px;text-align:right;"
+            ),
+            tags$input(
+              id = sync_slider_id,
+              type = "range",
+              min = "0",
+              max = "1",
+              step = "0.01",
+              value = "0",
+              style = "flex:1 1 360px;min-width:260px;"
+            ),
+            actionButton(sync_play_id, label = "Play", icon = icon("play"), class = "btn btn-sm btn-outline-secondary"),
+            actionButton(sync_pause_id, label = "Pause", icon = icon("pause"), class = "btn btn-sm btn-outline-secondary")
+          )
+        } else NULL
+        
+        left_col <- tags$div(
+          style = "display:flex;flex-direction:column;gap:10px;",
+          cam_row,
+          primary_controls,
+          video_core,
+          left_metrics_block
+        )
+        
+        right_col <- tags$div(
+          style = "display:flex;flex-direction:column;gap:10px;",
+          cmp_cam_row,
+          secondary_controls,
+          cmp_video_core,
+          right_metrics_block
+        )
+        
+        control_script <- if (compare_available) {
+          tags$script(HTML(sprintf(
+            "(function(){\n  var configs = [\n    {videoId:'%s', sliderId:'%s', playId:'%s', pauseId:'%s'},\n    {videoId:'%s', sliderId:'%s', playId:'%s', pauseId:'%s'}\n  ];\n  var syncSlider = document.getElementById('%s');\n  var syncPlayBtn = document.getElementById('%s');\n  var syncPauseBtn = document.getElementById('%s');\n  var syncUpdating = false;\n\n  function playSafe(video){\n    if (!video) return;\n    try {\n      var p = video.play();\n      if (p && typeof p.catch === 'function') p.catch(function(){});\n    } catch(e){}\n  }\n\n  function pauseSafe(video){\n    if (!video) return;\n    try { video.pause(); } catch(e){}\n  }\n\n  function updateSyncRange(){\n    if (!syncSlider) return;\n    var maxDur = Infinity;\n    configs.forEach(function(cfg){\n      if (!cfg.video) return;\n      var d = cfg.video.duration;\n      if (isFinite(d) && d > 0 && d < maxDur) maxDur = d;\n    });\n    if (!isFinite(maxDur) || maxDur === Infinity){\n      syncSlider.disabled = true;\n    } else {\n      syncSlider.max = maxDur;\n      syncSlider.disabled = false;\n    }\n  }\n\n  function updateSyncValue(){\n    if (!syncSlider || syncUpdating) return;\n    var minTime = Infinity;\n    configs.forEach(function(cfg){\n      if (!cfg.video) return;\n      var t = cfg.video.currentTime;\n      if (isFinite(t) && t < minTime) minTime = t;\n    });\n    if (minTime !== Infinity) syncSlider.value = minTime;\n  }\n\n  configs.forEach(function(cfg){\n    cfg.video = document.getElementById(cfg.videoId);\n    cfg.slider = document.getElementById(cfg.sliderId);\n    cfg.playBtn = document.getElementById(cfg.playId);\n    cfg.pauseBtn = document.getElementById(cfg.pauseId);\n    if (!cfg.video) return;\n    var video = cfg.video;\n    var slider = cfg.slider;\n    var updating = false;\n\n    function setRange(){\n      if (!slider) return;\n      if (isFinite(video.duration) && video.duration > 0){\n        slider.max = video.duration;\n        slider.disabled = false;\n      } else {\n        slider.disabled = true;\n      }\n    }\n\n    video.addEventListener('loadedmetadata', function(){\n      setRange();\n      updateSyncRange();\n      if (slider) slider.value = video.currentTime || 0;\n      updateSyncValue();\n    });\n\n    video.addEventListener('timeupdate', function(){\n      if (updating) return;\n      setRange();\n      if (slider) slider.value = video.currentTime || 0;\n      updateSyncRange();\n      updateSyncValue();\n    });\n\n    if (slider){\n      slider.addEventListener('input', function(){\n        updating = true;\n        var val = parseFloat(slider.value) || 0;\n        try { video.currentTime = val; } catch(e){}\n      });\n      slider.addEventListener('change', function(){\n        updating = false;\n      });\n    }\n\n    if (cfg.playBtn){\n      cfg.playBtn.addEventListener('click', function(){\n        playSafe(video);\n      });\n    }\n\n    if (cfg.pauseBtn){\n      cfg.pauseBtn.addEventListener('click', function(){\n        pauseSafe(video);\n      });\n    }\n  });\n\n  if (syncSlider){\n    syncSlider.addEventListener('input', function(){\n      syncUpdating = true;\n      var val = parseFloat(syncSlider.value) || 0;\n      var actual = Infinity;\n      configs.forEach(function(cfg){\n        if (!cfg.video) return;\n        var target = val;\n        var dur = cfg.video.duration;\n        if (isFinite(dur) && dur > 0 && target > dur) target = dur;\n        try { cfg.video.currentTime = target; } catch(e){}\n        if (cfg.slider) cfg.slider.value = target;\n        var ct = cfg.video.currentTime;\n        if (isFinite(ct) && ct < actual) actual = ct;\n      });\n      if (actual !== Infinity) syncSlider.value = actual;\n    });\n    syncSlider.addEventListener('change', function(){\n      syncUpdating = false;\n    });\n    updateSyncRange();\n    updateSyncValue();\n  }\n\n  if (syncPlayBtn){\n    syncPlayBtn.addEventListener('click', function(){\n      configs.forEach(function(cfg){ playSafe(cfg.video); });\n    });\n  }\n\n  if (syncPauseBtn){\n    syncPauseBtn.addEventListener('click', function(){\n      configs.forEach(function(cfg){ pauseSafe(cfg.video); });\n    });\n  }\n})();",
+            primary_video_id, primary_slider_id, primary_play_id, primary_pause_id,
+            secondary_video_id, secondary_slider_id, secondary_play_id, secondary_pause_id,
+            sync_slider_id, sync_play_id, sync_pause_id)))
+        } else NULL
+        
+        tagList(
+          header,
+          tags$div(style = "display:flex;justify-content:center;margin-bottom:10px;", compare_btn),
+          selector,
+          sync_controls,
+          download_controls,
+          tags$div(
+            style = "display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;",
+            left_col,
+            right_col
+          ),
+          control_script
+        )
+      }
+    })
+
+    modal_css <- tags$style(HTML(
+      ".modal-dialog.pseq-wide{width:96%;max-width:1400px;}"
+    ))
+    showModal(tagList(modal_css, modalDialog(uiOutput(video_id), easyClose = TRUE, footer = NULL, size = "l", class = "pseq-wide")))
+    invisible(TRUE)
+  }
+
+  open_pitch_edit_modal <- function(rows) {
+    if (is.null(rows) || !nrow(rows)) return(invisible(FALSE))
+    selected_pitches <- rows
+    available_pitchers <- sort(unique(pitch_data_pitching$Pitcher))
+    pitcher_choices <- sort(unique(c(available_pitchers, as.character(selected_pitches$Pitcher))))
+    
+    showModal(modalDialog(
+      title = paste("Edit Pitch Type for", nrow(selected_pitches), "pitch(es)"),
+      selectInput("new_pitch_type", "New Pitch Type:",
+                  choices = c("Fastball", "Sinker", "Cutter", "Slider", "Sweeper", 
+                              "Curveball", "ChangeUp", "Splitter", "Knuckleball"),
+                  selected = selected_pitches$TaggedPitchType[1]),
+      selectInput("new_pitcher", "Assign To Pitcher:",
+                  choices = pitcher_choices,
+                  selected = selected_pitches$Pitcher[1]),
+      br(),
+      strong("Selected Pitches:"),
+      br(),
+      if (nrow(selected_pitches) <= 10) {
+        div(
+          lapply(1:nrow(selected_pitches), function(i) {
+            p <- selected_pitches[i, ]
+            div(sprintf("Pitch %d: %s - %s (%.1f mph, HB: %.1f, IVB: %.1f)",
+                        i, p$TaggedPitchType, p$Date, 
+                        p$RelSpeed %||% 0, p$HorzBreak %||% 0, p$InducedVertBreak %||% 0))
+          })
+        )
+      } else {
+        div(sprintf("%d pitches selected (too many to display individually)", nrow(selected_pitches)))
+      },
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("confirm_pitch_edit", "Save Changes", class = "btn-primary")
+      ),
+      easyClose = FALSE
+    ))
+    
+    session$userData$selected_for_edit <- selected_pitches
+    invisible(TRUE)
+  }
+
+  open_clip_from_df_and_index <- function(df, idx_raw, label = NULL) {
+    idx <- safe_selected(idx_raw)
+    n <- nrow(df)
+    if (!is.finite(idx) || is.na(idx) || n < 1L || idx < 1L || idx > n) return(invisible(FALSE))
+    if (identical(input$pitch_click_action, "edit")) {
+      return(open_pitch_edit_modal(df[idx, , drop = FALSE]))
+    }
+    row <- df[idx, , drop = FALSE]
+    show_pitch_video_modal_multi(row, dataset = df, dataset_idx = idx)
+    invisible(TRUE)
+  }
+
+  handle_table_video_click <- function(info, cache, table_label = NULL) {
+    if (is.null(info)) return(invisible(FALSE))
+    col_raw <- info$col %||% info$column
+    row_raw <- info$row %||% info$rows
+    if (is.null(col_raw) || is.null(row_raw)) return(invisible(FALSE))
+    col_idx <- suppressWarnings(as.integer(col_raw))
+    row_idx <- suppressWarnings(as.integer(row_raw))
+    if (is.finite(col_idx)) col_idx <- col_idx + 1L  # DT supplies 0-based column index
+    if (is.finite(row_idx) && row_idx < 1L) row_idx <- row_idx + 1L
+    
+    if (is.null(cache)) return(invisible(FALSE))
+    if (inherits(cache, "data.frame")) {
+      df_tbl <- cache
+      meta <- list()
+    } else if (is.list(cache)) {
+      df_tbl <- cache$table %||% cache$data %||% cache
+      meta <- cache
+    } else {
+      return(invisible(FALSE))
+    }
+    
+    if (is.null(df_tbl) || !nrow(df_tbl)) return(invisible(FALSE))
+    if (!is.finite(col_idx) || col_idx < 1 || col_idx > ncol(df_tbl)) return(invisible(FALSE))
+    if (!is.finite(row_idx) || row_idx < 1 || row_idx > nrow(df_tbl)) return(invisible(FALSE))
+    
+    col_name <- names(df_tbl)[col_idx]
+    if (!identical(col_name, "#")) return(invisible(FALSE))
+    
+    label_col <- meta$label_column %||% {
+      if ("Pitch" %in% names(df_tbl)) "Pitch"
+      else if ("Player" %in% names(df_tbl)) "Player"
+      else names(df_tbl)[1]
+    }
+    if (!label_col %in% names(df_tbl)) label_col <- names(df_tbl)[1]
+    pitch_label <- tryCatch(as.character(df_tbl[row_idx, label_col])[1], error = function(e) "")
+    pitch_label <- trimws(pitch_label)
+    
+    rows <- NULL
+    if (!is.null(meta$source)) {
+      rows <- pitch_rows_for_label(meta$source, pitch_label, meta$split_choice %||% NULL)
+    }
+    if ((is.null(rows) || !nrow(rows)) && !is.null(meta$fallback_source)) {
+      rows <- pitch_rows_for_label(meta$fallback_source, pitch_label, meta$split_choice %||% NULL)
+    }
+    if (is.null(rows) || !nrow(rows)) {
+      df_all <- filtered_data()
+      if (!is.null(df_all) && nrow(df_all)) {
+        rows <- pitch_rows_for_label(df_all, pitch_label, meta$split_choice %||% NULL)
+      }
+    }
+    
+    if (is.null(rows) || !nrow(rows)) {
+      showModal(modalDialog("No pitches found for this table row.", easyClose = TRUE, footer = NULL))
+      return(invisible(FALSE))
+    }
+    
+    rows <- as.data.frame(rows, stringsAsFactors = FALSE)
+    if (is.null(rownames(rows))) {
+      rownames(rows) <- as.character(seq_len(nrow(rows)))
+    }
+    
+    if (identical(input$pitch_click_action, "edit")) {
+      open_pitch_edit_modal(rows)
+      return(invisible(TRUE))
+    }
+    
+    start_idx <- 1L
+    show_pitch_video_sequence(
+      rows,
+      label = if (nzchar(pitch_label)) pitch_label else table_label,
+      start_index = start_idx,
+      compare_pool = rows,
+      primary_pool_idx = start_idx
+    )
+    invisible(TRUE)
+  }
   
   # Target Shapes Data Storage - load or create CSV
   target_shapes_file <- "target_shapes.csv"
   target_shapes <- reactiveVal()
   target_shapes_version <- reactiveVal(0)  # Trigger for re-rendering
   target_shapes_global <- target_shapes  # alias for module-wide access
-
+  
+  # Reactive storage for modal rows (pitch types the user wants to configure)
   target_shape_rows <- reactiveVal(
     tibble::tibble(
       PitchType = character(),
@@ -18171,7 +19775,7 @@ server <- function(input, output, session) {
     )
   )
   target_shape_pitch_types <- reactiveVal(character())
-  
+
   # Load existing target shapes or create empty dataframe
   loaded_shapes <- load_target_shapes_db()
   if (is.null(loaded_shapes)) {
@@ -18190,7 +19794,8 @@ server <- function(input, output, session) {
     }
   }
   target_shapes(loaded_shapes)
-
+  
+  # Helper to compute target from top Stuff+ without persisting
   calc_default_target_shape <- function(pitcher_name, pitch_type, date_range = NULL) {
     if (is.null(pitcher_name) || pitcher_name == "All" || is.null(pitch_type)) return(NULL)
     data <- pitch_data_pitching
@@ -18203,7 +19808,7 @@ server <- function(input, output, session) {
     }
     pitch_data_filtered <- pitch_data_filtered %>%
       dplyr::filter(!is.na(`Stuff+`), !is.na(InducedVertBreak), !is.na(HorzBreak))
-    if (!nrow(pitch_data_filtered)) return(NULL)
+    if (nrow(pitch_data_filtered) == 0) return(NULL)
     n_pitches <- min(10, nrow(pitch_data_filtered))
     top_pitches <- pitch_data_filtered %>%
       dplyr::arrange(desc(`Stuff+`)) %>%
@@ -18215,6 +19820,7 @@ server <- function(input, output, session) {
     )
   }
 
+  # Helper for safe numeric row IDs
   make_target_row_id <- function(pitch_type, existing = character()) {
     base <- gsub("[^A-Za-z0-9]", "_", pitch_type)
     base <- gsub("_+", "_", base)
@@ -18280,7 +19886,7 @@ server <- function(input, output, session) {
       target_shapes_version(target_shapes_version() + 1L)
     }
     
-    return(list(IVB = defaults$IVB, HB = defaults$HB, IsCustom = FALSE))
+    list(IVB = defaults$IVB, HB = defaults$HB, IsCustom = FALSE)
   }
   
   # Function to set custom target shape
@@ -18873,7 +20479,7 @@ server <- function(input, output, session) {
     ok <- tryCatch({
       notes_api_add(
         author_email = user_email(),
-        team         = "gcu",
+        team         = "osu",
         page_combo   = page_combo,
         pitcher      = pit,
         session_type = st,
@@ -18936,7 +20542,7 @@ server <- function(input, output, session) {
               div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Tables:"),
               selectInput(
                 "summaryTableMode", label = NULL,
-                choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data", ct_names, "Batted Ball Data", "Custom"),
+                choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data", ct_names, "Batted Ball Data", "Custom"),
                 selected = sel,
                 width = "120px"
               )
@@ -18997,7 +20603,7 @@ server <- function(input, output, session) {
               div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Tables:"),
               selectInput(
                 "dpTableMode", label = NULL,
-                choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data", ct_names, "Batted Ball Data", "Custom"),
+                choices = c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data", ct_names, "Batted Ball Data", "Custom"),
                 selected = sel,
                 width = "120px"
               )
@@ -19051,7 +20657,7 @@ server <- function(input, output, session) {
     tagList(
       radioButtons(
         "leaderboardMode", label = NULL,
-        choices  = c("Stuff","Process","Results","Bullpen","Live","Usage","Banny","Raw Data","Custom"),
+        choices  = c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data","Custom"),
         selected = sel,
         inline   = TRUE
       ),
@@ -19077,7 +20683,7 @@ server <- function(input, output, session) {
     # Apply team filtering to get the available pitchers
     if (input$teamType == "Campers") {
       df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_CAMPERS)
-    } else if (input$teamType == "GCU") {
+    } else if (input$teamType == TEAM_CODE) {
       # Filter to only GCU allowed pitchers (exclude campers)
       df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_PITCHERS)
     }
@@ -19143,7 +20749,7 @@ server <- function(input, output, session) {
     # Apply team filtering
     if (input$teamType == "Campers") {
       df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_CAMPERS)
-    } else if (input$teamType == "GCU") {
+    } else if (input$teamType == TEAM_CODE) {
       df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_PITCHERS)
     }
     # If "All" is selected, don't filter - show all data
@@ -19228,6 +20834,19 @@ server <- function(input, output, session) {
     df <- apply_after_count_filter(df, input$afterCountFilter)
     df <- apply_pitch_results_filter(df, input$pitchResults)
     
+    # With Video filter
+    if (!is.null(input$withVideo) && input$withVideo != "All") {
+      vid1 <- nzchar(ifelse(is.na(df$VideoClip),  "", df$VideoClip))
+      vid2 <- nzchar(ifelse(is.na(df$VideoClip2), "", df$VideoClip2))
+      vid3 <- nzchar(ifelse(is.na(df$VideoClip3), "", df$VideoClip3))
+      has_video <- vid1 | vid2 | vid3
+      if (identical(input$withVideo, "Yes")) {
+        df <- dplyr::filter(df, has_video)
+      } else if (identical(input$withVideo, "No")) {
+        df <- dplyr::filter(df, !has_video)
+      }
+    }
+    
     # Numeric ranges
     if (nnz(input$veloMin)) df <- dplyr::filter(df, RelSpeed         >= input$veloMin)
     if (nnz(input$veloMax)) df <- dplyr::filter(df, RelSpeed         <= input$veloMax)
@@ -19302,6 +20921,19 @@ server <- function(input, output, session) {
     if (!is.na(input$ivbMax))  df <- dplyr::filter(df, InducedVertBreak <= input$ivbMax)
     if (!is.na(input$hbMin))   df <- dplyr::filter(df, HorzBreak >= input$hbMin)
     if (!is.na(input$hbMax))   df <- dplyr::filter(df, HorzBreak <= input$hbMax)
+    
+    # With Video filter (leaderboard)
+    if (!is.null(input$withVideo) && input$withVideo != "All") {
+      vid1 <- nzchar(ifelse(is.na(df$VideoClip),  "", df$VideoClip))
+      vid2 <- nzchar(ifelse(is.na(df$VideoClip2), "", df$VideoClip2))
+      vid3 <- nzchar(ifelse(is.na(df$VideoClip3), "", df$VideoClip3))
+      has_video <- vid1 | vid2 | vid3
+      if (identical(input$withVideo, "Yes")) {
+        df <- dplyr::filter(df, has_video)
+      } else if (identical(input$withVideo, "No")) {
+        df <- dplyr::filter(df, !has_video)
+      }
+    }
     
     df <- df %>% dplyr::arrange(Date) %>% dplyr::mutate(PitchNumber = dplyr::row_number())
     if (!is.na(input$pcMin)) df <- dplyr::filter(df, PitchNumber >= input$pcMin)
@@ -19724,8 +21356,8 @@ server <- function(input, output, session) {
     y_max <- max(6, suppressWarnings(max(df$RelHeight, na.rm = TRUE) + 0.2))
     
     p <- ggplot() +
-      geom_polygon(data = mound, aes(x, y), fill = "tan", color = "tan") +
-      annotate("rect", xmin = -0.5, xmax = 0.5, ymin = rp_h - 0.05, ymax = rp_h + 0.05, fill = "white") +
+      geom_polygon(data = mound, aes(x, y), fill = "tan", color = "tan", alpha = 0.5) +
+      annotate("rect", xmin = -0.5, xmax = 0.5, ymin = rp_h - 0.05, ymax = rp_h + 0.05, fill = alpha("white", 0.6)) +
       geom_vline(xintercept = 0, color = line_col, size = 0.7) +
       geom_hline(yintercept = 0, color = line_col, size = 0.7) +
       # Individual pitches layer
@@ -19750,7 +21382,7 @@ server <- function(input, output, session) {
       scale_color_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
       scale_fill_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
       scale_y_continuous(limits = c(0, y_max), breaks = seq(0, ceiling(y_max), by = 1)) +
-      theme_minimal() + axis_theme + grid_theme(dark_on) +
+      theme_minimal() + axis_theme + grid_theme(dark_on) + transparent_bg_theme +
       labs(x = NULL, y = NULL) +
       theme(
         legend.position = "none",
@@ -19767,7 +21399,8 @@ server <- function(input, output, session) {
         ggiraph::opts_sizing(rescale = TRUE),
         ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
         ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
-        ggiraph::opts_hover_inv(css = "opacity:0.15;")
+        ggiraph::opts_hover_inv(css = "opacity:0.15;"),
+        ggiraph::opts_selection(type = "multiple", selected = character(0))
       )
     )
   })
@@ -19869,7 +21502,7 @@ server <- function(input, output, session) {
         
         # Get target shapes for each pitch type
         target_data <- lapply(types_chr, function(pt) {
-          target <- get_target_shape(pitcher_name, pt, date_range)
+          target <- get_target_shape(pitcher_name, pt, date_range, auto_save = FALSE)
           if (!is.null(target)) {
             data.frame(
               TaggedPitchType = pt,
@@ -20144,6 +21777,10 @@ server <- function(input, output, session) {
   output$summaryTablePage <- DT::renderDataTable({
     tryCatch({
       df <- filtered_data()
+      table_cache <- NULL
+      on.exit({
+        session$userData$table_cache_summaryTablePage <- table_cache
+      }, add = TRUE)
       if (!nrow(df)) {
         return(DT::datatable(
           data.frame(Message = "No data for selected filters"),
@@ -20654,6 +22291,12 @@ server <- function(input, output, session) {
             }
           )
         }
+        table_cache <- list(
+          table = df_dt,
+          source = df,
+          label_column = split_col_name,
+          split_choice = split_choice
+        )
         return(build_summary_dt(
           df_dt,
           lock            = split_col_name,
@@ -20999,6 +22642,7 @@ server <- function(input, output, session) {
         # Bind rows
         df_out <- dplyr::bind_rows(batted_ball_data, all_row)
         
+        table_cache <- df_out
         return(DT::datatable(
           df_out,
           options = list(
@@ -21234,11 +22878,8 @@ server <- function(input, output, session) {
         df_table <- df_table %>% dplyr::relocate(`Pitching+`, .after = dplyr::last_col())
       }
       
-      # Skip column reordering for Banny mode to preserve exact order
-      if (!identical(mode, "Banny")) {
-        df_table <- enforce_process_order(df_table)
-        df_table <- enforce_stuff_order(df_table)
-      }
+      df_table <- enforce_process_order(df_table)
+      df_table <- enforce_stuff_order(df_table)
       
       # Hide RV/100 in Results mode (keep it for Process/Performance only)
       if (identical(mode, "Results") && "RV/100" %in% names(df_table)) {
@@ -21268,6 +22909,12 @@ server <- function(input, output, session) {
           }
         )
       }
+      table_cache <- list(
+        table = df_table,
+        source = df,
+        label_column = split_col_name,
+        split_choice = split_choice
+      )
       build_summary_dt(
         df_table,
         lock            = split_col_name,
@@ -21361,6 +23008,10 @@ server <- function(input, output, session) {
   # -----------------------------
   output$summaryTable <- DT::renderDataTable({
     df <- filtered_data()
+    table_cache <- NULL
+    on.exit({
+      session$userData$table_cache_summaryTable <- table_cache
+    }, add = TRUE)
     if (!nrow(df)) {
       return(DT::datatable(
         data.frame(Message = "No data for selected filters"),
@@ -21886,6 +23537,7 @@ server <- function(input, output, session) {
         df_dt <- df_dt[, c(order_cols, extras), drop = FALSE]
       }
       
+      table_cache <- df_dt
       return(datatable_with_colvis(
         df_dt,
         lock            = split_col_name,
@@ -21991,6 +23643,7 @@ server <- function(input, output, session) {
       df_raw <- dplyr::bind_rows(raw_per_type, all_row)
       
       visible_set <- names(df_raw)
+      table_cache <- df_raw
       return(datatable_with_colvis(
         df_raw,
         lock            = split_col_name,
@@ -22233,6 +23886,7 @@ server <- function(input, output, session) {
       df_out <- dplyr::bind_rows(batted_ball_data, all_row)
       
       visible_set <- names(df_out)
+      table_cache <- df_out
       return(datatable_with_colvis(
         df_out,
         lock            = split_col_name,
@@ -22423,11 +24077,8 @@ server <- function(input, output, session) {
       df_table <- df_table %>% dplyr::relocate(`Pitching+`, .after = dplyr::last_col())
     }
     
-    # Skip column reordering for Banny mode to preserve exact order
-    if (!identical(mode, "Banny")) {
-      df_table <- enforce_process_order(df_table)
-      df_table <- enforce_stuff_order(df_table)
-    }
+    df_table <- enforce_process_order(df_table)
+    df_table <- enforce_stuff_order(df_table)
     # Hide RV/100 in Results mode (Summary)
     if (identical(mode, "Results") && "RV/100" %in% names(df_table)) {
       df_table <- dplyr::select(df_table, -`RV/100`)
@@ -22458,6 +24109,7 @@ server <- function(input, output, session) {
       )
     }
     
+    table_cache <- df_table
     build_summary_dt(
       df_table,
       lock            = split_col_name,
@@ -22467,6 +24119,22 @@ server <- function(input, output, session) {
       enable_colors   = isTRUE(input$dpTableColors)
     )
   })
+
+  # Click-to-video support on Summary/DP tables (# column)
+  observeEvent(input$summaryTablePage_cell_clicked, {
+    handle_table_video_click(
+      input$summaryTablePage_cell_clicked,
+      session$userData$table_cache_summaryTablePage,
+      table_label = "Summary Table"
+    )
+  }, ignoreNULL = TRUE)
+  observeEvent(input$summaryTable_cell_clicked, {
+    handle_table_video_click(
+      input$summaryTable_cell_clicked,
+      session$userData$table_cache_summaryTable,
+      table_label = "Data & Performance"
+    )
+  }, ignoreNULL = TRUE)
   
   # ================================
   # Pitching → AB Report (no tables)
@@ -22947,7 +24615,8 @@ server <- function(input, output, session) {
         ggiraph::opts_sizing(rescale = TRUE),
         ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE, css = tooltip_css),
         ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
-        ggiraph::opts_hover_inv(css = "opacity:0.15;")
+        ggiraph::opts_hover_inv(css = "opacity:0.15;"),
+        ggiraph::opts_selection(type = "multiple", selected = character(0))
       )
     )
   })
@@ -23039,7 +24708,7 @@ server <- function(input, output, session) {
         
         # Get target shapes for each pitch type
         target_data <- lapply(types_chr, function(pt) {
-          target <- get_target_shape(pitcher_name, pt, date_range)
+          target <- get_target_shape(pitcher_name, pt, date_range, auto_save = FALSE)
           if (!is.null(target)) {
             data.frame(
               TaggedPitchType = pt,
@@ -23133,6 +24802,13 @@ server <- function(input, output, session) {
   
   # Event handlers for movement plot pitch type editing
   observeEvent(input$movementPlot_selected, {
+    # Default behavior: play video(s) for the clicked pitch
+    if (!identical(input$pitch_click_action, "edit")) {
+      df <- filtered_data(); req(nrow(df) > 0)
+      open_clip_from_df_and_index(df, input$movementPlot_selected, label = "Movement Plot")
+      return()
+    }
+    
     req(input$movementPlot_selected)
     selected_ids <- as.numeric(input$movementPlot_selected)
     df <- filtered_data()
@@ -23186,7 +24862,7 @@ server <- function(input, output, session) {
     if (!nrow(rows)) {
       return(tags$p("No saved target shapes yet. Use the form below to add a pitch type.", style = "color:#555;"))
     }
-
+    
     tagList(
       lapply(seq_len(nrow(rows)), function(i) {
         row <- rows[i, , drop = FALSE]
@@ -23264,7 +24940,7 @@ server <- function(input, output, session) {
                        type = "warning", duration = 4)
       return()
     }
-    
+
     assigned <- target_shapes() %>%
       dplyr::filter(Pitcher == pitcher_name, PitchType %in% pitch_types)
     rows <- tibble::tibble(
@@ -23341,11 +25017,11 @@ server <- function(input, output, session) {
       ),
       easyClose = FALSE
     ))
-    
-  session$userData$current_pitcher_for_targets <- pitcher_name
-  session$userData$current_pitch_types_for_targets <- rows$PitchType
-  session$userData$current_target_date_range <- date_range
-}
+
+    session$userData$current_pitcher_for_targets <- pitcher_name
+    session$userData$current_pitch_types_for_targets <- rows$PitchType
+    session$userData$current_target_date_range <- date_range
+  }
 
   observeEvent(target_shape_rows(), ignoreNULL = FALSE, {
     rows <- target_shape_rows()
@@ -23423,7 +25099,7 @@ server <- function(input, output, session) {
     target_shape_rows(rows[rows$RowID != row_id, , drop = FALSE])
     showNotification(paste("Reset", row$PitchType[1], "to automatic target."), type = "message")
   })
-
+  
   # Target Shapes Settings Modal triggers
   observeEvent(input$targetShapesSettings, {
     pitcher_sel <- input$pitcher
@@ -23469,7 +25145,9 @@ server <- function(input, output, session) {
     }
     
     if (changes_made) {
+      # Trigger re-render of plots
       target_shapes_version(target_shapes_version() + 1)
+      
       showNotification("Target shapes saved successfully!", type = "message", duration = 3)
     }
     
@@ -23487,6 +25165,12 @@ server <- function(input, output, session) {
   
   # Event handler for summary movement plot
   observeEvent(input$summary_movementPlot_selected, {
+    if (!identical(input$pitch_click_action, "edit")) {
+      df <- filtered_data(); req(nrow(df) > 0)
+      open_clip_from_df_and_index(df, input$summary_movementPlot_selected, label = "Movement Plot (Summary)")
+      return()
+    }
+    
     req(input$summary_movementPlot_selected)
     selected_ids <- as.numeric(input$summary_movementPlot_selected)
     df <- filtered_data()
@@ -23533,6 +25217,52 @@ server <- function(input, output, session) {
     
     # Store selected data for use in confirm handler
     session$userData$selected_for_edit_summary <- selected_pitches
+  })
+
+  # Location (Summary tab) – make clicks open video modal
+  observeEvent(input$summary_zonePlot_selected, {
+    df <- filtered_data(); req(nrow(df) > 0)
+    open_clip_from_df_and_index(df, input$summary_zonePlot_selected, label = "Location (Summary)")
+  }, ignoreInit = TRUE)
+
+  observeEvent(input[["summary_releasePlot_selected"]], ignoreInit = TRUE, {
+    df <- filtered_data(); req(nrow(df) > 0)
+    release_handle_click(df, input[["summary_releasePlot_selected"]], prefix = "Release Plot")
+  })
+
+  observeEvent(input[["releaseCombo_selected"]], ignoreInit = TRUE, {
+    df <- filtered_data(); req(nrow(df) > 0)
+    release_handle_click(df, input[["releaseCombo_selected"]], prefix = "Release Combo")
+  })
+
+  observeEvent(input[["velocityPlot_selected"]], ignoreInit = TRUE, {
+    df <- filtered_data(); req(nrow(df) > 0)
+    open_clip_from_df_and_index(df, input[["velocityPlot_selected"]], label = "Velocity Plot")
+  })
+
+  observeEvent(input[["velocityByGamePlot_selected"]], ignoreInit = TRUE, {
+    df <- filtered_data(); req(nrow(df) > 0)
+    info <- parse_velocity_by_game_id(input[["velocityByGamePlot_selected"]])
+    rows <- velocity_group_rows(
+      df,
+      pitch_type = info$pitch_type,
+      date = info$date,
+      session_type = info$session
+    )
+    label <- sprintf("%s %s", info$pitch_type %||% "Pitch", if (!is.na(info$date)) format(info$date, "%m/%d/%y") else "")
+    execute_velocity_selection(rows, label)
+  })
+
+  observeEvent(input[["velocityInningPlot_selected"]], ignoreInit = TRUE, {
+    df <- filtered_data(); req(nrow(df) > 0)
+    info <- parse_velocity_inning_id(input[["velocityInningPlot_selected"]])
+    rows <- velocity_group_rows(
+      df,
+      pitch_type = info$pitch_type,
+      inning_ord = info$inning_ord
+    )
+    label <- sprintf("%s Inning %s", info$pitch_type %||% "Pitch", info$inning_ord %||% "")
+    execute_velocity_selection(rows, label)
   })
   
   # Confirm pitch type changes (main movement plot)
@@ -23691,6 +25421,104 @@ server <- function(input, output, session) {
     session$userData$selected_for_edit_summary <- NULL
   })
   
+  parse_velocity_by_game_id <- function(data_id) {
+    if (is.null(data_id)) return(list(pitch_type = NA_character_, date = NA, session = NA_character_))
+    parts <- strsplit(as.character(data_id), "_", fixed = TRUE)[[1]]
+    date_part <- if (length(parts) >= 1) parts[1] else NA_character_
+    pitch_part <- if (length(parts) >= 2) parts[2] else NA_character_
+    session_part <- if (length(parts) >= 3) parts[3] else NA_character_
+    date_val <- suppressWarnings(as.Date(date_part))
+    list(
+      pitch_type = pitch_part,
+      date = if (!is.na(date_val)) date_val else NA,
+      session = session_part
+    )
+  }
+
+  parse_velocity_inning_id <- function(data_id) {
+    if (is.null(data_id)) return(list(pitch_type = NA_character_, inning_ord = NA_integer_))
+    parts <- strsplit(as.character(data_id), "_", fixed = TRUE)[[1]]
+    inning_val <- if (length(parts) >= 2) suppressWarnings(as.integer(parts[2])) else NA_integer_
+    list(
+      pitch_type = parts[1] %||% NA_character_,
+      inning_ord = inning_val
+    )
+  }
+
+  velocity_group_rows <- function(df, pitch_type = NULL, date = NULL, session_type = NULL, inning_ord = NULL) {
+    if (is.null(df) || !nrow(df)) return(df[FALSE, , drop = FALSE])
+    rows <- df
+    if (!is.null(pitch_type) && nzchar(pitch_type)) {
+      rows <- rows[rows$TaggedPitchType == pitch_type, , drop = FALSE]
+    }
+    if (!is.null(date) && inherits(date, "Date") && !is.na(date)) {
+      dates <- suppressWarnings(as.Date(rows$Date))
+      rows <- rows[!is.na(dates) & dates == date, , drop = FALSE]
+    }
+    if (!is.null(session_type) && nzchar(session_type) && session_type != "U") {
+      rows <- rows[rows$SessionType == session_type, , drop = FALSE]
+    }
+    if (!is.null(inning_ord) && is.finite(inning_ord)) {
+      rows <- rows[rows$SessionType == "Live" & !is.na(rows$Inning), , drop = FALSE]
+      if (!nrow(rows)) return(rows[FALSE, , drop = FALSE])
+      game_key <- if ("GameID" %in% names(rows)) {
+        as.character(rows$GameID)
+      } else {
+        format(as.Date(rows$Date), "%Y-%m-%d")
+      }
+      rows$GameKey <- dplyr::coalesce(game_key, format(as.Date(rows$Date), "%Y-%m-%d"))
+      rows <- dplyr::arrange(rows, GameKey, dplyr::row_number())
+      rows <- dplyr::group_by(rows, GameKey)
+      rows <- dplyr::mutate(rows, InningOrd = match(Inning, unique(Inning)))
+      rows <- dplyr::ungroup(rows)
+      rows <- rows[rows$InningOrd == inning_ord, , drop = FALSE]
+    }
+    rows
+  }
+
+  execute_velocity_selection <- function(rows, label) {
+    if (is.null(rows) || !nrow(rows)) {
+      showModal(modalDialog("No pitches found for this selection.", easyClose = TRUE, footer = NULL))
+      return(invisible(FALSE))
+    }
+    show_pitch_video_sequence(
+      rows,
+      label = label,
+      compare_pool = rows,
+      primary_pool_idx = 1L
+    )
+    invisible(TRUE)
+  }
+
+  release_rows_for_type <- function(df, pitch_type) {
+    if (is.null(df) || !nrow(df) || is.null(pitch_type) || !nzchar(pitch_type)) return(df[FALSE, , drop = FALSE])
+    df[df$TaggedPitchType == pitch_type, , drop = FALSE]
+  }
+
+  release_handle_click <- function(df, data_id, prefix = "Release") {
+    if (is.null(df) || !nrow(df) || is.null(data_id)) return(invisible(FALSE))
+    ids <- unique(as.character(data_id))
+    if (!length(ids)) return(invisible(FALSE))
+    for (id in ids) {
+      if (!nzchar(id)) next
+      idx <- suppressWarnings(as.integer(id))
+      if (!is.na(idx) && idx >= 1 && idx <= nrow(df)) {
+        open_clip_from_df_and_index(df, idx, label = sprintf("%s pitch %s", prefix, idx))
+        next
+      }
+      rows <- release_rows_for_type(df, id)
+      if (!nrow(rows)) next
+      label <- sprintf("%s %s", prefix, id)
+      show_pitch_video_sequence(
+        rows,
+        label = label,
+        compare_pool = rows,
+        primary_pool_idx = 1L
+      )
+    }
+    invisible(TRUE)
+  }
+
   # Velocity Plot
   # Helper: pick the first existing column name from a preference list
   # ---------- helpers (replace the previous .pick_col) ----------
@@ -24865,7 +26693,7 @@ server <- function(input, output, session) {
       # Filter by team selection
       if (team_type == "Campers") {
         players <- sort(intersect(ALLOWED_CAMPERS, unique(pitch_data_pitching$Pitcher)))
-      } else if (team_type == "GCU") {
+      } else if (team_type == TEAM_CODE) {
         players <- sort(intersect(ALLOWED_PITCHERS, unique(pitch_data_pitching$Pitcher)))
       } else {
         # "All" - show all players
@@ -24875,7 +26703,7 @@ server <- function(input, output, session) {
       # Filter by team selection
       if (team_type == "Campers") {
         players <- sort(intersect(ALLOWED_CAMPERS, unique(na.omit(as.character(pitch_data$Batter)))))
-      } else if (team_type == "GCU") {
+      } else if (team_type == TEAM_CODE) {
         players <- sort(intersect(ALLOWED_HITTERS, unique(na.omit(as.character(pitch_data$Batter)))))
       } else {
         # "All" - show all players
@@ -24885,7 +26713,7 @@ server <- function(input, output, session) {
       # Filter by team selection
       if (team_type == "Campers") {
         players <- sort(intersect(ALLOWED_CAMPERS, unique(na.omit(as.character(pitch_data$Catcher)))))
-      } else if (team_type == "GCU") {
+      } else if (team_type == TEAM_CODE) {
         players <- sort(intersect(ALLOWED_PITCHERS, unique(na.omit(as.character(pitch_data$Catcher)))))
       } else {
         # "All" - show all players
@@ -25074,7 +26902,7 @@ server <- function(input, output, session) {
       data_before_team <- nrow(data)
       data <- data %>% dplyr::filter(!!rlang::sym(player_col) %in% ALLOWED_CAMPERS)
       cat("Campers filter applied: ", data_before_team, "->", nrow(data), "\n")
-    } else if (team_type == "GCU") {
+    } else if (team_type == TEAM_CODE) {
       # GCU team
       data_before_team <- nrow(data)
       data <- data %>% dplyr::filter(!!rlang::sym(player_col) %in% ALLOWED_PITCHERS)
@@ -26993,7 +28821,7 @@ server <- function(input, output, session) {
     pitcher_hand <- dplyr::coalesce(df_mv$PitcherThrows[!is.na(df_mv$PitcherThrows)][1], "Right")
     if (show_targets && !is.null(pitcher_name) && pitcher_name != "" && pitcher_name != "All") {
       target_data <- lapply(types_chr, function(pt) {
-        tgt <- get_target_shape(pitcher_name, pt, input$pp_date_range)
+        tgt <- get_target_shape(pitcher_name, pt, input$pp_date_range, auto_save = FALSE)
         if (is.null(tgt)) return(NULL)
         hb_plot <- ifelse(pitcher_hand == "Left", tgt$HB, -tgt$HB)
         data.frame(
