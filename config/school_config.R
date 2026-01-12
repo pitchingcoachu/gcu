@@ -1,7 +1,7 @@
 # School-specific overrides for the shared app.
 # Copy this file to another repo and keep the same structure when you need to customize colors, logos, APIs, etc.
 school_config <- list(
-  team_code = "OSU",
+  team_code = "GCU",
   # Player filters
   allowed_pitchers = c(
     "Lee, Aidan",
@@ -113,23 +113,19 @@ school_config <- list(
     background_secondary= "#e8ecf1"   # the matching secondary background tone
     
   ),
-  logo = "OSUlogo.png",
+  logo = "GCUlogo.png",
   coaches_emails = c(
-    "Blake.hawksworth@okstate.edu",
-    "Payton.stevens@okstate.edu",
-    "Trey.cobb@okstate.edu",
-    "jared.s.gaynor@gmail.com",
-    "Victor.Romero@okstate.edu",
-    "J.Holliday@okstate.edu",
-    "Mark.Ginther@okstate.edu",
-    "hub.roberts@okstate.edu"
+    "banni17@yahoo.com",
+    "adam.racine@aol.com",
+    "Njcbaseball08@gmail.com",
+    "ahalverson@pitchingcoachu.com"
   ),
   notes_api = list(
-    base_url = "https://script.google.com/macros/s/AKfycby8_RuLj5hKxi129ru32cpEojVimffD2msCSl-I9r9a1LfZe9Ht-yLPbiDHVatm48g/exec",
-    token = "OSUbaseball"
+    base_url = "https://script.google.com/macros/s/AKfycbwuftWhRZGV7f1lWFJnC5mBcxaXh7P7Xhlc7_Lvr5r6ZO_GYKbv6YxCp7B0AXsvCKY0/exec",
+    token = "GCUbaseball"
   ),
   extra = list(
-    school_name = "Oklahoma State",
+    school_name = "gcu",
     ftp_folder = "trackman",
     cloudinary_folder = "trackman"
   )
