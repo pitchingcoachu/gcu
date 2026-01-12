@@ -83,6 +83,7 @@ app_packages <- c(
   "DBI",
   "RSQLite",
   "RMariaDB",
+  "RPostgres",
   "digest"
 )
 
