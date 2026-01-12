@@ -69,8 +69,19 @@ jobs:
       run: |
         Rscript -e "rsconnect::setAccountInfo(name='${{ secrets.SHINYAPPS_ACCOUNT }}', token='${{ secrets.SHINYAPPS_TOKEN }}', secret='${{ secrets.SHINYAPPS_SECRET }}')"
         
-    - name: Sync GCU data
+    - name: Sync OSU data
       run: Rscript automated_data_sync.R
+        
+    - name: Sync TrackMan media (EdgeR → Cloudinary)
+      run: Rscript trackman_api_sync.R
+      env:
+        TM_CLIENT_ID: ${{ secrets.TM_CLIENT_ID }}
+        TM_CLIENT_SECRET: ${{ secrets.TM_CLIENT_SECRET }}
+        CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
+        CLOUDINARY_UPLOAD_PRESET: ${{ secrets.CLOUDINARY_UPLOAD_PRESET }}
+        CLOUDINARY_FOLDER: ${{ secrets.CLOUDINARY_FOLDER }}
+        TM_LOOKBACK_DAYS: ${{ secrets.TM_LOOKBACK_DAYS }}
+        TM_ENV: ${{ secrets.TM_ENV }}
         
     - name: Check if data directory exists
       id: check_data
