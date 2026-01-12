@@ -42,7 +42,8 @@ required_packages <- c(
   "shinymanager",
   "DBI",
   "RSQLite",
-  "RMariaDB"
+  "RMariaDB",
+  "RPostgres"
 )
 
 
