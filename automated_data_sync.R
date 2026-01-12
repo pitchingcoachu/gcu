@@ -16,6 +16,8 @@ source("csv_filter_utils.R")
 FTP_HOST <- "ftp.trackmanbaseball.com"
 FTP_USER <- "GrandCanyon"
 FTP_PASS <- "F42Y6LiLGS"
+# When passwords contain special characters like @ or %, don't embed them in the URL.
+FTP_USERPWD <- paste0(FTP_USER, ":", FTP_PASS)
 
 # Local data directories
 LOCAL_DATA_DIR      <- "data/"
@@ -29,9 +31,9 @@ dir.create(LOCAL_V3_DIR, recursive = TRUE, showWarnings = FALSE)
 
 # Function to list files in FTP directory
 list_ftp_files <- function(ftp_path) {
-  url <- paste0("ftp://", FTP_USER, ":", FTP_PASS, "@", FTP_HOST, ftp_path)
+  url <- paste0("ftp://", FTP_HOST, ftp_path)
   tryCatch({
-    files <- getURL(url, ftp.use.epsv = FALSE, dirlistonly = TRUE)
+    files <- getURL(url, userpwd = FTP_USERPWD, ftp.use.epsv = FALSE, dirlistonly = TRUE)
     strsplit(files, "\n")[[1]]
   }, error = function(e) {
     cat("Error listing files in", ftp_path, ":", e$message, "\n")
@@ -52,12 +54,13 @@ download_csv <- function(remote_file, local_file) {
     return(FALSE)  # Return FALSE so we don't count it as newly downloaded
   }
   
-  url <- paste0("ftp://", FTP_USER, ":", FTP_PASS, "@", FTP_HOST, remote_file)
+  url <- paste0("ftp://", FTP_HOST, remote_file)
   
   tryCatch({
-    # Download file to temporary location
+    # Download file to temporary location using RCurl with proper credentials
     temp_file <- tempfile(fileext = ".csv")
-    download.file(url, temp_file, method = "curl", quiet = TRUE)
+    bin <- RCurl::getBinaryURL(url, userpwd = FTP_USERPWD, ftp.use.epsv = FALSE)
+    writeBin(bin, temp_file)
     
     # Read data to check if valid
     data <- read_csv(temp_file, show_col_types = FALSE)
@@ -88,7 +91,6 @@ sync_practice_data <- function() {
   
   for (yr in years) {
     practice_base_path <- paste0("/practice/", yr, "/")
-    
     months <- list_ftp_files(practice_base_path)
     month_dirs <- months[grepl("^\\d{2}$", months)]  # Match MM format
     
@@ -140,7 +142,7 @@ is_date_in_range <- function(file_path) {
   file_date <- as.Date(paste(date_match[2], date_match[3], date_match[4], sep = "-"))
   
   # Start date: August 1, 2025 (nothing before this)
-  start_date <- as.Date("2025-10-20")
+  start_date <- as.Date("2025-08-10")
   
   # Include all data from August 1, 2025 onwards (no future year restrictions)
   return(file_date >= start_date)
@@ -182,6 +184,7 @@ sync_v3_data <- function() {
           csv_files <- list_ftp_files(csv_path)
           csv_files <- csv_files[grepl("\\.csv$", csv_files, ignore.case = TRUE)]
           
+          # Filter out files with "playerpositioning" or "unverified" in v3 folder
           csv_files <- csv_files[!grepl("playerpositioning", csv_files, ignore.case = TRUE)]
           
           for (file in csv_files) {
