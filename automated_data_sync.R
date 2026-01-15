@@ -69,7 +69,7 @@ on.exit(
   if (!is.null(conn) && DBI::dbIsValid(conn)) {
     DBI::dbDisconnect(conn)
   }
-, add = TRUE)
+  , add = TRUE)
 
 ensure_schema <- function() {
   if (nzchar(neon_cfg$schema) && neon_cfg$schema != "public") {
@@ -226,7 +226,7 @@ download_csv <- function(remote_file, table_name) {
   if (should_exclude_csv(filename)) {
     return(FALSE)
   }
-
+  
   url <- paste0("ftp://", FTP_HOST, remote_file)
   temp_file <- tempfile(fileext = ".csv")
   success <- FALSE
@@ -255,23 +255,23 @@ sync_practice_data <- function() {
   cat("Syncing practice data to Neon...\n")
   years <- as.character(2025:year(Sys.Date()))
   downloaded_count <- 0
-
+  
   for (yr in years) {
     practice_base_path <- paste0("/practice/", yr, "/")
     month_dirs <- list_ftp_files(practice_base_path)
     month_dirs <- month_dirs[grepl("^\\d{2}$", month_dirs)]
-
+    
     for (month_dir in month_dirs) {
       month_path <- paste0(practice_base_path, month_dir, "/")
       day_dirs <- list_ftp_files(month_path)
       day_dirs <- day_dirs[grepl("^\\d{2}$", day_dirs)]
-
+      
       for (day_dir in day_dirs) {
         day_path <- paste0(month_path, day_dir, "/")
         files_in_day <- list_ftp_files(day_path)
         csv_files <- files_in_day[grepl("\\.csv$", files_in_day, ignore.case = TRUE)]
         csv_files <- csv_files[!grepl("playerpositioning", csv_files, ignore.case = TRUE)]
-
+        
         for (file in csv_files) {
           remote_path <- paste0(day_path, file)
           if (download_csv(remote_path, practice_table_name)) {
@@ -300,22 +300,22 @@ sync_v3_data <- function() {
   cat("Syncing v3 data to Neon...\n")
   years <- as.character(2025:year(Sys.Date()))
   downloaded_count <- 0
-
+  
   for (yr in years) {
     v3_base_path <- paste0("/v3/", yr, "/")
     month_dirs <- list_ftp_files(v3_base_path)
     month_dirs <- month_dirs[grepl("^\\d{2}$", month_dirs)]
-
+    
     for (month_dir in month_dirs) {
       month_path <- paste0(v3_base_path, month_dir, "/")
       day_dirs <- list_ftp_files(month_path)
       day_dirs <- day_dirs[grepl("^\\d{2}$", day_dirs)]
-
+      
       for (day_dir in day_dirs) {
         day_path <- paste0(month_path, day_dir, "/")
         full_date_path <- paste0(yr, "/", month_dir, "/", day_dir)
         if (!is_date_in_range(full_date_path)) next
-
+        
         files_in_day <- list_ftp_files(day_path)
         has_csv_dir <- "CSV" %in% files_in_day
         if (has_csv_dir) {
@@ -326,7 +326,7 @@ sync_v3_data <- function() {
         }
         csv_files <- csv_files[grepl("\\.csv$", csv_files, ignore.case = TRUE)]
         csv_files <- csv_files[!grepl("playerpositioning|unverified", csv_files, ignore.case = TRUE)]
-
+        
         for (file in csv_files) {
           remote_path <- if (has_csv_dir) paste0(day_path, "CSV/", file) else paste0(day_path, file)
           if (download_csv(remote_path, v3_table_name)) {
@@ -345,7 +345,7 @@ main_sync <- function() {
   cat("Starting Neon data sync at", as.character(Sys.time()), "\n")
   ensure_schema()
   ensure_processed_files_table()
-
+  
   start_time <- Sys.time()
   last_sync_file <- file.path(LOCAL_DATA_DIR, "last_sync.txt")
   if (!file.exists(last_sync_file)) {
@@ -358,19 +358,19 @@ main_sync <- function() {
   } else {
     cat("Incremental sync - keeping metadata files\n")
   }
-
+  
   practice_updated <- sync_practice_data()
   v3_updated <- sync_v3_data()
-
+  
   end_time <- Sys.time()
   duration <- difftime(end_time, start_time, units = "mins")
   cat("Data sync completed in", round(duration, 2), "minutes\n")
-
+  
   writeLines(as.character(Sys.time()), last_sync_file)
   if (practice_updated || v3_updated) {
     writeLines(as.character(Sys.time()), file.path(LOCAL_DATA_DIR, "new_data_flag.txt"))
   }
-
+  
   practice_updated || v3_updated
 }
 
@@ -383,3 +383,4 @@ if (!interactive()) {
   }
   cat("Sync completed successfully\n")
 }
+
