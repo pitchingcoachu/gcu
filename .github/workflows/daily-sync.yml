@@ -1,4 +1,4 @@
-name: Daily OSU Data Sync and Deploy
+name: Daily GCU Data Sync and Deploy
 
 on:
   schedule:
