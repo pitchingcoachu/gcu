@@ -1,4 +1,4 @@
-name: Daily GCU Data Sync and Deploy
+name: Daily OSU Data Sync and Deploy
 
 on:
   schedule:
@@ -10,14 +10,6 @@ on:
 jobs:
   sync-and-deploy:
     runs-on: ubuntu-latest
-    env:
-      NEON_HOST: ${{ secrets.NEON_HOST }}
-      NEON_DB: ${{ secrets.NEON_DB }}
-      NEON_USER: ${{ secrets.NEON_USER }}
-      NEON_PASSWORD: ${{ secrets.NEON_PASSWORD }}
-      NEON_PORT: ${{ secrets.NEON_PORT }}
-      NEON_SSLMODE: ${{ secrets.NEON_SSLMODE }}
-      NEON_TABLE_PREFIX: gcu
     
     steps:
     - name: Checkout repository
@@ -91,17 +83,33 @@ jobs:
         TM_LOOKBACK_DAYS: ${{ secrets.TM_LOOKBACK_DAYS }}
         TM_ENV: ${{ secrets.TM_ENV }}
         
-    - name: Check for new data flag
+    - name: Check if data directory exists
       id: check_data
       run: |
-        if [ -f "data/new_data_flag.txt" ]; then
+        if [ -d "data" ] && [ "$(ls -A data)" ]; then
           echo "data_updated=true" >> $GITHUB_OUTPUT
-          echo "New data flag detected"
+          echo "Found data files:"
+          ls -la data/
         else
           echo "data_updated=false" >> $GITHUB_OUTPUT
-          echo "No new data this run"
+          echo "No data directory or no files found"
         fi
-
+        
     - name: Deploy to shinyapps.io
       if: steps.check_data.outputs.data_updated == 'true' || github.event_name == 'workflow_dispatch'
       run: Rscript deploy_script.R
+      
+    - name: Commit updated data
+      if: steps.check_data.outputs.data_updated == 'true'
+      run: |
+        git config --local user.email "action@github.com"
+        git config --local user.name "GitHub Action"
+        git add data/
+        if git diff --staged --quiet; then
+          echo "No changes to commit"
+        else
+          git commit -m "Auto-update GCU data $(date)"
+          # Rebase safely even with untracked/unstaged files from earlier steps
+          git pull --rebase --autostash origin main
+          git push
+        fi
