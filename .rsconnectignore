@@ -1,5 +1,0 @@
-# Prevent local sync artifacts from being uploaded with deployments
-data/
-data/*
-.Rhistory
-.RData
