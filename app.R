@@ -63,8 +63,15 @@ school_setting <- function(name, default = NULL) {
 # School-scoped overrides
 TEAM_CODE <- school_setting("team_code", TEAM_CODE)
 if (!nzchar(TEAM_CODE)) TEAM_CODE <- "OSU"
+school_logo <- school_setting("logo", "PCUlogo.png")
+school_extra <- school_setting("extra", list())
+school_display_name <- school_extra$school_name
+if (is.null(school_display_name) || !nzchar(school_display_name)) {
+  school_display_name <- TEAM_CODE
+}
+
 TEAM_CHOICES <- c("All" = "All",
-                  TEAM_CODE = TEAM_CODE,
+                  setNames(TEAM_CODE, school_display_name),
                   "Opponents" = "Opponents",
                   "Campers" = "Campers")
 
@@ -89,13 +96,6 @@ if (is.null(background_color) || !nzchar(background_color)) {
 background_secondary_color <- school_colors$background_secondary
 if (is.null(background_secondary_color) || !nzchar(background_secondary_color)) {
   background_secondary_color <- background_color
-}
-
-school_logo <- school_setting("logo", "PCUlogo.png")
-school_extra <- school_setting("extra", list())
-school_display_name <- school_extra$school_name
-if (is.null(school_display_name) || !nzchar(school_display_name)) {
-  school_display_name <- TEAM_CODE
 }
 
 coach_emails <- school_setting("coaches_emails", c("coach@example.com"))
