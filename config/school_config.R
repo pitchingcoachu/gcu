@@ -1,49 +1,10 @@
 # School-specific overrides for the shared app.
 # Copy this file to another repo and keep the same structure when you need to customize colors, logos, APIs, etc.
-
-parse_auth_db_config <- function(path = "auth_db_config.yml") {
-  if (!file.exists(path)) return(list())
-  lines <- trimws(readLines(path, warn = FALSE))
-  lines <- lines[lines != "" & !startsWith(lines, "#")]
-  cfg <- list()
-  for (line in lines) {
-    if (!grepl(":", line)) next
-    parts <- strsplit(line, ":", fixed = TRUE)[[1]]
-    key <- trimws(parts[1])
-    value <- trimws(paste(parts[-1], collapse = ":"))
-    cfg[[key]] <- value
-  }
-  cfg
-}
-
-load_neon_config <- function(team_code = "GCU", yaml_path = "auth_db_config.yml") {
-  yaml_cfg <- parse_auth_db_config(yaml_path)
-  pick <- function(env_name, yaml_key, default = "") {
-    val <- Sys.getenv(env_name, "")
-    if (nzchar(val)) return(val)
-    yval <- yaml_cfg[[yaml_key]]
-    if (!is.null(yval) && nzchar(yval)) return(yval)
-    default
-  }
-  
-  list(
-    host = pick("NEON_HOST", "host"),
-    port = pick("NEON_PORT", "port", "5432"),
-    dbname = pick("NEON_DB", "dbname"),
-    user = pick("NEON_USER", "user"),
-    pass = pick("NEON_PASSWORD", "password"),
-    sslmode = pick("NEON_SSLMODE", "sslmode", "require"),
-    schema = pick("NEON_SCHEMA", "schema", "public"),
-    table_prefix = pick("NEON_TABLE_PREFIX", "table_prefix", tolower(team_code))
-  )
-}
-
-default_team_code <- "GCU"
 school_config <- list(
-  team_code = default_team_code,
+  team_code = "GCU",
   # Player filters
   allowed_pitchers = c(
-    "Lee, Aidan",
+  "Lee, Aidan",
     "Limas, Jacob",
     "Higginbottom, Elijah",
     "Cunnings, Cam",
@@ -69,48 +30,49 @@ school_config <- list(
     "New, Cody"
   ),
   allowed_hitters = c(
-    "Wentworth, TP",
-    "LeBlanc, Bryce",
-    "Lund, Ethan",
-    "Fyke, Kai",
-    "Rhodes, Stormy",
-    "Wech, Noah",
-    "Brown, Matthew",
-    "Phillips, Brennan",
-    "Blake, Drew",
-    "Glendinning, Lucas",
-    "Golden, Josiah",
-    "Kennedy, Jake",
-    "Barrett, Hudson",
-    "Zagar, Kyler",
-    "Albright, Gaige",
-    "Sramek, Caden",
-    "Jennings, Parker",
-    "Burns, Zane",
-    "Winslow, Drew",
-    "Pearcy, Kyle",
-    "Turner, Cael",
-    "Pesca, Mario",
-    "Watkins, Hunter",
-    "Thompson, Brock",
-    "Meola, Aidan",
-    "Bowen, Terrance",
-    "Smithwick, Campbell",
-    "Shull, Garrett",
-    "Indomenico, Remo",
-    "Ortiz, Avery",
-    "Wallace, Danny",
-    "Brueggemann, Colin",
-    "Ritchie, Kollin",
-    "Conover, Alex",
-    "Norman, Sebastian",
-    "Essex, Ezra",
-    "Saunders, Evan",
-    "Pladson, Cole",
-    "Schambow, Quinn",
-    "Kennedy, Ty",
-    "Francisco, Brady",
-    "Pomeroy, Deacon"
+  "Wentworth, TP",
+  "LeBlanc, Bryce",
+  "Lund, Ethan",
+  "Fyke, Kai",
+  "Rhodes, Stormy",
+  "Wech, Noah",
+  "Brown, Matthew",
+  "Phillips, Brennan",
+  "Blake, Drew",
+  "Glendinning, Lucas",
+  "Golden, Josiah",
+  "Kennedy, Jake",
+  "Barrett, Hudson",
+  "Zagar, Kyler",
+  "Albright, Gaige",
+  "Sramek, Caden",
+  "Jennings, Parker",
+  "Burns, Zane",
+  "Winslow, Drew",
+  "Pearcy, Kyle",
+  "Turner, Cael",
+  "Pesca, Mario",
+  "Watkins, Hunter",
+  "Thompson, Brock",
+  "Meola, Aidan",
+  "Bowen, Terrance",
+  "Smithwick, Campbell",
+  "Shull, Garrett",
+  "Indomenico, Remo",
+  "Ortiz, Avery",
+  "Wallace, Danny",
+  "Brueggemann, Colin",
+  "Ritchie, Kollin",
+  "Conover, Alex",
+  "Norman, Sebastian",
+  "Essex, Ezra",
+  "Saunders, Evan",
+  "Pladson, Cole",
+  "Schambow, Quinn",
+  "Kennedy, Ty",
+  "Francisco, Brady",
+  "Pomeroy, Deacon",
+  "Kennedy, Jacob"
   ),
   allowed_campers = c(
     "Bowman, Brock",
@@ -167,8 +129,7 @@ school_config <- list(
     school_name = "GCU",
     ftp_folder = "trackman",
     cloudinary_folder = "trackman"
-  ),
-  neon = load_neon_config(team_code = default_team_code)
+  )
 )
 
 colorize_css <- function(css, accent, accent_secondary, background, background_secondary) {
