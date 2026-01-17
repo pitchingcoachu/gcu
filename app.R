@@ -2300,7 +2300,7 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
     if (enable_color_mode) {
       color_cols <- switch(
         color_mode,
-        "Process" = c("InZone%","Comp%","Strike%","Swing%","FPS%","E+A%","1-1W%","QP%","Ctrl+","QP+","Pitching+","RV/100"),
+        "Process" = c("InZone%","Comp%","Strike%","Swing%","FPS%","E+A%","1-1W%","QP%","Ctrl+","QP+","Stuff+","Pitching+","RV/100"),
         "Live"    = c("InZone%","Strike%","FPS%","E+A%","QP+","Ctrl+","Pitching+","K%","BB%","Whiff%"),
         "Results" = c("Whiff%","K%","BB%","CSW%","GB%","Barrel%","EV"),
         "Bullpen" = c("InZone%","Comp%","Ctrl+","Stuff+"),
