@@ -2055,18 +2055,17 @@ parse_date_flex <- function(x, pivot = 1970L) {
 }
 
 blank_ea_except_all <- function(df) {
-  if (!is.data.frame(df) || !("E+A%" %in% names(df))) return(df)
+  if (!is.data.frame(df)) return(df)
+  target_cols <- intersect(c("E+A%","Early%","Ahead%"), names(df))
+  if (!length(target_cols)) return(df)
   
-  # Look for any column that might be the grouping/pitch column - expanded list
   pitch_cols <- intersect(c("Pitch","PitchType","TaggedPitchType","SplitColumn",
                             "Batter Hand","Count","After Count","Velocity","IVB","HB",
                             "Batter","Pitcher Hand","Date","Player"), names(df))
   
-  # If the table is grouped by Player (leaderboards), keep E+A% values
   if ("Player" %in% pitch_cols) return(df)
   if (!length(pitch_cols)) return(df)
   
-  # Safe column access with error handling - check column exists first
   pitch_vals <- tryCatch({
     col_name <- pitch_cols[1]
     if (!col_name %in% names(df)) return(character(0))
@@ -2075,14 +2074,15 @@ blank_ea_except_all <- function(df) {
     return(character(nrow(df)))
   })
   
-  # If couldn't get values or wrong length, return unchanged
   if (!length(pitch_vals) || length(pitch_vals) != nrow(df)) return(df)
   
   keep_all <- is.na(pitch_vals) | pitch_vals == "all"
-  # Handle NA values in logical condition
   keep_all[is.na(keep_all)] <- FALSE
-  df$`E+A%` <- as.character(df$`E+A%`)
-  df$`E+A%`[!keep_all] <- ""
+  
+  for (col in target_cols) {
+    df[[col]] <- as.character(df[[col]])
+    df[[col]][!keep_all] <- ""
+  }
   df
 }
 
@@ -2188,6 +2188,8 @@ safe_make_summary <- function(df, group_col = "TaggedPitchType") {
       BBPercent = character(0),
       FPSPercent = character(0),
       EAPercent = character(0),
+      EarlyPercent = character(0),
+      AheadPercent = character(0),
       StrikePercent = character(0),
       SwingPercent = character(0),
       WhiffPercent = character(0),
@@ -2300,7 +2302,7 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
     if (enable_color_mode) {
       color_cols <- switch(
         color_mode,
-        "Process" = c("InZone%","Comp%","Strike%","Swing%","FPS%","E+A%","1-1W%","QP%","Ctrl+","QP+","Stuff+","Pitching+","RV/100"),
+        "Process" = c("InZone%","Comp%","Strike%","Swing%","FPS%","Early%","Ahead%","E+A%","1-1W%","QP%","Ctrl+","QP+","Stuff+","Pitching+","RV/100"),
         "Live"    = c("InZone%","Strike%","FPS%","E+A%","QP+","Ctrl+","Pitching+","K%","BB%","Whiff%"),
         "Results" = c("Whiff%","K%","BB%","CSW%","GB%","Barrel%","EV"),
         "Bullpen" = c("InZone%","Comp%","Ctrl+","Stuff+"),
@@ -2378,13 +2380,13 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
 
 # Default column sets for the table-mode toggle
 stuff_cols        <- c("Pitch","#","Velo","Max","IVB","HB","rTilt","bTilt","SpinEff","Spin","Height","Side","Ext","VAA","HAA","Stuff+")
-process_cols      <- c("Pitch","#","BF","RV/100","InZone%","Comp%","Strike%","Swing%","FPS%","E+A%","1-1W%","QP%","Ctrl+","QP+","Pitching+")
+process_cols      <- c("Pitch","#","BF","RV/100","InZone%","Comp%","Strike%","Swing%","FPS%","Early%","Ahead%","E+A%","1-1W%","QP%","Ctrl+","QP+","Pitching+")
 results_cols      <- c("Pitch","#","BF","K%","BB%","GB%","Barrel%","Whiff%","CSW%","EV","LA")
 results_cols_live <- c("Pitch","#","BF","K%","BB%","GB%","Whiff%","CSW%","EV","LA","Pitching+")
 bullpen_cols      <- c("Pitch","#","Velo","Max","IVB","HB","Spin","bTilt","Height","Side","Ext","InZone%","Comp%","Ctrl+","Stuff+")
 live_cols         <- c("Pitch","#","Velo","Max","IVB","HB","FPS%","E+A%","InZone%","Strike%","Whiff%","K%","BB%","QP+")
 usage_cols        <- c("Pitch","#","Usage","0-0","Behind","Even","Ahead","<2K","2K")
-perf_cols         <- c("Pitch","#","BF","RV/100","InZone%","Comp%","Strike%","FPS%","E+A%","1-1W%","K%","BB%","Whiff%","CSW%","EV","LA","Ctrl+","QP+","Pitching+")
+perf_cols         <- c("Pitch","#","BF","RV/100","InZone%","Comp%","Strike%","FPS%","Early%","Ahead%","E+A%","1-1W%","K%","BB%","Whiff%","CSW%","EV","LA","Ctrl+","QP+","Pitching+")
 
 # ---- unified list for the pickers + a helper to compute visibility
 all_table_cols <- unique(c(stuff_cols, process_cols, results_cols, results_cols_live, bullpen_cols, live_cols, usage_cols, perf_cols, "Overall"))
@@ -2582,6 +2584,8 @@ get_process_thresholds <- function(column_name, pitch_type) {
   }
   if (column_name == "FPS%") return(list(poor = 55, avg = 60, great = 65))
   if (column_name == "E+A%" && pitch_type == "all") return(list(poor = 65, avg = 70, great = 75))
+  if (column_name == "1-1W%") return(list(poor = 58, avg = 63, great = 68))
+  if (column_name == "Ahead%") return(list(poor = 32, avg = 37, great = 42))
   if (column_name == "QP%") return(list(poor = 38, avg = 48, great = 58))
   if (column_name == "Ctrl+") return(list(poor = 75, avg = 85, great = 95))
   if (column_name == "QP+") return(list(poor = 75, avg = 90, great = 105))
@@ -2743,6 +2747,14 @@ enforce_process_order <- function(df) {
   if (all(c("BF","RV/100") %in% names(df))) df <- dplyr::relocate(df, `RV/100`, .after = `BF`)
   if (all(c("RV/100","Usage") %in% names(df))) df <- dplyr::relocate(df, Usage, .after = `RV/100`)
   else if (all(c("BF","Usage") %in% names(df))) df <- dplyr::relocate(df, Usage, .after = `BF`)
+  if (all(c("Early%","Ahead%") %in% names(df))) {
+    df <- dplyr::relocate(df, `Early%`, .before = `Ahead%`)
+  }
+  if (all(c("Ahead%","E+A%") %in% names(df))) {
+    df <- dplyr::relocate(df, `Ahead%`, .before = `E+A%`)
+  } else if (!("Ahead%" %in% names(df)) && all(c("Early%","E+A%") %in% names(df))) {
+    df <- dplyr::relocate(df, `Early%`, .before = `E+A%`)
+  }
   if (all(c("E+A%","1-1W%") %in% names(df))) df <- dplyr::relocate(df, `1-1W%`, .after = `E+A%`)
   if (all(c("1-1W%","QP%") %in% names(df))) {
     df <- dplyr::relocate(df, `QP%`, .after = `1-1W%`)
@@ -5371,6 +5383,38 @@ safe_pct <- function(num, den) {
          "")
 }
 
+count_state_mask <- function(balls, strikes, states) {
+  valid <- !is.na(balls) & !is.na(strikes)
+  if (!any(valid)) return(rep(FALSE, length(balls)))
+  mask <- rep(FALSE, length(balls))
+  for (state in states) {
+    mask <- mask | (valid & balls == state[1] & strikes == state[2])
+  }
+  mask
+}
+
+calc_state_pct <- function(df, states, calls) {
+  if (!is.data.frame(df) || !nrow(df)) return("")
+  bf <- calculate_bf(df)
+  if (!is.finite(bf) || bf <= 0) return("0.0%")
+  balls <- suppressWarnings(as.numeric(df$Balls))
+  strikes <- suppressWarnings(as.numeric(df$Strikes))
+  pitch_call <- if ("PitchCall" %in% names(df)) as.character(df$PitchCall) else rep(NA_character_, nrow(df))
+  mask <- count_state_mask(balls, strikes, states)
+  safe_pct(sum(mask & pitch_call %in% calls, na.rm = TRUE), bf)
+}
+
+calc_early_pct <- function(df) {
+  states <- list(c(0, 0), c(0, 1), c(1, 0), c(1, 1))
+  calc_state_pct(df, states, c("InPlay"))
+}
+
+calc_ahead_pct <- function(df) {
+  states <- list(c(0, 1), c(1, 1))
+  strike_calls <- c("StrikeCalled","StrikeSwinging","FoulBall","FoulBallFieldable","FoulBallNotFieldable")
+  calc_state_pct(df, states, strike_calls)
+}
+
 one_one_strike_calls <- c(
   "StrikeCalled", "StrikeSwinging",
   "FoulBall", "FoulBallFieldable", "FoulBallNotFieldable",
@@ -5643,6 +5687,8 @@ make_summary <- function(df, group_col = "TaggedPitchType") {
       
       FPSPercent = safe_pct(FPS_all, fps_opp),
       EAPercent  = safe_pct(EA_all,  fps_opp),
+      EarlyPercent = calc_early_pct(dplyr::cur_data_all()),
+      AheadPercent = calc_ahead_pct(dplyr::cur_data_all()),
       one_one_w_pct = calc_one_one_w_pct(dplyr::cur_data_all()),
       QPPercent  = safe_pct(QPCount, PitchCount),
       
@@ -5702,11 +5748,14 @@ make_summary <- function(df, group_col = "TaggedPitchType") {
       ReleaseTilt, BreakTilt, SpinEff, SpinRate,
       RelHeight, RelSide, VertApprAngle, HorzApprAngle, Extension,
       InZonePercent, CompPercent, KPercent, BBPercent, FPSPercent, EAPercent, one_one_w_pct, QPPercent,
-      StrikePercent, SwingPercent, WhiffPercent, EV, LA,
+      EarlyPercent, AheadPercent, StrikePercent, SwingPercent, WhiffPercent, EV, LA,
       `Stuff+`, `Ctrl+`, `QP+`, `Pitching+`
     ) %>%
-    # Conditionally remove UsagePct if it exists
-    dplyr::rename(`1-1W%` = one_one_w_pct) %>%
+    dplyr::rename(
+      `Early%` = EarlyPercent,
+      `Ahead%` = AheadPercent,
+      `1-1W%` = one_one_w_pct
+    ) %>%
     {if ("UsagePct" %in% names(.)) dplyr::select(., -UsagePct) else .}
 }
 
@@ -6700,7 +6749,11 @@ flatten_metrics_df <- function(df) {
       vals_num
     } else {
       vals_chr
-    }
+    } %>%
+      dplyr::mutate(
+        EarlyPercent = "",
+        AheadPercent = ""
+      )
   }
   
   # Apply flattening to all columns
@@ -10619,7 +10672,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
           dplyr::any_of(c("0-0","Behind","Even","Ahead","<2K","2K")),
           BF, `RV/100`,
           Velo, Max, IVB, HB, rTilt, bTilt, SpinEff, Spin, Height, Side, VAA, HAA, Ext,
-          `InZone%`, `Comp%`, `Strike%`, `Swing%`, `FPS%`, `E+A%`, `1-1W%`, `QP%`, `K%`, `BB%`, `Whiff%`, EV, LA,
+          `InZone%`, `Comp%`, `Strike%`, `Swing%`, `FPS%`, `Early%`, `Ahead%`, `E+A%`, `1-1W%`, `QP%`, `K%`, `BB%`, `Whiff%`, EV, LA,
           `Stuff+`, `Ctrl+`, `QP+`, `Pitching+`
         ) %>%
         dplyr::mutate(
@@ -11815,6 +11868,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
             safe_pct(sum(comp, na.rm = TRUE), sum(!is.na(comp))) },
             `Strike%`      = if (has_pc) safe_pct(strikes, nrow(df)) else "",
             `FPS%`         = safe_pct(fps_live, fps_opp),
+            `Early%`       = calc_early_pct(df),
+            `Ahead%`       = calc_ahead_pct(df),
             `E+A%`         = safe_pct(ea_live,  fps_opp),
             `1-1W%`        = one_one_pct,
             `QP%`          = qp_pct,
@@ -13392,7 +13447,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
       visible_set_for <- function(mode, custom) {
         base <- c(
           "Pitch","#","Usage","BF","IP","FIP","WHIP","Velo","Max","IVB","HB","rTilt","bTilt","SpinEff","Spin",
-          "Height","Side","VAA","HAA","Ext","InZone%","Comp%","Strike%","FPS%","E+A%","1-1W%",
+          "Height","Side","VAA","HAA","Ext","InZone%","Comp%","Strike%","FPS%","Early%","Ahead%","E+A%","1-1W%",
           "K%","BB%","Whiff%","EV","LA","Stuff+","Ctrl+","QP+","Pitching+",
           # Results-specific
           "PA","AB","AVG","SLG","OBP","OPS","wOBA","xWOBA","ISO","xISO","BABIP","GB%","Barrel%","Swing%","Whiff%","K%","BB%","EV","LA"
@@ -14340,6 +14395,8 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
           KPercent      = safe_pct(k_live, bf_live),
           BBPercent     = safe_pct(bb_live, bf_live),
           FPSPercent    = safe_pct(fps_live, fps_opp),
+          `Early%`      = calc_early_pct(df),
+          `Ahead%`      = calc_ahead_pct(df),
           EAPercent     = safe_pct(ea_live, fps_opp),
           StrikePercent = if (has_pc) safe_pct(strikes, nrow(df)) else "",
           SwingPercent  = safe_pct(sum(!is.na(df$PitchCall) & df$PitchCall %in% c("StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","FoulBall","InPlay"), na.rm = TRUE), nrow(df)),
@@ -14376,7 +14433,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
         dplyr::select(
           Pitch, `#`, Usage, BF,
           Velo, Max, IVB, HB, rTilt, bTilt, SpinEff, Spin, Height, Side, VAA, HAA, Ext,
-          `InZone%`, `Comp%`, `Strike%`, `Swing%`, `FPS%`, `E+A%`, `QP%`, `K%`, `BB%`, `Whiff%`, EV, LA,
+          `InZone%`, `Comp%`, `Strike%`, `Swing%`, `FPS%`, `Early%`, `Ahead%`, `E+A%`, `QP%`, `K%`, `BB%`, `Whiff%`, EV, LA,
           `Stuff+`, `Ctrl+`, `QP+`, `Pitching+`
         ) %>%
         dplyr::mutate(
@@ -21856,7 +21913,6 @@ server <- function(input, output, session) {
            paste0(round(100 * num / den, 1), "%"),
            "")
   }
-  
   nz_mean <- function(x) {
     x <- suppressWarnings(as.numeric(x))
     m <- mean(x, na.rm = TRUE)
@@ -21965,7 +22021,7 @@ server <- function(input, output, session) {
       if (!exists("visible_set_for")) {
         visible_set_for <- function(mode, custom) {
           base <- c("Pitch","#","Usage","BF","IP","FIP","WHIP","Velo","Max","IVB","HB","rTilt","bTilt","SpinEff","Spin",
-                    "Height","Side","VAA","HAA","Ext","InZone%","Comp%","Strike%","FPS%","E+A%","1-1W%","QP%",
+                    "Height","Side","VAA","HAA","Ext","InZone%","Comp%","Strike%","FPS%","Early%","Ahead%","E+A%","1-1W%","QP%",
                     "K%","BB%","Whiff%","EV","LA","Stuff+","Ctrl+","QP+","Pitching+",
                     # Results-specific common cols
                     "PA","AB","AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP","GB%","Barrel%","Swing%","Whiff%","K%","BB%","EV","LA")
@@ -22918,6 +22974,8 @@ server <- function(input, output, session) {
             KPercent      = safe_pct(k_live, bf_live),
             BBPercent     = safe_pct(bb_live, bf_live),
             FPSPercent    = safe_pct(fps_live, fps_opp),
+            `Early%`      = calc_early_pct(df),
+            `Ahead%`      = calc_ahead_pct(df),
             EAPercent     = safe_pct(ea_live, fps_opp),
             StrikePercent = if (has_pc) safe_pct(strikes, nrow(df)) else "",
             SwingPercent  = swing_pct_all,
@@ -22965,7 +23023,7 @@ server <- function(input, output, session) {
           dplyr::any_of(c("0-0","Behind","Even","Ahead","<2K","2K")),
           BF,
           Velo, Max, IVB, HB, rTilt, bTilt, SpinEff, Spin, Height, Side, VAA, HAA, Ext,
-          `InZone%`, `Comp%`, `Strike%`, `Swing%`, `FPS%`, `E+A%`, `1-1W%`, `QP%`, `K%`, `BB%`, `Whiff%`, EV, LA,
+          `InZone%`, `Comp%`, `Strike%`, `Swing%`, `FPS%`, `Early%`, `Ahead%`, `E+A%`, `1-1W%`, `QP%`, `K%`, `BB%`, `Whiff%`, EV, LA,
           `Stuff+`, `Ctrl+`, `QP+`, `Pitching+`
         ) %>%
         dplyr::mutate(
@@ -23206,7 +23264,7 @@ server <- function(input, output, session) {
     if (!exists("visible_set_for")) {
       visible_set_for <- function(mode, custom) {
         base <- c("Pitch","#","Usage","BF","IP","FIP","WHIP","Velo","Max","IVB","HB","rTilt","bTilt","SpinEff","Spin",
-                  "Height","Side","VAA","HAA","Ext","InZone%","Comp%","Strike%","FPS%","E+A%","1-1W%","QP%",
+                  "Height","Side","VAA","HAA","Ext","InZone%","Comp%","Strike%","FPS%","Early%","Ahead%","E+A%","1-1W%","QP%",
                   "K%","BB%","Whiff%","EV","LA","Stuff+","Ctrl+","QP+","Pitching+",
                   # Results-specific
                   "PA","AB","AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP","GB%","Barrel%","Swing%","Whiff%","K%","BB%","EV","LA"
@@ -23403,6 +23461,8 @@ server <- function(input, output, session) {
         OBP = safe_div(H + BBc_all + HBP_all, PAt),
         OPS = NA_real_,
         xWOBA = NA_real_, xISO = NA_real_, BABIP = NA_real_,
+        `Early%` = calc_early_pct(df),
+        `Ahead%` = calc_ahead_pct(df),
         `Swing%` = safe_div(swings, total_pitches),
         `Whiff%` = safe_div(whiffs, swings),
         `CSW%`   = safe_div(csw_all_num, total_pitches),
@@ -24182,7 +24242,7 @@ server <- function(input, output, session) {
         dplyr::any_of(c("0-0","Behind","Even","Ahead","<2K","2K")),
         BF,
         Velo, Max, IVB, HB, rTilt, bTilt, SpinEff, Spin, Height, Side, VAA, HAA, Ext,
-        `InZone%`, `Comp%`, `Strike%`, `Swing%`, `FPS%`, `E+A%`, `1-1W%`, `QP%`, `K%`, `BB%`, `Whiff%`, EV, LA,
+        `InZone%`, `Comp%`, `Strike%`, `Swing%`, `FPS%`, `Early%`, `Ahead%`, `E+A%`, `1-1W%`, `QP%`, `K%`, `BB%`, `Whiff%`, EV, LA,
         `Stuff+`, `Ctrl+`, `QP+`, `Pitching+`
       ) %>%
       dplyr::mutate(
