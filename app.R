@@ -1734,9 +1734,10 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
     tbl_clause <- as.character(pitch_mod_table_clause(con))
     ns_clause <- pitch_mod_namespace_clause(con)
     dbBegin(con)
-    delete_sql <- sprintf("DELETE FROM %s WHERE pitch_key = ? AND namespace = %s", tbl_clause, ns_clause)
     for (i in seq_len(nrow(new_mods))) {
-      dbExecute(con, delete_sql, list(new_mods$pitch_key[i]))
+      key_literal <- DBI::dbQuoteString(con, new_mods$pitch_key[i])
+      delete_sql <- sprintf("DELETE FROM %s WHERE pitch_key = %s AND namespace = %s", tbl_clause, key_literal, ns_clause)
+      dbExecute(con, delete_sql)
     }
     dbWriteTable(con, pitch_mod_table_name(), new_mods, append = TRUE)
     dbCommit(con)
