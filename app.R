@@ -1023,6 +1023,36 @@ pitch_mod_index_suffix <- function() {
   paste0("modidx_", pitch_mod_table_name())
 }
 
+DELETE_PITCH_MARKER <- "__deleted_pitch__"
+
+normalize_mod_date_column <- function(vec, is_datetime = FALSE) {
+  vec <- vec %||% character(0)
+  if (length(vec) == 0) return(vec)
+  numeric_mask <- suppressWarnings(!is.na(as.numeric(vec)))
+  parsed <- rep(NA_real_, length(vec))
+  if (any(numeric_mask)) {
+    parsed[numeric_mask] <- as.numeric(vec[numeric_mask])
+    origin <- as.Date("1899-12-30")
+    parsed[numeric_mask] <- as.numeric(origin + parsed[numeric_mask])
+  }
+  if (any(!numeric_mask)) {
+    parsed[!numeric_mask] <- suppressWarnings(as.numeric(lubridate::ymd(vec[!numeric_mask], quiet = TRUE)))
+    idx <- which(is.na(parsed[!numeric_mask]))
+    if (length(idx)) {
+      parsed[!numeric_mask][idx] <- suppressWarnings(as.numeric(lubridate::mdy(vec[!numeric_mask][idx], quiet = TRUE)))
+    }
+    idx2 <- which(is.na(parsed[!numeric_mask]))
+    if (length(idx2)) {
+      parsed[!numeric_mask][idx2] <- suppressWarnings(as.numeric(lubridate::dmy(vec[!numeric_mask][idx2], quiet = TRUE)))
+    }
+  }
+  if (is_datetime) {
+    as.character(as.POSIXct(parsed, origin = "1970-01-01", tz = "UTC"))
+  } else {
+    as.character(as.Date(parsed, origin = "1970-01-01"))
+  }
+}
+
 # ---- App state (custom tables/reports/targets) persistence helpers ----
 state_backend <- function() {
   host <- Sys.getenv("MYSQL_HOST", "")
@@ -1348,7 +1378,8 @@ write_modifications_snapshot <- function(con) {
   ns <- pitch_mod_namespace_clause(con)
   mods <- try(dbGetQuery(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl, ns)), silent = TRUE)
   if (inherits(mods, "try-error") || !nrow(mods)) return()
-  
+  if (!"is_deleted" %in% names(mods)) mods$is_deleted <- 0
+
   # Ensure export directory exists
   dir_path <- dirname(export_path)
   if (!dir.exists(dir_path)) {
@@ -1408,15 +1439,23 @@ import_modifications_from_export <- function(con, base_data) {
   expected_cols <- c(
     "pitcher", "date", "rel_speed", "horz_break", "induced_vert_break",
     "original_pitch_type", "new_pitch_type", "new_pitcher",
-    "modified_at", "pitch_key", "created_at"
+    "modified_at", "pitch_key", "created_at",
+    "namespace", "is_deleted"
   )
-  expected_cols <- c(expected_cols, "namespace")
-  
+
   # Remove auto-increment id column if present
   new_rows$id <- NULL
 
   ns_value <- pitch_mod_namespace()
   new_rows$namespace <- rep(ns_value, nrow(new_rows))
+  if (!"is_deleted" %in% names(new_rows)) {
+    new_rows$is_deleted <- 0L
+  }
+  new_rows$is_deleted <- as.integer(new_rows$is_deleted)
+  new_rows$is_deleted[is.na(new_rows$is_deleted)] <- 0L
+  if ("date" %in% names(new_rows)) new_rows$date <- normalize_mod_date_column(new_rows$date, is_datetime = FALSE)
+  if ("modified_at" %in% names(new_rows)) new_rows$modified_at <- normalize_mod_date_column(new_rows$modified_at, is_datetime = TRUE)
+  if ("created_at" %in% names(new_rows)) new_rows$created_at <- normalize_mod_date_column(new_rows$created_at, is_datetime = TRUE)
 
   # Ensure all expected columns exist
   for (col in expected_cols) {
@@ -1535,9 +1574,17 @@ init_modifications_db <- function() {
     dbExecute(con, sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (pitcher, date, rel_speed, horz_break, induced_vert_break)", idx_lookup, tbl_clause))
     dbExecute(con, sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (pitch_key)", idx_key, tbl_clause))
     cols <- try(dbListFields(con, pitch_mod_table_name()), silent = TRUE)
-    if (!inherits(cols, "try-error") && !"new_pitcher" %in% cols) {
-      try(dbExecute(con, sprintf("ALTER TABLE %s ADD COLUMN new_pitcher TEXT", tbl_clause)), silent = TRUE)
-      cols <- try(dbListFields(con, pitch_mod_table_name()), silent = TRUE)
+    if (!inherits(cols, "try-error")) {
+      if (!"new_pitcher" %in% cols) {
+        try(dbExecute(con, sprintf("ALTER TABLE %s ADD COLUMN new_pitcher TEXT", tbl_clause)), silent = TRUE)
+        cols <- try(dbListFields(con, pitch_mod_table_name()), silent = TRUE)
+      }
+      if (!"namespace" %in% cols) {
+        try(dbExecute(con, sprintf("ALTER TABLE %s ADD COLUMN namespace TEXT NOT NULL DEFAULT %s", tbl_clause, ns_default)), silent = TRUE)
+      }
+      if (!"is_deleted" %in% cols) {
+        try(dbExecute(con, sprintf("ALTER TABLE %s ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0", tbl_clause)), silent = TRUE)
+      }
     }
     base_data <- get0("pitch_data_pitching", ifnotfound = NULL)
     import_modifications_from_export(con, base_data)
@@ -1584,12 +1631,22 @@ init_modifications_db <- function() {
           expected_cols <- c(
             "pitcher", "date", "rel_speed", "horz_break", "induced_vert_break",
             "original_pitch_type", "new_pitch_type", "new_pitcher",
-            "modified_at", "pitch_key", "created_at"
+            "modified_at", "pitch_key", "created_at",
+            "namespace", "is_deleted"
           )
+          new_rows$namespace <- rep(ns_value, nrow(new_rows))
+          if (!"is_deleted" %in% names(new_rows)) {
+            new_rows$is_deleted <- 0L
+          }
+          new_rows$is_deleted <- as.integer(new_rows$is_deleted)
+          new_rows$is_deleted[is.na(new_rows$is_deleted)] <- 0L
           for (col in expected_cols) {
             if (!col %in% names(new_rows)) new_rows[[col]] <- NA
           }
           new_rows <- new_rows[, expected_cols, drop = FALSE]
+          if ("date" %in% names(new_rows)) new_rows$date <- normalize_mod_date_column(new_rows$date, is_datetime = FALSE)
+          if ("modified_at" %in% names(new_rows)) new_rows$modified_at <- normalize_mod_date_column(new_rows$modified_at, is_datetime = TRUE)
+          if ("created_at" %in% names(new_rows)) new_rows$created_at <- normalize_mod_date_column(new_rows$created_at, is_datetime = TRUE)
           try(dbWriteTable(con, pitch_mod_table_name(), new_rows, append = TRUE), silent = TRUE)
         }
         mods <- try(dbGetQuery(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl_clause, ns_clause)), silent = TRUE)
@@ -1607,7 +1664,7 @@ init_modifications_db <- function() {
 }
 
 # Save pitch modifications to database
-save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher = NULL) {
+save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher = NULL, delete = FALSE) {
   init_modifications_db()
   con <- mod_db_connect()
   if (inherits(con, "error") || is.null(con)) {
@@ -1631,6 +1688,8 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
     new_pitcher_vec <- pitcher_vec
   }
 
+  type_to_store <- if (delete) DELETE_PITCH_MARKER else new_type
+
   new_mods <- data.frame(
     pitcher = pitcher_vec,
     date = as.character(selected_pitches$Date),
@@ -1638,11 +1697,12 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
     horz_break = suppressWarnings(as.numeric(selected_pitches$HorzBreak)),
     induced_vert_break = suppressWarnings(as.numeric(selected_pitches$InducedVertBreak)),
     original_pitch_type = selected_pitches$TaggedPitchType,
-    new_pitch_type = new_type,
+    new_pitch_type = type_to_store,
     new_pitcher = new_pitcher_vec,
     modified_at = as.character(Sys.time()),
     pitch_key = as.character(selected_pitches$PitchKey),
     namespace = pitch_mod_namespace(),
+    is_deleted = as.integer(delete),
     stringsAsFactors = FALSE
   )
 
@@ -1650,6 +1710,7 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
   new_mods$pitcher[is.na(new_mods$pitcher) | new_mods$pitcher %in% c("", "NA", "NaN")] <- "Unknown"
   new_mods$new_pitcher[is.na(new_mods$new_pitcher) | new_mods$new_pitcher %in% c("", "NA", "NaN")] <- new_mods$pitcher[is.na(new_mods$new_pitcher) | new_mods$new_pitcher %in% c("", "NA", "NaN")]
   new_mods$pitch_key[is.na(new_mods$pitch_key)] <- ""
+  new_mods$is_deleted[is.na(new_mods$is_deleted)] <- as.integer(delete)
   new_mods <- new_mods[
     nzchar(new_mods$pitch_key) &
       nzchar(new_mods$pitcher) &
@@ -1716,6 +1777,8 @@ mod_memo <- function(mods_df) {
   mods_df$date <- safe_date(mods_df$date)
   mods_df$modified_at <- safe_dt(mods_df$modified_at)
   mods_df$created_at <- safe_dt(mods_df$created_at)
+  if (!"is_deleted" %in% names(mods_df)) mods_df$is_deleted <- 0
+  mods_df$is_deleted <- as.integer(mods_df$is_deleted)
   mods_df
 }
 
@@ -1746,6 +1809,7 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
         total_modifications = 0
       ))
     }
+    if (!"is_deleted" %in% names(mods)) mods$is_deleted <- 0
     mods <- mod_memo(mods)
     dropped <- sum(is.na(mods$date))
     if (dropped && verbose) message(sprintf("Dropping %d modifications with unparseable dates", dropped))
@@ -1762,6 +1826,7 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     }
 
     temp_data <- base_data %>% mutate(original_row_id = row_number())
+    deleted_mask <- logical(nrow(temp_data))
 
     modifications_applied <- 0
     modifications_not_found <- 0
@@ -1802,6 +1867,14 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
         )
       }
       if (length(match_idx) > 0) {
+        if (isTRUE(as.integer(mod$is_deleted) == 1L)) {
+          deleted_mask[match_idx] <- TRUE
+          modifications_applied <- modifications_applied + 1
+          if (verbose) {
+            cat(sprintf("Deleted pitch: %s on %s\n", mod$pitcher, mod$date))
+          }
+          next
+        }
         temp_data$TaggedPitchType[match_idx] <- mod$new_pitch_type
         if (!is.null(mod$new_pitcher) && nzchar(mod$new_pitcher)) {
           temp_data$Pitcher[match_idx] <- mod$new_pitcher
@@ -1822,6 +1895,10 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
                       mod$pitcher, mod$date, mod$rel_speed))
         }
       }
+    }
+
+    if (any(deleted_mask)) {
+      temp_data <- temp_data[!deleted_mask, , drop = FALSE]
     }
 
     if (verbose && modifications_applied > 0) {
@@ -19966,6 +20043,7 @@ server <- function(input, output, session) {
       },
       footer = tagList(
         modalButton("Cancel"),
+        actionButton("delete_selected_pitches", "Delete Selected Pitches", class = "btn-danger"),
         actionButton("confirm_pitch_edit", "Save Changes", class = "btn-primary")
       ),
       easyClose = FALSE
@@ -25567,6 +25645,7 @@ server <- function(input, output, session) {
       },
       footer = tagList(
         modalButton("Cancel"),
+        actionButton("delete_selected_pitches_summary", "Delete Selected Pitches", class = "btn-danger"),
         actionButton("confirm_pitch_edit_summary", "Save Changes", class = "btn-primary")
       ),
       easyClose = FALSE
@@ -25699,6 +25778,58 @@ server <- function(input, output, session) {
     removeModal()
     session$userData$selected_for_edit <- NULL
   })
+
+  observeEvent(input$delete_selected_pitches, {
+    req(session$userData$selected_for_edit)
+    selected_pitches <- session$userData$selected_for_edit
+    save_result <- save_pitch_modifications_db(selected_pitches, DELETE_PITCH_MARKER, delete = TRUE)
+    if (!isTRUE(save_result$success)) {
+      showNotification(
+        paste0("Could not store pitch deletions: ", save_result$error %||% "unknown error"),
+        type = "error", duration = 8
+      )
+      return()
+    }
+
+    current_data <- modified_pitch_data()
+    if (is.null(current_data)) current_data <- pitch_data_pitching
+    updated_data <- current_data
+    deleted_mask <- rep(FALSE, nrow(updated_data))
+
+    for (i in 1:nrow(selected_pitches)) {
+      p <- selected_pitches[i, ]
+      match_idx <- which(
+        updated_data$Pitcher == p$Pitcher &
+          updated_data$Date == p$Date &
+          abs(updated_data$RelSpeed - (p$RelSpeed %||% 0)) < 0.1 &
+          abs(updated_data$HorzBreak - (p$HorzBreak %||% 0)) < 0.1 &
+          abs(updated_data$InducedVertBreak - (p$InducedVertBreak %||% 0)) < 0.1
+      )
+      if (length(match_idx)) {
+        deleted_mask[match_idx] <- TRUE
+      }
+    }
+
+    if (any(deleted_mask)) {
+      updated_data <- updated_data[!deleted_mask, , drop = FALSE]
+      modified_pitch_data(updated_data)
+    }
+
+    result <- load_pitch_modifications_db(pitch_data_pitching, verbose = FALSE)
+    modification_stats(list(
+      applied_count = result$applied_count,
+      total_modifications = result$total_modifications
+    ))
+
+    deleted_count <- save_result$count %||% length(which(deleted_mask))
+    showNotification(
+      sprintf("Deleted %d pitch(es)", deleted_count),
+      type = "message", duration = 5
+    )
+
+    removeModal()
+    session$userData$selected_for_edit <- NULL
+  })
   
   # Confirm pitch type changes (summary movement plot)
   observeEvent(input$confirm_pitch_edit_summary, {
@@ -25774,6 +25905,58 @@ server <- function(input, output, session) {
       type = "message", duration = 3
     )
     
+    removeModal()
+    session$userData$selected_for_edit_summary <- NULL
+  })
+
+  observeEvent(input$delete_selected_pitches_summary, {
+    req(session$userData$selected_for_edit_summary)
+    selected_pitches <- session$userData$selected_for_edit_summary
+    save_result <- save_pitch_modifications_db(selected_pitches, DELETE_PITCH_MARKER, delete = TRUE)
+    if (!isTRUE(save_result$success)) {
+      showNotification(
+        paste0("Could not store pitch deletions: ", save_result$error %||% "unknown error"),
+        type = "error", duration = 8
+      )
+      return()
+    }
+
+    current_data <- modified_pitch_data()
+    if (is.null(current_data)) current_data <- pitch_data_pitching
+    updated_data <- current_data
+    deleted_mask <- rep(FALSE, nrow(updated_data))
+
+    for (i in 1:nrow(selected_pitches)) {
+      p <- selected_pitches[i, ]
+      match_idx <- which(
+        updated_data$Pitcher == p$Pitcher &
+          updated_data$Date == p$Date &
+          abs(updated_data$RelSpeed - (p$RelSpeed %||% 0)) < 0.1 &
+          abs(updated_data$HorzBreak - (p$HorzBreak %||% 0)) < 0.1 &
+          abs(updated_data$InducedVertBreak - (p$InducedVertBreak %||% 0)) < 0.1
+      )
+      if (length(match_idx)) {
+        deleted_mask[match_idx] <- TRUE
+      }
+    }
+
+    if (any(deleted_mask)) {
+      updated_data <- updated_data[!deleted_mask, , drop = FALSE]
+      modified_pitch_data(updated_data)
+    }
+
+    result <- load_pitch_modifications_db(pitch_data_pitching, verbose = FALSE)
+    modification_stats(list(
+      applied_count = result$applied_count,
+      total_modifications = result$total_modifications
+    ))
+
+    deleted_count <- save_result$count %||% length(which(deleted_mask))
+    showNotification(
+      sprintf("Deleted %d pitch(es)", deleted_count),
+      type = "message", duration = 5
+    )
+
     removeModal()
     session$userData$selected_for_edit_summary <- NULL
   })
