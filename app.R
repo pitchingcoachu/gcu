@@ -1455,6 +1455,15 @@ import_modifications_from_export <- function(con, base_data) {
   new_rows$is_deleted[is.na(new_rows$is_deleted)] <- 0L
   if ("date" %in% names(new_rows)) new_rows$date <- normalize_mod_date_column(new_rows$date, is_datetime = FALSE)
   if ("modified_at" %in% names(new_rows)) new_rows$modified_at <- normalize_mod_date_column(new_rows$modified_at, is_datetime = TRUE)
+  if (!"modified_at" %in% names(new_rows)) new_rows$modified_at <- rep(NA_character_, nrow(new_rows))
+  new_rows$modified_at <- as.character(new_rows$modified_at)
+  missing_ts <- is.na(new_rows$modified_at) |
+    !nzchar(new_rows$modified_at) |
+    new_rows$modified_at %in% c("NA", "NaN")
+  if (any(missing_ts)) {
+    fallback_ts <- as.character(Sys.time())
+    new_rows$modified_at[missing_ts] <- fallback_ts
+  }
   if ("created_at" %in% names(new_rows)) new_rows$created_at <- normalize_mod_date_column(new_rows$created_at, is_datetime = TRUE)
 
   # Ensure all expected columns exist
