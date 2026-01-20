@@ -794,6 +794,9 @@ library(curl)  # for curl::form_file
 library(DBI)   # for database operations
 library(RSQLite)  # for SQLite database
 
+# Source helper for mapping uploads
+source("video_map_helpers.R")
+
 # Configure Cloudinary (recommended simple host for images/videos)
 # Create a free account, make an *unsigned upload preset*, then set these:
 # 1) Prefer environment variables in production (shinpps.io Settings → Environment Variables)
@@ -1507,7 +1510,8 @@ upload_media_cloudinary <- function(path) {
   j <- httr2::resp_body_json(res, check_type = FALSE)
   list(
     url  = j$secure_url %||% j$url,
-    type = j$resource_type %||% "auto"  # "image" | "video" | "raw"
+    type = j$resource_type %||% "auto",  # "image" | "video" | "raw"
+    public_id = j$public_id %||% ""
   )
 }
 
@@ -17631,7 +17635,7 @@ player_plans_ui <- function() {
     ")),
       
       # Add custom CSS for the modal
-      tags$style(HTML("
+    tags$style(HTML("
       .modal-dialog {
         max-width: 800px;
       }
@@ -17639,6 +17643,58 @@ player_plans_ui <- function() {
         margin-top: 5px;
       }
       "))
+    )
+  )
+}
+
+video_upload_ui <- function() {
+  fluidPage(
+    br(),
+    fluidRow(
+      column(
+        width = 7,
+        wellPanel(
+          h3("Register game video batches"),
+          p("Select the TrackMan session that incoming uploads should be mapped to so the clips can reuse the same pitch IDs that appear on the dashboard."),
+          selectInput(
+            "video_session",
+            "TrackMan session",
+            choices = c("Loading sessions..." = ""),
+            selectize = TRUE,
+            width = "100%"
+          ),
+          textAreaInput(
+            "video_notes",
+            "Notes for uploaders",
+            placeholder = "e.g. 'Home vs Easton - 5 clips expected, first pitch is 1234'.",
+            rows = 3
+          ),
+          actionButton("video_register", "Save assignment", class = "btn-primary"),
+          br(), br(),
+          uiOutput("video_upload_status")
+        ),
+        wellPanel(
+          h4("Upload camera 2 clips"),
+          fileInput("video_upload_files", NULL,
+                    multiple = TRUE,
+                    accept = c(".mp4", ".mov", ".avi"),
+                    buttonLabel = "Choose clips",
+                    placeholder = "Select files in pitch order"),
+          tags$small("Upload in the same order as the TrackMan CSV so the mapping stays deterministic."),
+          br(),
+          actionButton("video_upload_submit", "Upload to Cloudinary + Map", class = "btn-success"),
+          br(), br(),
+          uiOutput("video_upload_upload_status")
+        )
+      ),
+      column(
+        width = 5,
+        wellPanel(
+          h4("Recent assignments"),
+          DT::dataTableOutput("video_assignments"),
+          p(class = "text-muted", "Choosing a session here tells the system which TrackMan game to align uploads with.")
+        )
+      )
     )
   )
 }
@@ -18815,6 +18871,7 @@ ui <- tagList(
     tabPanel("Correlations", value = "Correlations", correlations_ui()),
     tabPanel("Custom Reports", value = "Custom Reports", custom_reports_ui("creports")),
     tabPanel("Player Plans", value = "Player Plans", player_plans_ui()),
+    tabPanel("Video Upload", value = "Video Upload", video_upload_ui()),
     tabPanel("Notes", value = "Notes",
              fluidPage(
                br(),
@@ -19072,6 +19129,287 @@ server <- function(input, output, session) {
     # No label; show value bold & centered (for Velocity/Spin)
     tags$div(style = "margin:6px 0; text-align:center; font-weight:800;", value_html)
   }
+
+  # ---- Video upload admin ----
+  video_upload_sessions_path <- file.path("data", "video_upload_sessions.csv")
+  ensure_video_upload_dir <- function() dir.create(dirname(video_upload_sessions_path), recursive = TRUE, showWarnings = FALSE)
+  load_video_assignments <- function() {
+    if (!file.exists(video_upload_sessions_path)) {
+      return(tibble::tibble(
+        session_id = character(),
+        session_label = character(),
+        notes = character(),
+        created_at = character(),
+        created_by = character()
+      ))
+    }
+    tryCatch({
+      readr::read_csv(
+        video_upload_sessions_path,
+        col_types = readr::cols(
+          session_id = readr::col_character(),
+          session_label = readr::col_character(),
+          notes = readr::col_character(),
+          created_at = readr::col_character(),
+          created_by = readr::col_character()
+        ),
+        show_col_types = FALSE
+      )
+    }, error = function(e) {
+      message("Unable to read video assignments: ", e$message)
+      tibble::tibble(
+        session_id = character(),
+        session_label = character(),
+        notes = character(),
+        created_at = character(),
+        created_by = character()
+      )
+    })
+  }
+
+  video_sessions <- reactiveVal(load_video_assignments())
+  video_feedback <- reactiveVal(NULL)
+  video_upload_upload_feedback <- reactiveVal(NULL)
+
+  build_team_label <- function(home, away) {
+    mapply(function(h, a) {
+      parts <- c(trimws(h %||% ""), trimws(a %||% ""))
+      parts <- parts[nzchar(parts)]
+      if (length(parts)) paste(parts, collapse = " vs ") else ""
+    }, home, away, SIMPLIFY = TRUE, USE.NAMES = FALSE)
+  }
+
+  build_session_label <- function(date_label, type_label, team_label, session_id, pitch_count) {
+    mapply(function(dl, tl, tm, sid, pc) {
+      pieces <- c(dl, tl)
+      if (nzchar(tm)) pieces <- c(pieces, tm)
+      pieces <- c(pieces, sid, paste0(pc, " pitches"))
+      paste(pieces[pieces != ""], collapse = " · ")
+    }, date_label, type_label, team_label, session_id, pitch_count, SIMPLIFY = TRUE, USE.NAMES = FALSE)
+  }
+
+  session_meta <- reactive({
+    session_candidates <- c("session_id", "SessionID", "session", "Session", "GameUID", "GameID")
+    session_cols <- intersect(session_candidates, names(pitch_data))
+    session_col <- NULL
+    for (col in session_cols) {
+      values <- pitch_data[[col]]
+      has_value <- any(!is.na(values) & nzchar(trimws(as.character(values))))
+      if (has_value) {
+        session_col <- col
+        break
+      }
+    }
+    if (is.null(session_col)) {
+      return(tibble::tibble(
+        session_id = character(),
+        session_label = character(),
+        pitch_count = integer()
+      ))
+    }
+    df <- pitch_data %>%
+      dplyr::mutate(session_value = as.character(.data[[session_col]])) %>%
+      dplyr::filter(!is.na(session_value) & nzchar(trimws(session_value)))
+    if (!nrow(df)) {
+      return(tibble::tibble(
+        session_id = character(),
+        session_label = character(),
+        pitch_count = integer()
+      ))
+    }
+    df %>%
+      dplyr::group_by(session_id = session_value) %>%
+      dplyr::summarise(
+        date = {
+          dates <- suppressWarnings(as.Date(Date))
+          if (all(is.na(dates))) as.Date(NA) else min(dates, na.rm = TRUE)
+        },
+        session_type = dplyr::first(as.character(SessionType), default = NA_character_),
+        home_team = dplyr::first(HomeTeam, default = NA_character_),
+        away_team = dplyr::first(AwayTeam, default = NA_character_),
+        pitch_count = dplyr::n(),
+        .groups = "drop"
+      ) %>%
+      dplyr::arrange(dplyr::desc(date), session_id) %>%
+      dplyr::mutate(
+        date_label = ifelse(!is.na(date), format(date, "%Y-%m-%d"), "undated"),
+        session_type_label = ifelse(!is.na(session_type) & nzchar(session_type), session_type, "Session"),
+        team_label = build_team_label(home_team, away_team),
+        session_label = build_session_label(date_label, session_type_label, team_label, session_id, pitch_count)
+      ) %>%
+      dplyr::select(session_id, session_label, pitch_count)
+  })
+
+  video_assignments_table <- reactive({
+    assignments <- video_sessions()
+    if (!nrow(assignments)) return(assignments)
+    meta <- session_meta()
+    dplyr::left_join(assignments, meta %>% dplyr::select(session_id, pitch_count), by = "session_id")
+  })
+
+  observe({
+    meta <- session_meta()
+    if (nrow(meta)) {
+      choices <- setNames(meta$session_id, meta$session_label)
+    } else {
+      choices <- c("No sessions available" = "")
+    }
+    current <- isolate(input$video_session)
+    selected <- if (!is.null(current) && nzchar(current) && current %in% meta$session_id) current else ""
+    updateSelectInput(session, "video_session", choices = choices, selected = selected)
+  })
+
+  observeEvent(input$video_session, {
+    video_feedback(NULL)
+    video_upload_upload_feedback(NULL)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$video_upload_files, {
+    video_upload_upload_feedback(NULL)
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$video_register, {
+    req(input$video_session)
+    session_id <- input$video_session
+    meta <- session_meta()
+    label <- session_id
+    if (nrow(meta)) {
+      sel <- meta$session_label[meta$session_id == session_id]
+      if (length(sel)) label <- sel[[1]]
+    }
+    notes <- trimws(input$video_notes %||% "")
+    notes <- ifelse(nzchar(notes), notes, "")
+    timestamp <- format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+    user <- user_email() %||% "local"
+    ensure_video_upload_dir()
+    existing <- video_sessions()
+    row_idx <- which(existing$session_id == session_id)
+      if (length(row_idx)) {
+        existing$session_label[row_idx] <- label
+        existing$notes[row_idx] <- notes
+        existing$created_at[row_idx] <- timestamp
+        existing$created_by[row_idx] <- user
+    } else {
+      existing <- dplyr::bind_rows(
+        tibble::tibble(
+          session_id = session_id,
+          session_label = label,
+          notes = notes,
+          created_at = timestamp,
+          created_by = user
+        ),
+        existing
+      )
+    }
+    saved <- tryCatch({
+      readr::write_csv(existing, video_upload_sessions_path)
+      TRUE
+    }, error = function(err) {
+      showNotification(paste("Unable to save video assignment:", err$message), type = "error")
+      FALSE
+    })
+    if (isTRUE(saved)) {
+      video_sessions(existing)
+      video_feedback(list(type = "success", text = paste0("Recorded assignment for session ", session_id)))
+      updateTextAreaInput(session, "video_notes", value = "")
+    }
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$video_upload_submit, {
+    req(input$video_session)
+    files <- input$video_upload_files
+    if (is.null(files) || !nrow(files)) {
+      video_upload_upload_feedback(list(type = "error",
+                                        text = "Attach clips before uploading."))
+      return()
+    }
+    ordered <- files[order(tolower(files$name)), , drop = FALSE]
+    uploads <- vector("list", nrow(ordered))
+    for (i in seq_len(nrow(ordered))) {
+      path <- ordered$datapath[i]
+      name <- ordered$name[i]
+      up <- tryCatch(
+        upload_media_cloudinary(path),
+        error = function(e) {
+          video_upload_upload_feedback(list(type = "error",
+                                            text = paste0("Upload failed for ", name, ": ", e$message)))
+          return(NULL)
+        }
+      )
+      if (is.null(up)) return()
+      uploads[[i]] <- tibble::tibble(
+        file_name = name,
+        cloudinary_url = up$url,
+        cloudinary_public_id = up$public_id
+      )
+    }
+    manifest <- dplyr::bind_rows(uploads)
+    session_rows <- find_session_rows(data_parent, input$video_session)
+    if (!nrow(session_rows)) {
+      video_upload_upload_feedback(list(type = "error",
+                                        text = "Could not resolve that TrackMan session."))
+      return()
+    }
+    session_rows <- order_session_rows(session_rows)
+    tryCatch({
+      map_manifest_to_session(
+        session_rows = session_rows,
+        manifest = manifest,
+        session_id = input$video_session,
+        slot = "VideoClip2",
+        name = "ManualCamera",
+        target = "ManualUpload",
+        type = "ManualVideo",
+        map_path = file.path("data", "video_map.csv")
+      )
+      video_upload_upload_feedback(list(type = "success",
+                                        text = "Uploaded clips and mapped camera 2 videos."))
+    }, error = function(e) {
+      video_upload_upload_feedback(list(type = "error",
+                                        text = paste0("Mapping failed: ", e$message)))
+    })
+  }, ignoreNULL = TRUE)
+
+  output$video_upload_status <- renderUI({
+    msg <- video_feedback()
+    if (is.null(msg)) return(NULL)
+    cls <- if (identical(msg$type, "error")) "alert alert-danger" else "alert alert-success"
+    tags$div(class = cls, style = "margin-top:8px;", msg$text)
+  })
+
+  output$video_upload_upload_status <- renderUI({
+    msg <- video_upload_upload_feedback()
+    if (is.null(msg)) return(NULL)
+    cls <- if (identical(msg$type, "error")) "alert alert-danger" else "alert alert-success"
+    tags$div(class = cls, style = "margin-top:8px;", msg$text)
+  })
+
+  output$video_assignments <- DT::renderDataTable({
+    df <- video_assignments_table()
+    if (!nrow(df)) {
+      return(DT::datatable(
+        data.frame(Message = "No video assignments yet"),
+        options = list(dom = "t"), rownames = FALSE
+      ))
+    }
+    display <- df %>%
+      dplyr::mutate(pitch_count = ifelse(is.na(pitch_count), 0L, pitch_count)) %>%
+      dplyr::arrange(dplyr::desc(created_at)) %>%
+      dplyr::transmute(
+        Session = session_label,
+        `TrackMan ID` = session_id,
+        `Pitch Count` = pitch_count,
+        Notes = notes,
+        Added = created_at,
+        By = created_by
+      )
+    DT::datatable(
+      display,
+      options = list(dom = "tp", pageLength = 5, order = list(list(4, "desc"))),
+      rownames = FALSE,
+      escape = FALSE
+    )
+  })
   
   # --- panel ---
   build_metrics_panel <- function(row) {

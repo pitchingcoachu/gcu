@@ -12,6 +12,7 @@ library(stringr)
 
 # Load CSV filtering utilities
 source("csv_filter_utils.R")
+source("video_map_helpers.R")
 # FTP credentials
 FTP_HOST <- "ftp.trackmanbaseball.com"
 FTP_USER <- "GrandCanyon"
@@ -346,9 +347,14 @@ main_sync <- function() {
   if (practice_updated || v3_updated) {
     writeLines(as.character(Sys.time()), file.path(LOCAL_DATA_DIR, "new_data_flag.txt"))
   }
+
+  video_updated <- sync_video_map_from_neon(file.path(LOCAL_DATA_DIR, "video_map.csv"))
+  if (video_updated) {
+    cat("Regenerated data/video_map.csv from Neon video metadata\n")
+  }
   
   # Return TRUE if any data was updated
-  return(practice_updated || v3_updated)
+  return(practice_updated || v3_updated || video_updated)
 }
 
 # Run if called directly
