@@ -470,3 +470,7 @@ video_map_sync_from_neon <- function(map_path = "data/video_map.csv") {
   readr::write_csv(ordered, map_path)
   TRUE
 }
+
+sync_video_map_from_neon <- function(...) {
+  video_map_sync_from_neon(...)
+}
