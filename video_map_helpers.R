@@ -96,6 +96,21 @@ find_session_rows <- function(data_dir, session_id) {
   tibble::tibble()
 }
 
+order_session_rows <- function(df) {
+  if (!nrow(df)) return(df)
+  df %>%
+    dplyr::mutate(
+      PitchNo = suppressWarnings(as.integer(PitchNo)),
+      timestamp = parse_session_timestamp(UTCDateTime),
+      timestamp = dplyr::coalesce(timestamp, parse_session_timestamp(Date))
+    ) %>%
+    dplyr::arrange(
+      is.na(PitchNo), PitchNo,
+      is.na(timestamp), timestamp,
+      PlayID
+    )
+}
+
 VIDEO_MAP_TABLE_COLUMNS <- c(
   "session_id", "play_id", "camera_slot", "camera_name", "camera_target",
   "video_type", "azure_blob", "azure_md5", "cloudinary_url", "cloudinary_public_id",
