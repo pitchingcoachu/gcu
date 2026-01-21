@@ -17654,7 +17654,7 @@ video_upload_ui <- function() {
       column(
         width = 7,
         wellPanel(
-          h3("Register game video batches"),
+          h3("Game Video Uploader"),
           p("Select the TrackMan session that incoming uploads should be mapped to so the clips can reuse the same pitch IDs that appear on the dashboard."),
           selectInput(
             "video_session",
@@ -17663,18 +17663,12 @@ video_upload_ui <- function() {
             selectize = TRUE,
             width = "100%"
           ),
-          textAreaInput(
-            "video_notes",
-            "Notes for uploaders",
-            placeholder = "e.g. 'Home vs Easton - 5 clips expected, first pitch is 1234'.",
-            rows = 3
-          ),
           actionButton("video_register", "Save assignment", class = "btn-primary"),
           br(), br(),
           uiOutput("video_upload_status")
         ),
         wellPanel(
-          h4("Upload camera 2 clips"),
+          h4("Upload CF Camera Clips"),
           fileInput("video_upload_files", NULL,
                     multiple = TRUE,
                     accept = c(".mp4", ".mov", ".avi"),
@@ -17682,7 +17676,7 @@ video_upload_ui <- function() {
                     placeholder = "Select files in pitch order"),
           tags$small("Upload in the same order as the TrackMan CSV so the mapping stays deterministic."),
           br(),
-          actionButton("video_upload_submit", "Upload to Cloudinary + Map", class = "btn-success"),
+          actionButton("video_upload_submit", "Click to Upload", class = "btn-success"),
           br(), br(),
           uiOutput("video_upload_upload_status")
         )
@@ -19277,18 +19271,16 @@ server <- function(input, output, session) {
       sel <- meta$session_label[meta$session_id == session_id]
       if (length(sel)) label <- sel[[1]]
     }
-    notes <- trimws(input$video_notes %||% "")
-    notes <- ifelse(nzchar(notes), notes, "")
+    notes <- ""
     timestamp <- format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
     user <- user_email() %||% "local"
     ensure_video_upload_dir()
     existing <- video_sessions()
     row_idx <- which(existing$session_id == session_id)
-      if (length(row_idx)) {
-        existing$session_label[row_idx] <- label
-        existing$notes[row_idx] <- notes
-        existing$created_at[row_idx] <- timestamp
-        existing$created_by[row_idx] <- user
+    if (length(row_idx)) {
+      existing$session_label[row_idx] <- label
+      existing$created_at[row_idx] <- timestamp
+      existing$created_by[row_idx] <- user
     } else {
       existing <- dplyr::bind_rows(
         tibble::tibble(
@@ -19311,7 +19303,6 @@ server <- function(input, output, session) {
     if (isTRUE(saved)) {
       video_sessions(existing)
       video_feedback(list(type = "success", text = paste0("Recorded assignment for session ", session_id)))
-      updateTextAreaInput(session, "video_notes", value = "")
     }
   }, ignoreNULL = TRUE)
 
