@@ -15937,7 +15937,10 @@ custom_reports_server <- function(id) {
         pitch_types <- as.character(pitch_types)
         pitch_types <- pitch_types[!is.na(pitch_types)]
       }
-      if (length(pitch_types) && !("All" %in% pitch_types)) df <- df %>% dplyr::filter(TaggedPitchType %in% pitch_types)
+      include_all_pt <- length(pitch_types) && any(pitch_types == "All")
+      if (length(pitch_types) && !include_all_pt) {
+        df <- df %>% dplyr::filter(TaggedPitchType %in% pitch_types)
+      }
       if (!is.null(batter_side) && batter_side != "All") df <- df %>% dplyr::filter(BatterSide == batter_side)
       if (!is.null(pitcher_hand) && pitcher_hand != "All") df <- df %>% dplyr::filter(PitcherThrows == pitcher_hand)
       df <- apply_pitch_results_filter(df, results)
