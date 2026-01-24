@@ -15253,97 +15253,102 @@ custom_reports_server <- function(id) {
       updateSelectInput(session, "report_rows", selected = rep$rows %||% 1)
       updateSelectInput(session, "report_cols", selected = rep$cols %||% 1)
       
-      # After a delay, explicitly update filter inputs and player selectors
-      # This ensures they get the saved values even if the UI already exists
-      later::later(function() {
-        cells <- rep$cells %||% list()
-        rows <- rep$rows %||% 1
-        cols <- rep$cols %||% 1
-        scope <- rep$scope %||% "Single Player"
-        
-        # FIRST: Always show controls when loading a report
-        # This ensures filter controls are visible so we can update them
+      rows <- rep$rows %||% 1
+      cols <- rep$cols %||% 1
+      scope <- rep$scope %||% "Single Player"
+      cells <- rep$cells %||% list()
+
+      update_saved_state <- function() {
+        for (r in seq_len(rows)) {
+          for (c in seq_len(cols)) {
+            cell_id <- paste0("r", r, "c", c)
+            saved_cell <- cells[[cell_id]]
+            if (is.null(saved_cell)) next
+          }
+        }
+        # Update row player inputs (Multi-Player)
+        if (scope == "Multi-Player") {
+          for (r in seq_len(rows)) {
+            player_val <- cells[[paste0("row_", r, "_player")]]
+            if (!is.null(player_val) && length(player_val) == 1 && !is.na(player_val) && player_val != "") {
+              updateSelectizeInput(session, paste0("row_player_", r), selected = player_val)
+            }
+          }
+        }
+        for (r in seq_len(rows)) {
+          for (c in seq_len(cols)) {
+            cell_id <- paste0("r", r, "c", c)
+            saved_cell <- cells[[cell_id]]
+            if (is.null(saved_cell)) next
+            if (!is.null(saved_cell$dates) && length(saved_cell$dates) == 2) {
+              updateDateRangeInput(session, paste0("cell_dates_", cell_id), 
+                                   start = saved_cell$dates[1], end = saved_cell$dates[2])
+            }
+            if (!is.null(saved_cell$session) && length(saved_cell$session) == 1 && !is.na(saved_cell$session) && saved_cell$session != "") {
+              updateSelectInput(session, paste0("cell_session_", cell_id), selected = saved_cell$session)
+            }
+            if (!is.null(saved_cell$pitch_types) && length(saved_cell$pitch_types) > 0) {
+              updateSelectizeInput(session, paste0("cell_pitch_types_", cell_id), selected = saved_cell$pitch_types)
+            }
+            if (!is.null(saved_cell$batter_side) && length(saved_cell$batter_side) == 1 && !is.na(saved_cell$batter_side) && saved_cell$batter_side != "") {
+              updateSelectInput(session, paste0("cell_batter_side_", cell_id), selected = saved_cell$batter_side)
+            }
+            if (!is.null(saved_cell$pitcher_hand) && length(saved_cell$pitcher_hand) == 1 && !is.na(saved_cell$pitcher_hand) && saved_cell$pitcher_hand != "") {
+              updateSelectInput(session, paste0("cell_pitcher_hand_", cell_id), selected = saved_cell$pitcher_hand)
+            }
+            if (!is.null(saved_cell$results) && length(saved_cell$results) > 0) {
+              updateSelectInput(session, paste0("cell_results_", cell_id), selected = saved_cell$results)
+            }
+            if (!is.null(saved_cell$qp) && length(saved_cell$qp) == 1 && !is.na(saved_cell$qp) && saved_cell$qp != "") {
+              updateSelectInput(session, paste0("cell_qp_", cell_id), selected = saved_cell$qp)
+            }
+            if (!is.null(saved_cell$count) && length(saved_cell$count) > 0) {
+              updateSelectInput(session, paste0("cell_count_", cell_id), selected = saved_cell$count)
+            }
+            if (!is.null(saved_cell$after_count) && length(saved_cell$after_count) > 0) {
+              updateSelectInput(session, paste0("cell_after_count_", cell_id), selected = saved_cell$after_count)
+            }
+            if (!is.null(saved_cell$zone) && length(saved_cell$zone) > 0) {
+              updateSelectInput(session, paste0("cell_zone_", cell_id), selected = saved_cell$zone)
+            }
+            if (!is.null(saved_cell$velo_min) && length(saved_cell$velo_min) == 1 && !is.na(saved_cell$velo_min)) {
+              updateNumericInput(session, paste0("cell_velo_min_", cell_id), value = saved_cell$velo_min)
+            }
+            if (!is.null(saved_cell$velo_max) && length(saved_cell$velo_max) == 1 && !is.na(saved_cell$velo_max)) {
+              updateNumericInput(session, paste0("cell_velo_max_", cell_id), value = saved_cell$velo_max)
+            }
+            if (!is.null(saved_cell$ivb_min) && length(saved_cell$ivb_min) == 1 && !is.na(saved_cell$ivb_min)) {
+              updateNumericInput(session, paste0("cell_ivb_min_", cell_id), value = saved_cell$ivb_min)
+            }
+            if (!is.null(saved_cell$ivb_max) && length(saved_cell$ivb_max) == 1 && !is.na(saved_cell$ivb_max)) {
+              updateNumericInput(session, paste0("cell_ivb_max_", cell_id), value = saved_cell$ivb_max)
+            }
+            if (!is.null(saved_cell$hb_min) && length(saved_cell$hb_min) == 1 && !is.na(saved_cell$hb_min)) {
+              updateNumericInput(session, paste0("cell_hb_min_", cell_id), value = saved_cell$hb_min)
+            }
+            if (!is.null(saved_cell$hb_max) && length(saved_cell$hb_max) == 1 && !is.na(saved_cell$hb_max)) {
+              updateNumericInput(session, paste0("cell_hb_max_", cell_id), value = saved_cell$hb_max)
+            }
+          }
+        }
+      }
+
+      session$onFlushed(function() {
+        # Show controls for every cell
         for (r in seq_len(rows)) {
           for (c in seq_len(cols)) {
             cell_id <- paste0("r", r, "c", c)
             updateCheckboxInput(session, paste0("cell_show_controls_", cell_id), value = TRUE)
           }
         }
-        
-        # THEN: Wait a bit for controls to render, then update filter values
+
+        update_saved_state()
+
         later::later(function() {
-          # Update row player inputs in Multi-Player mode
-          if (scope == "Multi-Player") {
-            for (r in seq_len(rows)) {
-              player_val <- cells[[paste0("row_", r, "_player")]]
-              if (!is.null(player_val) && length(player_val) == 1 && !is.na(player_val) && player_val != "") {
-                updateSelectizeInput(session, paste0("row_player_", r), selected = player_val)
-              }
-            }
-          }
-          
-          # Update filter inputs for each cell
-          for (r in seq_len(rows)) {
-            for (c in seq_len(cols)) {
-              cell_id <- paste0("r", r, "c", c)
-              saved_cell <- cells[[cell_id]]
-              if (!is.null(saved_cell)) {
-                # Update filter inputs if they have saved values
-                if (!is.null(saved_cell$dates) && length(saved_cell$dates) == 2) {
-                  updateDateRangeInput(session, paste0("cell_dates_", cell_id), 
-                                       start = saved_cell$dates[1], end = saved_cell$dates[2])
-                }
-                if (!is.null(saved_cell$session) && length(saved_cell$session) == 1 && !is.na(saved_cell$session) && saved_cell$session != "") {
-                  updateSelectInput(session, paste0("cell_session_", cell_id), selected = saved_cell$session)
-                }
-                if (!is.null(saved_cell$pitch_types) && length(saved_cell$pitch_types) > 0) {
-                  updateSelectizeInput(session, paste0("cell_pitch_types_", cell_id), selected = saved_cell$pitch_types)
-                }
-                if (!is.null(saved_cell$batter_side) && length(saved_cell$batter_side) == 1 && !is.na(saved_cell$batter_side) && saved_cell$batter_side != "") {
-                  updateSelectInput(session, paste0("cell_batter_side_", cell_id), selected = saved_cell$batter_side)
-                }
-                if (!is.null(saved_cell$pitcher_hand) && length(saved_cell$pitcher_hand) == 1 && !is.na(saved_cell$pitcher_hand) && saved_cell$pitcher_hand != "") {
-                  updateSelectInput(session, paste0("cell_pitcher_hand_", cell_id), selected = saved_cell$pitcher_hand)
-                }
-                if (!is.null(saved_cell$results) && length(saved_cell$results) > 0) {
-                  updateSelectInput(session, paste0("cell_results_", cell_id), selected = saved_cell$results)
-                }
-                if (!is.null(saved_cell$qp) && length(saved_cell$qp) == 1 && !is.na(saved_cell$qp) && saved_cell$qp != "") {
-                  updateSelectInput(session, paste0("cell_qp_", cell_id), selected = saved_cell$qp)
-                }
-                if (!is.null(saved_cell$count) && length(saved_cell$count) > 0) {
-                  updateSelectInput(session, paste0("cell_count_", cell_id), selected = saved_cell$count)
-                }
-                if (!is.null(saved_cell$after_count) && length(saved_cell$after_count) > 0) {
-                  updateSelectInput(session, paste0("cell_after_count_", cell_id), selected = saved_cell$after_count)
-                }
-                if (!is.null(saved_cell$zone) && length(saved_cell$zone) > 0) {
-                  updateSelectInput(session, paste0("cell_zone_", cell_id), selected = saved_cell$zone)
-                }
-                if (!is.null(saved_cell$velo_min) && length(saved_cell$velo_min) == 1 && !is.na(saved_cell$velo_min)) {
-                  updateNumericInput(session, paste0("cell_velo_min_", cell_id), value = saved_cell$velo_min)
-                }
-                if (!is.null(saved_cell$velo_max) && length(saved_cell$velo_max) == 1 && !is.na(saved_cell$velo_max)) {
-                  updateNumericInput(session, paste0("cell_velo_max_", cell_id), value = saved_cell$velo_max)
-                }
-                if (!is.null(saved_cell$ivb_min) && length(saved_cell$ivb_min) == 1 && !is.na(saved_cell$ivb_min)) {
-                  updateNumericInput(session, paste0("cell_ivb_min_", cell_id), value = saved_cell$ivb_min)
-                }
-                if (!is.null(saved_cell$ivb_max) && length(saved_cell$ivb_max) == 1 && !is.na(saved_cell$ivb_max)) {
-                  updateNumericInput(session, paste0("cell_ivb_max_", cell_id), value = saved_cell$ivb_max)
-                }
-                if (!is.null(saved_cell$hb_min) && length(saved_cell$hb_min) == 1 && !is.na(saved_cell$hb_min)) {
-                  updateNumericInput(session, paste0("cell_hb_min_", cell_id), value = saved_cell$hb_min)
-                }
-                if (!is.null(saved_cell$hb_max) && length(saved_cell$hb_max) == 1 && !is.na(saved_cell$hb_max)) {
-                  updateNumericInput(session, paste0("cell_hb_max_", cell_id), value = saved_cell$hb_max)
-                }
-              }
-            }
-          }          # Clear the loading flag after all updates are done
+          update_saved_state()
           loading_report(FALSE)
-        }, delay = 0.5)  # 0.5 second delay for controls to render
-      }, delay = 1.5)  # 1.5 second initial delay
+        }, delay = 0.5)
+      }, once = TRUE)
     }, ignoreInit = TRUE)
     
     # Render player selectors in sidebar for Multi-Player mode
