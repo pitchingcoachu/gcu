@@ -15971,7 +15971,12 @@ custom_reports_server <- function(id) {
       df <- apply_after_count_filter(df, after_count)
       zone <- safe_values(zone)
       df <- enforce_zone(df, zone)
-      nnz <- function(x) !is.null(x) && suppressWarnings(is.finite(as.numeric(x)))
+      nnz <- function(x) {
+        if (is.null(x)) return(FALSE)
+        nums <- suppressWarnings(as.numeric(x))
+        nums <- nums[is.finite(nums)]
+        length(nums) > 0
+      }
       if (nnz(velo_min))   df <- df %>% dplyr::filter(RelSpeed >= as.numeric(velo_min))
       if (nnz(velo_max))   df <- df %>% dplyr::filter(RelSpeed <= as.numeric(velo_max))
       if (nnz(ivb_min)) df <- df %>% dplyr::filter(InducedVertBreak >= as.numeric(ivb_min))
