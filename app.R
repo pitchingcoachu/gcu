@@ -15881,6 +15881,8 @@ custom_reports_server <- function(id) {
                               batter_side, pitcher_hand, results, qp, count, after_count, 
                               zone, velo_min, velo_max, ivb_min, ivb_max, hb_min, hb_max) {
       if (is.null(players) || length(players) == 0) return(data.frame())
+      report_type <- as.character(report_type)[1]
+      if (is.na(report_type) || !nzchar(report_type)) return(data.frame())
       
       # Handle "All" selection - get all data for that report type
       if (report_type == "Pitching") {
