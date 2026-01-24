@@ -15931,22 +15931,43 @@ custom_reports_server <- function(id) {
       if (!is.null(dates) && length(dates) == 2) {
         df <- df %>% dplyr::filter(Date >= dates[1], Date <= dates[2])
       }
-      if (!is.null(session) && session != "All") df <- df %>% dplyr::filter(SessionType %in% session)
-      pitch_types <- pitch_types %||% character(0)
-      if (length(pitch_types)) {
-        pitch_types <- as.character(pitch_types)
-        pitch_types <- pitch_types[!is.na(pitch_types)]
+      safe_values <- function(x) {
+        if (is.null(x)) return(NULL)
+        v <- as.character(x)
+        v <- v[!is.na(v)]
+        if (!length(v)) return(NULL)
+        v
       }
+      session <- safe_values(session)
+      if (!is.null(session) && !all(session == "All")) {
+        if (!("All" %in% session)) {
+          df <- df %>% dplyr::filter(SessionType %in% session)
+        }
+      }
+
+      pitch_types <- pitch_types %||% character(0)
+      pitch_types <- as.character(pitch_types)
+      pitch_types <- pitch_types[!is.na(pitch_types)]
       include_all_pt <- length(pitch_types) && any(pitch_types == "All")
       if (length(pitch_types) && !include_all_pt) {
         df <- df %>% dplyr::filter(TaggedPitchType %in% pitch_types)
       }
-      if (!is.null(batter_side) && batter_side != "All") df <- df %>% dplyr::filter(BatterSide == batter_side)
-      if (!is.null(pitcher_hand) && pitcher_hand != "All") df <- df %>% dplyr::filter(PitcherThrows == pitcher_hand)
+
+      batter_side <- safe_values(batter_side)
+      if (!is.null(batter_side) && !("All" %in% batter_side)) {
+        df <- df %>% dplyr::filter(BatterSide == batter_side[1])
+      }
+
+      pitcher_hand <- safe_values(pitcher_hand)
+      if (!is.null(pitcher_hand) && !("All" %in% pitcher_hand)) {
+        df <- df %>% dplyr::filter(PitcherThrows == pitcher_hand[1])
+      }
       df <- apply_pitch_results_filter(df, results)
-      if (!is.null(qp) && qp != "All") df <- filter_qp_locations(df, qp)
+      qp <- safe_values(qp)
+      if (!is.null(qp) && !("All" %in% qp)) df <- filter_qp_locations(df, qp)
       df <- apply_count_filter(df, count)
       df <- apply_after_count_filter(df, after_count)
+      zone <- safe_values(zone)
       df <- enforce_zone(df, zone)
       nnz <- function(x) !is.null(x) && suppressWarnings(is.finite(as.numeric(x)))
       if (nnz(velo_min))   df <- df %>% dplyr::filter(RelSpeed >= as.numeric(velo_min))
