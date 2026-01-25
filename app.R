@@ -15660,12 +15660,26 @@ custom_reports_server <- function(id) {
       }
     }, ignoreInit = FALSE)
     
-    # UI for grid
-    output$report_canvas <- renderUI({
-      rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
-      cells <- isolate(current_cells())  # Use isolate to prevent re-rendering on cell changes
-      is_multi_player <- input$report_scope == "Multi-Player"
-      
+    compute_column_widths <- function(cols, base_width) {
+      cols <- as.integer(cols)
+      if (is.na(cols) || cols <= 0) return(integer(0))
+      rep(base_width, cols)
+    }
+
+      # UI for grid
+      output$report_canvas <- renderUI({
+        rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
+        cells <- current_cells()  # React to cell changes including span
+        is_multi_player <- input$report_scope == "Multi-Player"
+        
+        # Add reactive dependency on all span inputs to trigger re-render when span changes
+        for (r in seq_len(rows)) {
+          for (c in seq_len(cols)) {
+            cell_id <- paste0("r", r, "c", c)
+            input[[paste0("cell_span_", cell_id)]]
+          }
+        }
+        
       # Helper function to format player names from "Last, First" to "First Last"
       format_player_name <- function(player_name) {
         if (is.null(player_name) || !nzchar(player_name)) return("")
@@ -15693,7 +15707,7 @@ custom_reports_server <- function(id) {
         }
         
         # Build cells for this row
-        row_cells <- lapply(seq_len(cols), function(cn) {
+        cell_infos <- lapply(seq_len(cols), function(cn) {
           cell_id <- paste0("r", r, "c", cn)
           sel <- cells[[cell_id]] %||% list(
             type = "", 
@@ -15704,63 +15718,103 @@ custom_reports_server <- function(id) {
             table_custom_cols = character(0),
             color = TRUE,
             heat_stat = "Frequency",
-            filter_select = c("Dates","Session Type","Pitch Types")
+            filter_select = c("Dates","Session Type","Pitch Types"),
+            span = 1
           )
-          width <- if (cols == 1) 8 else if (cols == 2) 6 else if (cols == 3) 4 else if (cols == 4) 3 else 2
-          offset <- if (cols == 1 && cn == 1) 2 else 0
-          
-          # In Multi-Player mode, rows 2+ use row 1's settings
+          settings_cell_id <- if (is_multi_player && r > 1) paste0("r1c", cn) else cell_id
+          settings_sel <- cells[[settings_cell_id]] %||% sel
+          cell_type_selected <- input[[paste0("cell_type_", settings_cell_id)]] %||% settings_sel$type %||% ""
+          is_summary_table <- identical(cell_type_selected, "Summary Table")
           is_controlled_row <- is_multi_player && r > 1
-          
+          list(
+            cell_id = cell_id,
+            sel = sel,
+            settings_cell_id = settings_cell_id,
+            settings_sel = settings_sel,
+            span = sel$span %||% 1,
+            settings_span = settings_sel$span %||% sel$span %||% 1,
+            is_summary = is_summary_table,
+            is_controlled_row = is_controlled_row
+          )
+        })
+
+        base_width <- if (cols == 1) 8 else if (cols == 2) 6 else if (cols == 3) 4 else if (cols == 4) 3 else 2
+        widths <- compute_column_widths(cols, base_width)
+
+        col_used <- rep(FALSE, cols)
+        row_cells <- lapply(seq_len(cols), function(cn) {
+          if (col_used[cn]) return(NULL)
+          info <- cell_infos[[cn]]
+          span_val <- suppressWarnings(as.integer(info$settings_span %||% info$span %||% 1))
+          if (is.na(span_val) || span_val < 1) span_val <- 1
+          max_span <- cols - (cn - 1)
+          span_val <- min(span_val, max_span)
+          col_idx <- seq.int(cn, cn + span_val - 1)
+          width <- sum(widths[col_idx])
+          offset <- if (cols == 1 && cn == 1 && width < 12) floor((12 - width) / 2) else 0
+          col_used[col_idx] <<- TRUE
+
           column(
             width = width, offset = offset,
             div(class = "creport-cell",
                 # Always create controls to preserve state, but hide them for rows 2+ in Multi-Player mode
                 # Title and show controls toggle
                 div(style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;",
-                    if (!is_controlled_row) {
-                      # Row 1 or Single-Player mode: show checkbox
-                      checkboxInput(ns(paste0("cell_show_controls_", cell_id)), "Show controls", 
-                                    value = sel$show_controls %||% TRUE, width = "120px")
+                    if (!info$is_controlled_row) {
+                      checkboxInput(ns(paste0("cell_show_controls_", info$cell_id)), "Show controls", 
+                                    value = info$sel$show_controls %||% TRUE, width = "120px")
                     }
                 ),
                 # Controls container - always render but hide with CSS for rows 2+
                 div(
-                  id = ns(paste0("cell_controls_container_", cell_id)),
-                  style = if (is_controlled_row) "display:none;" else "",  # Hide for rows 2+ using CSS
+                  id = ns(paste0("cell_controls_container_", info$cell_id)),
+                  style = if (info$is_controlled_row) "display:none;" else "",
                   conditionalPanel(
-                    condition = if (is_controlled_row) "false" else sprintf("input['%s']", ns(paste0("cell_show_controls_", cell_id))),
+                    condition = if (info$is_controlled_row) "false" else sprintf("input['%s']", ns(paste0("cell_show_controls_", info$cell_id))),
                     div(
-                      # Title input - only visible when controls are shown
-                      textInput(ns(paste0("cell_title_", cell_id)), "Chart Title:", 
-                                value = sel$title %||% "", placeholder = "Enter chart title..."),
-                      selectInput(ns(paste0("cell_type_", cell_id)), "Content:", 
+                      textInput(ns(paste0("cell_title_", info$cell_id)), "Chart Title:", 
+                                value = info$sel$title %||% "", placeholder = "Enter chart title..."),
+                      selectInput(ns(paste0("cell_type_", info$cell_id)), "Content:", 
                                   choices = c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart"),
-                                  selected = sel$type),
+                                  selected = info$sel$type),
+                      {
+                        cols_total <- as.integer(input$report_cols)
+                        if (is.na(cols_total) || cols_total < 1) cols_total <- 1
+                        col_num <- as.integer(sub(".*c(\\d+)$", "\\1", info$cell_id))
+                        if (is.na(col_num) || col_num < 1) col_num <- 1
+                        max_span <- max(1, cols_total - (col_num - 1))
+                        span_id <- ns(paste0("cell_span_", info$cell_id))
+                        default_span <- info$settings_span %||% info$span %||% 1
+                        existing_span <- input[[span_id]] %||% default_span
+                        existing_span <- suppressWarnings(as.integer(existing_span))
+                        if (is.na(existing_span) || existing_span < 1) existing_span <- 1
+                        existing_span <- min(existing_span, max_span)
+                        numericInput(span_id, "Column span:", min = 1, max = max_span, value = existing_span)
+                      },
                       conditionalPanel(
-                        sprintf("input['%s'] == 'Summary Table'", ns(paste0("cell_type_", cell_id))),
+                        sprintf("input['%s'] == 'Summary Table'", ns(paste0("cell_type_", info$cell_id))),
                         tagList(
-                          selectInput(ns(paste0("cell_table_mode_", cell_id)), "Table:", 
+                          selectInput(ns(paste0("cell_table_mode_", info$cell_id)), "Table:", 
                                       choices = if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data",
-                                                                                                                                   names(custom_tables()), "Custom"),
+                                                                                                                                     names(custom_tables()), "Custom"),
                                       selected = {
                                         ch <- if (input$report_type == "Hitting") c("Results","Swing Decisions","Custom") else c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data",
-                                                                                                                                 names(custom_tables()), "Custom")
-                                        if (!is.null(sel$table_mode) && sel$table_mode %in% ch) sel$table_mode else ch[[1]]
+                                                                                                                                   names(custom_tables()), "Custom")
+                                        if (!is.null(info$sel$table_mode) && info$sel$table_mode %in% ch) info$sel$table_mode else ch[[1]]
                                       }),
-                          selectInput(ns(paste0("cell_filter_", cell_id)), "Split By:", 
+                          selectInput(ns(paste0("cell_filter_", info$cell_id)), "Split By:", 
                                       choices = c("Pitch Types","Batter Hand","Pitcher Hand","Count","After Count","Velocity","IVB","HB","Batter"),
-                                      selected = sel$filter),
-                          checkboxInput(ns(paste0("cell_color_", cell_id)), "Color-Code", value = sel$color %||% TRUE),
+                                      selected = info$sel$filter),
+                          checkboxInput(ns(paste0("cell_color_", info$cell_id)), "Color-Code", value = info$sel$color %||% TRUE),
                           conditionalPanel(
                             condition = sprintf("input['%s']=='Custom' && input['%s']=='Hitting'", 
-                                                ns(paste0("cell_table_mode_", cell_id)), ns("report_type")),
+                                                ns(paste0("cell_table_mode_", info$cell_id)), ns("report_type")),
                             selectizeInput(
-                              ns(paste0("cell_table_custom_cols_", cell_id)),
+                              ns(paste0("cell_table_custom_cols_", info$cell_id)),
                               "Columns (drag to order):",
                               choices = c("PA","AB","AVG","SLG","OBP","OPS","xWOBA","xISO","BABIP",
                                           "Swing%","Whiff%","CSW%","GB%","K%","BB%","Barrel%","EV","LA"),
-                              selected = sel$table_custom_cols %||% c("PA","AB","AVG","SLG","OBP","OPS","Swing%","Whiff%"),
+                              selected = info$sel$table_custom_cols %||% c("PA","AB","AVG","SLG","OBP","OPS","Swing%","Whiff%"),
                               multiple = TRUE,
                               options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
                             )
@@ -15768,36 +15822,34 @@ custom_reports_server <- function(id) {
                         )
                       ),
                       conditionalPanel(
-                        sprintf("input['%s'] == 'Heatmap'", ns(paste0("cell_type_", cell_id))),
-                        selectInput(ns(paste0("cell_heat_stat_", cell_id)), "Heatmap Type:",
+                        sprintf("input['%s'] == 'Heatmap'", ns(paste0("cell_type_", info$cell_id))),
+                        selectInput(ns(paste0("cell_heat_stat_", info$cell_id)), "Heatmap Type:",
                                     choices = c("Frequency","Whiff Rate","Exit Velocity","GB Rate","Contact Rate","Swing Rate","Run Values"),
-                                    selected = sel$heat_stat %||% "Frequency")
+                                    selected = info$sel$heat_stat %||% "Frequency")
                       ),
-                      # Per-cell filters (collapsed set)
                       selectizeInput(
-                        ns(paste0("cell_filter_select_", cell_id)),
+                        ns(paste0("cell_filter_select_", info$cell_id)),
                         "Filters to show:",
                         choices = c("Dates","Session Type","Pitch Types","Batter Hand","Pitcher Hand","Pitch Results","QP Locations",
                                     "Count","After Count","Zone Location","Velo Min/Max","IVB Min/Max","HB Min/Max"),
-                        selected = sel$filter_select %||% c("Dates","Session Type","Pitch Types"),
+                        selected = info$sel$filter_select %||% c("Dates","Session Type","Pitch Types"),
                         multiple = TRUE,
                         options = list(plugins = list("remove_button"))
                       ),
-                      uiOutput(ns(paste0("cell_filters_", cell_id)))
+                      uiOutput(ns(paste0("cell_filters_", info$cell_id)))
                     )
                   )
                 ),
-                # Title display - non-reactive div updated via JavaScript
                 div(
-                  id = ns(paste0("cell_title_display_", cell_id)),
+                  id = ns(paste0("cell_title_display_", info$cell_id)),
                   style = "text-align:center; margin-bottom:10px; font-weight:bold;",
-                  ""  # Empty initially, updated via JS
+                  ""
                 ),
-                # Cell output - always rendered
-                uiOutput(ns(paste0("cell_output_", cell_id)))
+                uiOutput(ns(paste0("cell_output_", info$cell_id)))
             )
           )
         })
+        row_cells <- Filter(Negate(is.null), row_cells)
         
         # Return player name (if Multi-Player) followed by the row of charts
         tagList(player_name_row, fluidRow(row_cells))
@@ -15872,7 +15924,8 @@ custom_reports_server <- function(id) {
             ivb_min = update_if_exists(input[[paste0("cell_ivb_min_", id)]], existing_cell$ivb_min),
             ivb_max = update_if_exists(input[[paste0("cell_ivb_max_", id)]], existing_cell$ivb_max),
             hb_min = update_if_exists(input[[paste0("cell_hb_min_", id)]], existing_cell$hb_min),
-            hb_max = update_if_exists(input[[paste0("cell_hb_max_", id)]], existing_cell$hb_max)
+            hb_max = update_if_exists(input[[paste0("cell_hb_max_", id)]], existing_cell$hb_max),
+            span = update_if_exists(input[[paste0("cell_span_", id)]], existing_cell$span, 1)
           )
           # Keep UI in sync with stored state
         }
@@ -17227,15 +17280,58 @@ custom_reports_server <- function(id) {
               cell_data <- reactive({
                 # Only re-compute when these specific inputs change
                 # NOTE: Do NOT include cell_title here - it causes re-render on every keystroke
-                input[[paste0("cell_type_", id)]]
-                input[[paste0("cell_filter_", id)]]
-                input[[paste0("cell_table_mode_", id)]]
                 
-                # Isolate to prevent reactive dependencies on filters
+                # For Multi-Player mode, rows 2+ should use Row 1's settings
+                is_multi_player <- input$report_scope == "Multi-Player"
+                row_num <- as.integer(sub("r(\\d+)c\\d+", "\\1", id))
+                col_num <- as.integer(sub("r\\d+c(\\d+)", "\\1", id))
+                
+                # Determine which cell's inputs to monitor
+                settings_id <- if (is_multi_player && row_num > 1) {
+                  paste0("r1c", col_num)
+                } else {
+                  id
+                }
+                
+                # Monitor these inputs to trigger re-rendering
+                input[[paste0("cell_type_", settings_id)]]
+                input[[paste0("cell_filter_", settings_id)]]
+                input[[paste0("cell_table_mode_", settings_id)]]
+                input[[paste0("cell_color_", settings_id)]]
+                input[[paste0("cell_heat_stat_", settings_id)]]
+                input[[paste0("cell_table_custom_cols_", settings_id)]]
+                
+                # Also monitor filter values to trigger data updates
+                input[[paste0("cell_dates_", settings_id)]]
+                input[[paste0("cell_session_", settings_id)]]
+                input[[paste0("cell_pitch_types_", settings_id)]]
+                input[[paste0("cell_batter_side_", settings_id)]]
+                input[[paste0("cell_pitcher_hand_", settings_id)]]
+                input[[paste0("cell_results_", settings_id)]]
+                input[[paste0("cell_qp_", settings_id)]]
+                input[[paste0("cell_count_", settings_id)]]
+                input[[paste0("cell_after_count_", settings_id)]]
+                input[[paste0("cell_zone_", settings_id)]]
+                input[[paste0("cell_velo_min_", settings_id)]]
+                input[[paste0("cell_velo_max_", settings_id)]]
+                input[[paste0("cell_ivb_min_", settings_id)]]
+                input[[paste0("cell_ivb_max_", settings_id)]]
+                input[[paste0("cell_hb_min_", settings_id)]]
+                input[[paste0("cell_hb_max_", settings_id)]]
+                
+                # For Multi-Player mode, also monitor the row player selection
+                if (is_multi_player) {
+                  input[[paste0("row_player_", row_num)]]
+                }
+                
+                # Return the actual values
                 list(
-                  type = input[[paste0("cell_type_", id)]],
-                  filter = input[[paste0("cell_filter_", id)]],
-                  mode = input[[paste0("cell_table_mode_", id)]]
+                  type = input[[paste0("cell_type_", settings_id)]],
+                  filter = input[[paste0("cell_filter_", settings_id)]],
+                  mode = input[[paste0("cell_table_mode_", settings_id)]],
+                  color = input[[paste0("cell_color_", settings_id)]],
+                  heat_stat = input[[paste0("cell_heat_stat_", settings_id)]],
+                  custom_cols = input[[paste0("cell_table_custom_cols_", settings_id)]]
                 )
               }) %>% debounce(300)  # Slightly increased for stability
               
