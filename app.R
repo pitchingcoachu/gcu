@@ -2720,6 +2720,11 @@ count_cols        <- c("Swings","Takes","Called-S","Whiffs","Chases","IZswings",
 # ---- unified list for the pickers + a helper to compute visibility
 all_table_cols <- unique(c(stuff_cols, process_cols, results_cols, results_cols_live, bullpen_cols, live_cols, usage_cols, perf_cols, count_cols, "Overall"))
 
+# Verify count columns are included (for debugging)
+message("Count columns defined: ", paste(count_cols, collapse = ", "))
+message("Total columns available: ", length(all_table_cols))
+message("Count columns in all_table_cols: ", paste(intersect(count_cols, all_table_cols), collapse = ", "))
+
 visible_set_for <- function(mode, custom = character(0), session_type = NULL) {
   if (identical(mode, "Process")) return(process_cols)
   if (identical(mode, "Results")) return(results_cols)
@@ -16226,6 +16231,7 @@ custom_reports_server <- function(id) {
     
     # Grid state
     current_cells <- reactiveVal(list())
+    cell_titles <- reactiveVal(list())  # Separate storage for titles to avoid UI re-renders
     loading_report <- reactiveVal(FALSE)  # Flag to prevent observe from overwriting during load
     update_reports_grid <- function(cells_list) {
       current_cells(cells_list)
@@ -16662,7 +16668,7 @@ custom_reports_server <- function(id) {
           cells[[id]] <- list(
             type = update_if_exists(input[[paste0("cell_type_", id)]], existing_cell$type, ""),
             filter = update_if_exists(input[[paste0("cell_filter_", id)]], existing_cell$filter, "Pitch Types"),
-            title = update_if_exists(input[[paste0("cell_title_", id)]], existing_cell$title, ""),
+            title = existing_cell$title %||% "",  # Keep existing title, updated separately with debounce
             show_controls = update_if_exists(input[[paste0("cell_show_controls_", id)]], existing_cell$show_controls, TRUE),
             table_mode = update_if_exists(input[[paste0("cell_table_mode_", id)]], existing_cell$table_mode, "Stuff"),
             table_custom_cols = update_if_exists(input[[paste0("cell_table_custom_cols_", id)]], existing_cell$table_custom_cols, character(0)),
@@ -16692,7 +16698,32 @@ custom_reports_server <- function(id) {
         }
       }
       current_cells(cells)
-    }) %>% throttle(500)  # Reduced throttle for better responsiveness
+    }) %>% throttle(2000)  # Throttle to 2 seconds to reduce saves during rapid changes
+    
+    # Separate observer to handle title updates with debounce (prevents interruption while typing)
+    # Uses separate cell_titles reactiveVal to avoid re-rendering the entire grid
+    observe({
+      if (loading_report()) return()
+      
+      rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
+      if (length(rows) == 0 || length(cols) == 0 || is.na(rows) || is.na(cols)) return()
+      if (rows < 1 || cols < 1) return()
+      
+      titles <- isolate(cell_titles())
+      
+      for (r in seq_len(rows)) {
+        for (c in seq_len(cols)) {
+          id <- paste0("r", r, "c", c)
+          title_val <- input[[paste0("cell_title_", id)]]
+          
+          # Only update if input exists
+          if (!is.null(title_val)) {
+            titles[[id]] <- title_val
+          }
+        }
+      }
+      cell_titles(titles)
+    }) %>% debounce(1500)  # Debounce to only save title after user stops typing for 1.5 seconds
     
     # Helper: get filtered dataset for player(s) for a given cell
     # This is now a pure function that will be cached via bindCache in the reactive
@@ -17656,9 +17687,12 @@ custom_reports_server <- function(id) {
                 )
               }) %>% debounce(300)  # Slightly increased for stability
               
-              # Update title display using delayed shinyjs::html (throttled to prevent focus loss)
+              # Update title display using delayed shinyjs::html
               # In Multi-Player mode, rows 2+ use Row 1's title
+              # Use cell_titles instead of current_cells to avoid dependency on full cell data
               observe({
+                titles <- cell_titles()
+                
                 # Determine which title to use
                 is_multi_player <- input$report_scope == "Multi-Player"
                 
@@ -17669,15 +17703,15 @@ custom_reports_server <- function(id) {
                 # For rows 2+ in Multi-Player mode, use Row 1's title
                 if (is_multi_player && row_num > 1) {
                   title_cell_id <- paste0("r1c", col_num)
-                  title_val <- input[[paste0("cell_title_", title_cell_id)]]
+                  title_val <- titles[[title_cell_id]] %||% ""
                 } else {
-                  title_val <- input[[paste0("cell_title_", id)]]
+                  title_val <- titles[[id]] %||% ""
                 }
                 
                 shinyjs::delay(50, {
                   shinyjs::html(
                     id = paste0("cell_title_display_", id),
-                    html = title_val %||% ""
+                    html = title_val
                   )
                 })
               })
@@ -24942,7 +24976,9 @@ server <- function(input, output, session) {
           BF,
           Velo, Max, IVB, HB, rTilt, bTilt, SpinEff, Spin, Height, Side, VAA, HAA, Ext,
           `InZone%`, `Comp%`, `Strike%`, `Swing%`, `FPS%`, `Early%`, `Ahead%`, `E+A%`, `1-1W%`, `QP%`, `K%`, `BB%`, `Whiff%`, EV, LA,
-          `Stuff+`, `Ctrl+`, `QP+`, `Pitching+`
+          `Stuff+`, `Ctrl+`, `QP+`, `Pitching+`,
+          # Include count columns
+          dplyr::any_of(c("Swings", "Whiffs", "FPS", "Called-S", "Takes", "Chases", "GoZoneSw", "IZswings", "EdgeSwings", "PosSD"))
         ) %>%
         dplyr::mutate(
           SpinEff = {
@@ -25008,6 +25044,14 @@ server <- function(input, output, session) {
       # Update visible_set to use dynamic column name
       visible_set <- visible_set_for(mode, custom)
       visible_set <- gsub("^Pitch$", split_col_name, visible_set)
+      
+      # Debug: log visible columns in Custom mode
+      if (identical(mode, "Custom")) {
+        message("Custom mode - Selected columns: ", paste(custom, collapse = ", "))
+        message("Custom mode - Columns in df_table: ", paste(names(df_table), collapse = ", "))
+        message("Custom mode - visible_set: ", paste(visible_set, collapse = ", "))
+        message("Custom mode - Intersection: ", paste(intersect(visible_set, names(df_table)), collapse = ", "))
+      }
       
       build_summary_dt <- function(data, ...) {
         tryCatch(
