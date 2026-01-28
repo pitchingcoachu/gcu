@@ -16001,6 +16001,15 @@ custom_reports_server <- function(id) {
       # FIRST: Update current_cells with saved data (before UI changes)
       update_reports_grid(rep$cells %||% list())
       
+      # Also populate cell_titles from the loaded report
+      titles <- list()
+      for (cell_id in names(rep$cells)) {
+        if (!is.null(rep$cells[[cell_id]]$title)) {
+          titles[[cell_id]] <- rep$cells[[cell_id]]$title
+        }
+      }
+      cell_titles(titles)
+      
       # THEN: Update all UI elements (this will trigger renderUI which reads from current_cells)
       updateTextInput(session, "report_title", value = rep$title %||% "")
       updateSelectInput(session, "report_team", selected = rep$team %||% "All")
@@ -16177,7 +16186,18 @@ custom_reports_server <- function(id) {
         showNotification("Please enter a report title.", type = "warning")
         return()
       }
+      
+      # First, ensure all titles are synced from cell_titles to current_cells
+      titles <- isolate(cell_titles())
       cells <- isolate(current_cells())
+      for (cell_id in names(titles)) {
+        if (!is.null(cells[[cell_id]])) {
+          cells[[cell_id]]$title <- titles[[cell_id]]
+        } else {
+          cells[[cell_id]] <- list(title = titles[[cell_id]])
+        }
+      }
+      
       scope <- if (isTRUE(is_admin_local()) && isTRUE(input$report_global)) GLOBAL_SCOPE else current_school()
       rep <- list(
         title = nm,
@@ -16530,8 +16550,33 @@ custom_reports_server <- function(id) {
                   conditionalPanel(
                     condition = if (info$is_controlled_row) "false" else sprintf("input['%s']", ns(paste0("cell_show_controls_", info$cell_id))),
                     div(
-                      textInput(ns(paste0("cell_title_", info$cell_id)), "Chart Title:", 
-                                value = info$sel$title %||% "", placeholder = "Enter chart title..."),
+                      div(
+                        textInput(ns(paste0("cell_title_", info$cell_id)), "Chart Title:", 
+                                  value = info$sel$title %||% "", placeholder = "Enter chart title..."),
+                        tags$script(HTML(sprintf("
+                          (function() {
+                            var id = '%s';
+                            var blurId = '%s';
+                            var pendingId = '%s';
+                            var el = document.getElementById(id);
+                            if (!el) return;
+                            el.removeEventListener('blur', el.__cell_title_blur_listener__);
+                            el.removeEventListener('input', el.__cell_title_input_listener__);
+                            var blurListener = function() {
+                              Shiny.setInputValue(blurId, el.value, {priority: 'event'});
+                            };
+                            var inputListener = function() {
+                              Shiny.setInputValue(pendingId, el.value, {priority: 'event'});
+                            };
+                            el.__cell_title_blur_listener__ = blurListener;
+                            el.__cell_title_input_listener__ = inputListener;
+                            el.addEventListener('blur', blurListener);
+                            el.addEventListener('input', inputListener);
+                            inputListener();
+                          })();
+                        ", ns(paste0("cell_title_", info$cell_id)), ns(paste0("cell_title_blur_", info$cell_id)),
+                           ns(paste0("cell_title_pending_", info$cell_id)))))
+                      ),
                       selectInput(ns(paste0("cell_type_", info$cell_id)), "Content:", 
                                   choices = c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart"),
                                   selected = info$sel$type),
@@ -16638,6 +16683,7 @@ custom_reports_server <- function(id) {
       if (rows < 1 || cols < 1) return()
       
       cells <- isolate(current_cells())  # Use isolate to prevent dependency loops
+      title_vals <- isolate(cell_titles())
       
       # Save row players in Multi-Player mode
       if (input$report_scope == "Multi-Player") {
@@ -16668,7 +16714,7 @@ custom_reports_server <- function(id) {
           cells[[id]] <- list(
             type = update_if_exists(input[[paste0("cell_type_", id)]], existing_cell$type, ""),
             filter = update_if_exists(input[[paste0("cell_filter_", id)]], existing_cell$filter, "Pitch Types"),
-            title = existing_cell$title %||% "",  # Keep existing title, updated separately with debounce
+            title = title_vals[[id]] %||% existing_cell$title %||% "",  # Prefer latest debounced title
             show_controls = update_if_exists(input[[paste0("cell_show_controls_", id)]], existing_cell$show_controls, TRUE),
             table_mode = update_if_exists(input[[paste0("cell_table_mode_", id)]], existing_cell$table_mode, "Stuff"),
             table_custom_cols = update_if_exists(input[[paste0("cell_table_custom_cols_", id)]], existing_cell$table_custom_cols, character(0)),
@@ -16702,28 +16748,63 @@ custom_reports_server <- function(id) {
     
     # Separate observer to handle title updates with debounce (prevents interruption while typing)
     # Uses separate cell_titles reactiveVal to avoid re-rendering the entire grid
-    observe({
-      if (loading_report()) return()
-      
-      rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
-      if (length(rows) == 0 || length(cols) == 0 || is.na(rows) || is.na(cols)) return()
-      if (rows < 1 || cols < 1) return()
-      
+    flush_cell_title_now <- function(cell_id, value = NULL) {
+      pending_val <- isolate(input[[paste0("cell_title_pending_", cell_id)]])
+      title_val <- if (!is.null(value)) value else if (!is.null(pending_val)) pending_val else isolate(input[[paste0("cell_title_", cell_id)]])
+      if (is.null(title_val)) return(invisible(NULL))
       titles <- isolate(cell_titles())
-      
+      if (identical(titles[[cell_id]], title_val)) return(invisible(NULL))
+      titles[[cell_id]] <- title_val
+      cell_titles(titles)
+      cells <- isolate(current_cells())
+      existing_cell <- cells[[cell_id]] %||% list()
+      existing_cell$title <- title_val
+      cells[[cell_id]] <- existing_cell
+      current_cells(cells)
+    }
+
+    created_title_flush_ids <- character(0)
+
+    observeEvent(list(input$report_rows, input$report_cols), {
+      rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
+      if (length(rows) == 0 || length(cols) == 0 || is.na(rows) || is.na(cols) || rows < 1 || cols < 1) return()
       for (r in seq_len(rows)) {
         for (c in seq_len(cols)) {
-          id <- paste0("r", r, "c", c)
-          title_val <- input[[paste0("cell_title_", id)]]
-          
-          # Only update if input exists
-          if (!is.null(title_val)) {
-            titles[[id]] <- title_val
-          }
+          cell_id <- paste0("r", r, "c", c)
+          if (cell_id %in% created_title_flush_ids) next
+          created_title_flush_ids <<- c(created_title_flush_ids, cell_id)
+          local({
+            id <- cell_id
+            observeEvent(input[[paste0("cell_show_controls_", id)]], {
+              if (!isTRUE(isolate(input[[paste0("cell_show_controls_", id)]]))) {
+                flush_cell_title_now(id)
+              }
+            }, ignoreInit = TRUE)
+            observeEvent(input[[paste0("cell_title_blur_", id)]], {
+              flush_cell_title_now(id, value = input[[paste0("cell_title_blur_", id)]])
+            }, ignoreInit = TRUE)
+          })
         }
       }
-      cell_titles(titles)
-    }) %>% debounce(1500)  # Debounce to only save title after user stops typing for 1.5 seconds
+    }, ignoreInit = FALSE)
+
+
+    # Sync titles from cell_titles back to current_cells (so they're saved permanently)
+    observe({
+      titles <- cell_titles()
+      cells <- isolate(current_cells())
+      
+      # Update titles in cells
+      for (cell_id in names(titles)) {
+        if (!is.null(cells[[cell_id]])) {
+          cells[[cell_id]]$title <- titles[[cell_id]]
+        } else {
+          # Create new cell entry if it doesn't exist
+          cells[[cell_id]] <- list(title = titles[[cell_id]])
+        }
+      }
+      current_cells(cells)
+    }) %>% debounce(500)  # Reduced to 500ms for faster syncing
     
     # Helper: get filtered dataset for player(s) for a given cell
     # This is now a pure function that will be cached via bindCache in the reactive
@@ -17602,8 +17683,9 @@ custom_reports_server <- function(id) {
         })
         return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
       }
+      # Fallback if chart type is not recognized
       output[[out_id]] <- renderUI({ div("Unsupported selection") })
-      uiOutput(ns(out_id))
+      return(uiOutput(ns(out_id)))
     }
     
     # Outputs for each cell (optimized to only create observers once per cell)
@@ -17692,6 +17774,7 @@ custom_reports_server <- function(id) {
               # Use cell_titles instead of current_cells to avoid dependency on full cell data
               observe({
                 titles <- cell_titles()
+                cells_snapshot <- current_cells()
                 
                 # Determine which title to use
                 is_multi_player <- input$report_scope == "Multi-Player"
@@ -17703,9 +17786,11 @@ custom_reports_server <- function(id) {
                 # For rows 2+ in Multi-Player mode, use Row 1's title
                 if (is_multi_player && row_num > 1) {
                   title_cell_id <- paste0("r1c", col_num)
-                  title_val <- titles[[title_cell_id]] %||% ""
+                  title_entry <- cells_snapshot[[title_cell_id]] %||% list()
+                  title_val <- title_entry$title %||% titles[[title_cell_id]] %||% ""
                 } else {
-                  title_val <- titles[[id]] %||% ""
+                  title_entry <- cells_snapshot[[id]] %||% list()
+                  title_val <- title_entry$title %||% titles[[id]] %||% ""
                 }
                 
                 shinyjs::delay(50, {
