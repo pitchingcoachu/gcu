@@ -16100,11 +16100,14 @@ custom_reports_server <- function(id) {
       }
 
       session$onFlushed(function() {
-        # Show controls for every cell
+        # Restore controls visibility from saved report (default to TRUE)
         for (r in seq_len(rows)) {
           for (c in seq_len(cols)) {
             cell_id <- paste0("r", r, "c", c)
-            updateCheckboxInput(session, paste0("cell_show_controls_", cell_id), value = TRUE)
+            saved_cell <- cells[[cell_id]] %||% list()
+            show_val <- saved_cell$show_controls
+            if (is.null(show_val)) show_val <- TRUE
+            updateCheckboxInput(session, paste0("cell_show_controls_", cell_id), value = show_val)
           }
         }
 
