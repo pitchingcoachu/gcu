@@ -15880,7 +15880,9 @@ custom_reports_ui <- function(id) {
         ),
         column(9, id = ns("main_column"),
                uiOutput(ns("report_header")),
-               uiOutput(ns("report_canvas"))
+               div(id = ns("report_canvas_wrapper"),
+                   uiOutput(ns("report_canvas"))
+               )
         )
       )
     )
@@ -15988,6 +15990,11 @@ custom_reports_server <- function(id) {
     observeEvent(input$saved_report, {
       nm <- input$saved_report
       if (!nzchar(nm)) return()
+      load_cycle <- start_loading_cycle()
+      if (!is.null(loading_report_handle)) {
+        later::cancel(loading_report_handle)
+        loading_report_handle <<- NULL
+      }
       cr <- custom_reports_store()
       if (!nm %in% names(cr)) return()
       rep <- cr[[nm]]
@@ -16000,6 +16007,7 @@ custom_reports_server <- function(id) {
       
       # FIRST: Update current_cells with saved data (before UI changes)
       update_reports_grid(rep$cells %||% list())
+      new_report_token(as.numeric(Sys.time()))
       
       # Also populate cell_titles from the loaded report
       titles <- list()
@@ -16046,6 +16054,30 @@ custom_reports_server <- function(id) {
             cell_id <- paste0("r", r, "c", c)
             saved_cell <- cells[[cell_id]]
             if (is.null(saved_cell)) next
+            if (!is.null(saved_cell$type)) {
+              updateSelectInput(session, paste0("cell_type_", cell_id), selected = saved_cell$type)
+            }
+            if (!is.null(saved_cell$filter)) {
+              updateSelectInput(session, paste0("cell_filter_", cell_id), selected = saved_cell$filter)
+            }
+            if (!is.null(saved_cell$table_mode)) {
+              updateSelectInput(session, paste0("cell_table_mode_", cell_id), selected = saved_cell$table_mode)
+            }
+            if (!is.null(saved_cell$table_custom_cols)) {
+              updateSelectizeInput(session, paste0("cell_table_custom_cols_", cell_id), selected = saved_cell$table_custom_cols)
+            }
+            if (!is.null(saved_cell$color)) {
+              updateCheckboxInput(session, paste0("cell_color_", cell_id), value = isTRUE(saved_cell$color))
+            }
+            if (!is.null(saved_cell$heat_stat)) {
+              updateSelectInput(session, paste0("cell_heat_stat_", cell_id), selected = saved_cell$heat_stat)
+            }
+            if (!is.null(saved_cell$filter_select)) {
+              updateSelectizeInput(session, paste0("cell_filter_select_", cell_id), selected = saved_cell$filter_select)
+            }
+            if (!is.null(saved_cell$span) && length(saved_cell$span) == 1 && !is.na(saved_cell$span)) {
+              updateNumericInput(session, paste0("cell_span_", cell_id), value = saved_cell$span)
+            }
             if (!is.null(saved_cell$dates) && length(saved_cell$dates) == 2) {
               updateDateRangeInput(session, paste0("cell_dates_", cell_id), 
                                    start = saved_cell$dates[1], end = saved_cell$dates[2])
@@ -16100,6 +16132,7 @@ custom_reports_server <- function(id) {
       }
 
       session$onFlushed(function() {
+        if (loading_report_cycle != load_cycle) return()
         # Restore controls visibility from saved report (default to TRUE)
         for (r in seq_len(rows)) {
           for (c in seq_len(cols)) {
@@ -16113,9 +16146,16 @@ custom_reports_server <- function(id) {
 
         update_saved_state()
 
-        later::later(function() {
+        # Cancel any pending release from previous load before scheduling this one
+        if (!is.null(loading_report_handle)) {
+          later::cancel(loading_report_handle)
+          loading_report_handle <<- NULL
+        }
+        loading_report_handle <<- later::later(function() {
+          if (loading_report_cycle != load_cycle) return()
           update_saved_state()
           loading_report(FALSE)
+          loading_report_handle <<- NULL
         }, delay = 0.5)
       }, once = TRUE)
     }, ignoreInit = TRUE)
@@ -16233,29 +16273,39 @@ custom_reports_server <- function(id) {
       }
     }, ignoreInit = TRUE)
     
-    # New Report - clear everything for fresh start
+    # New Report - keep existing layout but clear title so a new save can be created
     observeEvent(input$new_report, {
-      # Clear all cells
-      current_cells(list())
-      
-      # Reset to defaults
+      new_cycle <- start_loading_cycle()
+      if (!is.null(loading_report_handle)) {
+        later::cancel(loading_report_handle)
+        loading_report_handle <<- NULL
+      }
+      loading_report(TRUE)
       updateTextInput(session, "report_title", value = "")
-      updateSelectInput(session, "report_team", selected = "All")
-      updateSelectInput(session, "report_type", selected = "Pitching")
-      updateSelectInput(session, "report_scope", selected = "Single Player")
-      updateSelectizeInput(session, "report_players", selected = character(0))
-      updateSelectInput(session, "report_rows", selected = 1)
-      updateSelectInput(session, "report_cols", selected = 1)
       updateSelectInput(session, "saved_report", selected = "")
       if (isTRUE(is_admin_local())) updateCheckboxInput(session, "report_global", value = FALSE)
-      
-      showNotification("New report created. Start building!", type = "message")
+
+      loading_report_handle <<- later::later(function() {
+        if (loading_report_cycle != new_cycle) return()
+        loading_report(FALSE)
+        loading_report_handle <<- NULL
+      }, delay = 0.2)
+
+      showNotification("New report ready for editing (current layout is preserved). Save to keep it.", type = "message")
     }, ignoreInit = TRUE)
     
     # Grid state
     current_cells <- reactiveVal(list())
     cell_titles <- reactiveVal(list())  # Separate storage for titles to avoid UI re-renders
-    loading_report <- reactiveVal(FALSE)  # Flag to prevent observe from overwriting during load
+    loading_report <- reactiveVal(FALSE)  # Flag to prevent observe block from overwriting during load
+    loading_report_cycle <- 0  # Tracks active loading cycle
+    loading_report_handle <- NULL
+    new_report_token <- reactiveVal(0)
+
+    start_loading_cycle <- function() {
+      loading_report_cycle <<- loading_report_cycle + 1
+      loading_report_cycle
+    }
     update_reports_grid <- function(cells_list) {
       current_cells(cells_list)
     }
@@ -16449,6 +16499,7 @@ custom_reports_server <- function(id) {
 
       # UI for grid
       output$report_canvas <- renderUI({
+        new_report_token()
         rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
         cells <- current_cells()  # React to cell changes including span
         is_multi_player <- input$report_scope == "Multi-Player"
@@ -16678,6 +16729,7 @@ custom_reports_server <- function(id) {
       # Don't update if we're currently loading a saved report
       if (loading_report()) return()
       
+      new_report_token()
       rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
       
       # Validate that rows and cols are valid integers
@@ -16945,10 +16997,15 @@ custom_reports_server <- function(id) {
         row_player
       } else {
         # Single Player mode - use main player selector
-        input$report_players
+        single_players <- input$report_players
+        if (is.null(single_players) || length(single_players) == 0 ||
+            all(trimws(single_players) == "")) {
+          single_players <- "All"
+        }
+        single_players
       }
       
-      # Allow "All" or empty to pass through, but require something
+      # Allow "All" (or defaulted) but require something
       if (is.null(players) || (length(players) == 1 && !nzchar(players))) {
         return(data.frame())
       }
@@ -17776,6 +17833,11 @@ custom_reports_server <- function(id) {
               # In Multi-Player mode, rows 2+ use Row 1's title
               # Use cell_titles instead of current_cells to avoid dependency on full cell data
               observe({
+                # Track control visibility and grid size so we can repaint the title after DOM updates
+                input[[paste0("cell_show_controls_", id)]]
+                input$report_rows
+                input$report_cols
+
                 titles <- cell_titles()
                 cells_snapshot <- current_cells()
                 
