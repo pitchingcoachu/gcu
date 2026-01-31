@@ -8869,6 +8869,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           ) %>%
           dplyr::transmute(
             !!split_col_name := as.character(SplitColumn),
+            `#`        = Pitches,
             PA, AB, AVG, SLG, OBP, OPS,
             wOBA, xWOBA = NA_real_,
             ISO, xISO = NA_real_, BABIP = NA_real_,
@@ -8931,15 +8932,18 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           safe_div(sum(d$TaggedHitType == "GroundBall", na.rm = TRUE),
                    sum(!is.na(d$TaggedHitType),         na.rm = TRUE))
         }
+        all_barrels <- sum(bbe$ExitSpeed >= 95 & bbe$Angle >= 10 & bbe$Angle <= 35, na.rm = TRUE)
         
         # Create all_row with dynamic column name
         all_row_data <- list(
-          PA = PAt, AB = ABt,
-          AVG = safe_div(H, ABt),
-          SLG = safe_div(TB, ABt),
-          OBP = safe_div(H + BBc_all + HBP_all, PAt),
-          OPS = NA_real_,  # filled just below
-          xWOBA = NA_real_, xISO = NA_real_, BABIP = NA_real_,
+          `#`      = pitches,
+          PA       = PAt,
+          AB       = ABt,
+          AVG      = safe_div(H, ABt),
+          SLG      = safe_div(TB, ABt),
+          OBP      = safe_div(H + BBc_all + HBP_all, PAt),
+          OPS      = NA_real_,  # filled just below
+          xWOBA    = NA_real_, xISO = NA_real_, BABIP = NA_real_,
           `Swing%` = safe_div(swings, total_pitches),
           `Whiff%` = safe_div(whiffs, swings),
           `CSW%`   = safe_div(csw_all_num, total_pitches),
@@ -8947,15 +8951,17 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           `K%`     = safe_div(Kct_all, PAt),
           `BB%`    = safe_div(BBc_all, PAt),
           `Barrel%`= NA_real_,
-          EV = nz_mean(bbe$ExitSpeed),
-          LA = nz_mean(bbe$Angle),
-          ISO = safe_div(TB, ABt) - safe_div(H, ABt),
-          wOBA = {
+          EV       = nz_mean(bbe$ExitSpeed),
+          LA       = nz_mean(bbe$Angle),
+          ISO      = safe_div(TB, ABt) - safe_div(H, ABt),
+          wOBA     = {
             uBB_all <- BBc_all - IBB_all
             num <- 0.690*uBB_all + 0.722*HBP_all + 0.888*H1 + 1.271*H2 + 1.616*H3 + 2.101*HR
             den <- ABt + BBc_all - IBB_all + Sac_all + HBP_all
             safe_div(num, den)
-          }
+          },
+          Whiffs = whiffs,
+          Barrels = all_barrels
         )
         all_row_data[[split_col_name]] <- "All"
         all_row <- tibble::as_tibble(all_row_data)
@@ -14645,6 +14651,13 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
           }
           
           res <- dplyr::bind_rows(res_pt, all_row)
+          required_raw_cols <- c("Swings","FPS","Called-S","Takes","Chases",
+                                 "GoZoneSw","IZswings","EdgeSwings","PosSD",
+                                 "Whiffs","Barrels")
+          missing_raw <- setdiff(required_raw_cols, names(res))
+          if (length(missing_raw)) {
+            res[missing_raw] <- NA_real_
+          }
           metrics_base <- merge_metrics(list(
             summarize_motion(df_src),
             summarize_swing_metrics(df_src),
@@ -14664,6 +14677,20 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
               dplyr::mutate(!!split_col_name := SplitColumn) %>%
               dplyr::select(-SplitColumn)
             res <- dplyr::left_join(res, metrics_df, by = split_col_name)
+            for (col in required_raw_cols) {
+              col_x <- paste0(col, ".x")
+              col_y <- paste0(col, ".y")
+              if (!(col %in% names(res))) res[[col]] <- NA_real_
+              val <- res[[col]]
+              if (col_x %in% names(res)) {
+                val <- dplyr::coalesce(val, res[[col_x]])
+              }
+              if (col_y %in% names(res)) {
+                val <- dplyr::coalesce(val, res[[col_y]])
+              }
+              res[[col]] <- val
+            }
+            res <- res[, !grepl("\\.(x|y)$", names(res))]
           }
           if (identical(split_choice, "Pitch Types") && split_col_name == "Pitch") {
             ord <- names(all_colors)
@@ -14875,8 +14902,9 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
             # Raw count columns
             "Takes", "Called-S", "Whiffs", "Chases", "IZswings", "Barrels", "FPS", "EdgeSwings", "PosSD", "GoZoneSw"
           )
-          custom_cols <- custom_cols[custom_cols %in% visible_cols_base]
-          visible_cols <- unique(c(split_col_name, custom_cols))
+          # Only include custom columns that exist in both visible_cols_base AND results_df
+          valid_custom_cols <- intersect(custom_cols, intersect(visible_cols_base, names(results_df)))
+          visible_cols <- unique(c(split_col_name, valid_custom_cols))
           if (length(visible_cols) == 1) visible_cols <- visible_cols_base
         } else {
           # Results mode: show key hitting stats by default
@@ -15159,9 +15187,14 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
         
         visible_set <- visible_set_for(mode, custom_cols)
         if (identical(mode, "Custom")) {
-          order_cols <- unique(c("Pitch", custom_cols))
-          extras <- setdiff(names(df_dt), order_cols)
-          df_dt <- df_dt[, c(order_cols, extras), drop = FALSE]
+          # Only include custom columns that actually exist in the dataframe
+          valid_custom_cols <- intersect(custom_cols, names(df_dt))
+          order_cols <- unique(c(split_col_name, valid_custom_cols))
+          # Only reorder if we have valid custom columns
+          if (length(valid_custom_cols) > 0) {
+            extras <- setdiff(names(df_dt), order_cols)
+            df_dt <- df_dt[, c(order_cols, extras), drop = FALSE]
+          }
         }
         df_dt <- format_decimal_columns(df_dt)
         return(datatable_with_colvis(
@@ -18346,6 +18379,841 @@ player_plans_ui <- function() {
   )
 }
 
+# ============================================================================
+# BIOMECHANICS MODULE
+# ============================================================================
+
+# Get biomechanics database path for SQLite fallback
+get_biomech_db_path <- function() {
+  db_dir <- "data"
+  if (!dir.exists(db_dir)) dir.create(db_dir, recursive = TRUE)
+  file.path(db_dir, "biomechanics.sqlite")
+}
+
+# Determine which backend to use for biomechanics data
+get_biomech_backend <- function() {
+  # Try PostgreSQL/Neon first
+  config <- get_biomech_db_config()
+  if (!is.null(config) && nzchar(config$host %||% "") && nzchar(config$dbname %||% "")) {
+    return(list(type = "postgres", config = config))
+  }
+  # Fallback to SQLite
+  list(type = "sqlite", path = get_biomech_db_path())
+}
+
+get_biomech_db_config <- function() {
+  url <- Sys.getenv("BIOMECH_DB_URL", "")
+  if (nzchar(url)) {
+    parsed <- parse_pitch_mod_postgres_uri(url)
+    if (!is.null(parsed)) return(parsed)
+  }
+  
+  host <- Sys.getenv("BIOMECH_DB_HOST", "")
+  user <- Sys.getenv("BIOMECH_DB_USER", "")
+  password <- Sys.getenv("BIOMECH_DB_PASSWORD", "")
+  dbname <- Sys.getenv("BIOMECH_DB_NAME", "")
+  port <- suppressWarnings(as.integer(Sys.getenv("BIOMECH_DB_PORT", "")))
+  sslmode <- Sys.getenv("BIOMECH_DB_SSLMODE", "require")
+  channel_binding <- Sys.getenv("BIOMECH_DB_CHANNEL_BINDING", "require")
+  
+  if (nzchar(host) && nzchar(user) && nzchar(password) && nzchar(dbname)) {
+    if (is.na(port) || port <= 0) port <- 5432
+    return(list(
+      host = host,
+      port = port,
+      user = user,
+      password = password,
+      dbname = dbname,
+      sslmode = sslmode,
+      channel_binding = channel_binding
+    ))
+  }
+  
+  # Fallback: use same config as pitch modifications
+  get_pitch_mod_postgres_config()
+}
+
+biomech_db_connect <- function() {
+  backend <- get_biomech_backend()
+  message("=== biomech_db_connect called ===")
+  message("Backend type: ", backend$type)
+  
+  if (backend$type == "sqlite") {
+    message("Attempting SQLite connection...")
+    tryCatch({
+      if (!requireNamespace("RSQLite", quietly = TRUE)) {
+        stop("RSQLite is required for local biomechanics data storage.")
+      }
+      con <- DBI::dbConnect(RSQLite::SQLite(), backend$path)
+      message("SQLite connected successfully to: ", backend$path)
+      con
+    }, error = function(e) {
+      message("Failed to connect to SQLite biomechanics database: ", e$message)
+      NULL
+    })
+  } else {
+    # PostgreSQL
+    config <- backend$config
+    if (is.null(config)) {
+      message("ERROR: PostgreSQL config is NULL")
+      return(NULL)
+    }
+    
+    message("Attempting PostgreSQL connection...")
+    message("Host: ", config$host)
+    message("Database: ", config$dbname)
+    message("User: ", config$user)
+    
+    tryCatch({
+      if (!requireNamespace("RPostgres", quietly = TRUE)) {
+        message("RPostgres not available, falling back to SQLite")
+        return(biomech_db_connect())
+      }
+      params <- list(
+        host = config$host,
+        port = config$port %||% 5432,
+        user = config$user,
+        password = config$password,
+        dbname = config$dbname,
+        sslmode = config$sslmode %||% "require"
+      )
+      if (nzchar(config$channel_binding %||% "")) {
+        params$channel_binding <- config$channel_binding
+      }
+      con <- do.call(DBI::dbConnect, c(list(RPostgres::Postgres()), params))
+      message("PostgreSQL connected successfully!")
+      con
+    }, error = function(e) {
+      message("Failed to connect to PostgreSQL biomechanics database: ", e$message, ". Using SQLite fallback.")
+      # Fallback to SQLite
+      tryCatch({
+        con <- DBI::dbConnect(RSQLite::SQLite(), get_biomech_db_path())
+        message("Fell back to SQLite successfully")
+        con
+      }, error = function(e2) {
+        message("SQLite fallback also failed: ", e2$message)
+        NULL
+      })
+    })
+  }
+}
+
+init_biomech_db <- function() {
+  message("=== init_biomech_db called ===")
+  con <- biomech_db_connect()
+  if (is.null(con)) {
+    message("ERROR: Could not connect to database for initialization")
+    return(FALSE)
+  }
+  
+  backend <- get_biomech_backend()
+  message("Initializing ", backend$type, " database...")
+  
+  tryCatch({
+    if (backend$type == "sqlite") {
+      # SQLite syntax
+      message("Creating SQLite table...")
+      DBI::dbExecute(con, "
+        CREATE TABLE IF NOT EXISTS newtforce_data (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          app_id TEXT NOT NULL,
+          upload_date TEXT DEFAULT CURRENT_TIMESTAMP,
+          date TEXT,
+          first_name TEXT,
+          last_name TEXT,
+          pitch_type TEXT,
+          accel_impulse REAL,
+          clawback REAL,
+          decel_impulse REAL,
+          impulse_ratio REAL,
+          player_velo REAL,
+          player_weight REAL,
+          stride REAL,
+          stride_angle REAL,
+          stride_ratio REAL,
+          y_back REAL,
+          y_front REAL,
+          y_transfer REAL,
+          z_back REAL,
+          z_front REAL,
+          z_transfer REAL,
+          xy_back REAL,
+          xy_front REAL
+        )
+      ")
+      
+      message("Creating SQLite index...")
+      DBI::dbExecute(con, "
+        CREATE INDEX IF NOT EXISTS idx_newtforce_app_id ON newtforce_data(app_id)
+      ")
+    } else {
+      # PostgreSQL syntax
+      message("Creating PostgreSQL table...")
+      DBI::dbExecute(con, "
+        CREATE TABLE IF NOT EXISTS newtforce_data (
+          id SERIAL PRIMARY KEY,
+          app_id TEXT NOT NULL,
+          upload_date TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          date DATE,
+          first_name TEXT,
+          last_name TEXT,
+          pitch_type TEXT,
+          accel_impulse NUMERIC,
+          clawback NUMERIC,
+          decel_impulse NUMERIC,
+          impulse_ratio NUMERIC,
+          player_velo NUMERIC,
+          player_weight NUMERIC,
+          stride NUMERIC,
+          stride_angle NUMERIC,
+          stride_ratio NUMERIC,
+          y_back NUMERIC,
+          y_front NUMERIC,
+          y_transfer NUMERIC,
+          z_back NUMERIC,
+          z_front NUMERIC,
+          z_transfer NUMERIC,
+          xy_back NUMERIC,
+          xy_front NUMERIC
+        )
+      ")
+      
+      message("Creating PostgreSQL index...")
+      DBI::dbExecute(con, "
+        CREATE INDEX IF NOT EXISTS idx_newtforce_app_id ON newtforce_data(app_id)
+      ")
+    }
+    
+    DBI::dbDisconnect(con)
+    message("Database initialization successful!")
+    TRUE
+  }, error = function(e) {
+    message("ERROR: Failed to initialize biomechanics database: ", e$message)
+    if (!is.null(con)) tryCatch(DBI::dbDisconnect(con), error = function(e) {})
+    FALSE
+  })
+}
+
+# Map pitch type abbreviations to full names
+expand_pitch_type <- function(abbr) {
+  pitch_map <- c(
+    "FB" = "Fastball",
+    "SK" = "Sinker", 
+    "CB" = "Curveball",
+    "SL" = "Slider",
+    "CH" = "ChangeUp",
+    "SP" = "Splitter",
+    "CT" = "Cutter",
+    "SW" = "Sweeper"
+  )
+  pitch_map[abbr] %||% abbr
+}
+
+# Save newtforce data to database
+save_newtforce_data <- function(df, app_id) {
+  message("=== Starting save_newtforce_data ===")
+  message("App ID: ", app_id)
+  message("Rows to save: ", nrow(df))
+  
+  con <- biomech_db_connect()
+  if (is.null(con)) {
+    message("ERROR: Failed to connect to database for saving newtforce data")
+    return(FALSE)
+  }
+  
+  backend <- get_biomech_backend()
+  message("Using backend: ", backend$type)
+  
+  tryCatch({
+    # Check if table exists
+    tables <- DBI::dbListTables(con)
+    message("Available tables: ", paste(tables, collapse = ", "))
+    
+    if (!"newtforce_data" %in% tables) {
+      message("WARNING: newtforce_data table does not exist. Creating it...")
+      # Try to initialize
+      DBI::dbDisconnect(con)
+      init_result <- init_biomech_db()
+      message("Init result: ", init_result)
+      con <- biomech_db_connect()
+      if (is.null(con)) {
+        message("ERROR: Failed to reconnect after init")
+        return(FALSE)
+      }
+    }
+    
+    # Prepare data frame with proper column names
+    message("Preparing data frame...")
+    df_prepared <- df %>%
+      mutate(
+        app_id = app_id,
+        upload_date = as.character(Sys.time()),
+        date = format(as.Date(Date, format = "%m/%d/%Y"), "%Y-%m-%d"),
+        first_name = as.character(`First Name`),
+        last_name = as.character(`Last Name`),
+        pitch_type = as.character(`Pitch Type`),
+        accel_impulse = as.numeric(`Accel Impulse (lb*s)`),
+        clawback = as.numeric(`Clawback (sec)`),
+        decel_impulse = as.numeric(`Decel Impulse (lb*s)`),
+        impulse_ratio = as.numeric(`Impulse Ratio (ratio)`),
+        player_velo = as.numeric(`Player Velo (mph)`),
+        player_weight = as.numeric(`Player Weight (lb)`),
+        stride = as.numeric(`Stride (in)`),
+        stride_angle = as.numeric(`Stride Angle (deg)`),
+        stride_ratio = as.numeric(`Stride Ratio (%)`),
+        y_back = as.numeric(`Y Back (lb)`),
+        y_front = as.numeric(`Y Front (lb)`),
+        y_transfer = as.numeric(`Y Transfer (sec)`),
+        z_back = as.numeric(`Z Back (lb)`),
+        z_front = as.numeric(`Z Front (lb)`),
+        z_transfer = as.numeric(`Z Transfer (sec)`),
+        xy_back = as.numeric(`X-Y Back (lb)`),
+        xy_front = as.numeric(`X-Y Front (lb)`)
+      ) %>%
+      dplyr::select(app_id, upload_date, date, first_name, last_name, pitch_type,
+                    accel_impulse, clawback, decel_impulse, impulse_ratio, 
+                    player_velo, player_weight, stride, stride_angle, stride_ratio,
+                    y_back, y_front, y_transfer, z_back, z_front, z_transfer,
+                    xy_back, xy_front)
+    
+    message("Data prepared. Columns: ", paste(colnames(df_prepared), collapse = ", "))
+    message("First row sample:")
+    message("  app_id: ", df_prepared$app_id[1])
+    message("  date: ", df_prepared$date[1])
+    message("  name: ", df_prepared$first_name[1], " ", df_prepared$last_name[1])
+    
+    # Insert data
+    message("Attempting to write to database...")
+    DBI::dbWriteTable(con, "newtforce_data", df_prepared, append = TRUE, row.names = FALSE)
+    message("SUCCESS: Write completed")
+    
+    DBI::dbDisconnect(con)
+    message("Successfully saved ", nrow(df_prepared), " rows to newtforce_data")
+    TRUE
+  }, error = function(e) {
+    message("ERROR: Failed to save newtforce data")
+    message("Error message: ", e$message)
+    message("Error class: ", paste(class(e), collapse = ", "))
+    if (!is.null(e$call)) message("Error call: ", deparse(e$call))
+    if (!is.null(con)) tryCatch(DBI::dbDisconnect(con), error = function(e2) {})
+    FALSE
+  })
+}
+
+# Load newtforce data from database
+load_newtforce_data <- function(app_id) {
+  con <- biomech_db_connect()
+  if (is.null(con)) return(NULL)
+  
+  backend <- get_biomech_backend()
+  
+  tryCatch({
+    # Use appropriate parameterized query syntax
+    if (backend$type == "sqlite") {
+      query <- "SELECT * FROM newtforce_data WHERE app_id = ? ORDER BY date DESC, last_name, first_name"
+      result <- DBI::dbGetQuery(con, query, params = list(app_id))
+    } else {
+      query <- "SELECT * FROM newtforce_data WHERE app_id = $1 ORDER BY date DESC, last_name, first_name"
+      result <- DBI::dbGetQuery(con, query, params = list(app_id))
+    }
+    DBI::dbDisconnect(con)
+    
+    if (nrow(result) == 0) return(NULL)
+    
+    # Convert back to original column names for display
+    # Handle both date formats (SQLite TEXT vs PostgreSQL DATE)
+    result %>%
+      mutate(
+        Date = if (is.character(date)) date else format(as.Date(date), "%m/%d/%Y"),
+        `First Name` = first_name,
+        `Last Name` = last_name,
+        `Pitch Type` = pitch_type,
+        `Accel Impulse (lb*s)` = accel_impulse,
+        `Clawback (sec)` = clawback,
+        `Decel Impulse (lb*s)` = decel_impulse,
+        `Impulse Ratio (ratio)` = impulse_ratio,
+        `Player Velo (mph)` = player_velo,
+        `Player Weight (lb)` = player_weight,
+        `Stride (in)` = stride,
+        `Stride Angle (deg)` = stride_angle,
+        `Stride Ratio (%)` = stride_ratio,
+        `Y Back (lb)` = y_back,
+        `Y Front (lb)` = y_front,
+        `Y Transfer (sec)` = y_transfer,
+        `Z Back (lb)` = z_back,
+        `Z Front (lb)` = z_front,
+        `Z Transfer (sec)` = z_transfer,
+        `X-Y Back (lb)` = xy_back,
+        `X-Y Front (lb)` = xy_front
+      ) %>%
+      dplyr::select(Date, `First Name`, `Last Name`, `Pitch Type`, 
+                    `Accel Impulse (lb*s)`, `Clawback (sec)`, `Decel Impulse (lb*s)`,
+                    `Impulse Ratio (ratio)`, `Player Velo (mph)`, `Player Weight (lb)`,
+                    `Stride (in)`, `Stride Angle (deg)`, `Stride Ratio (%)`,
+                    `Y Back (lb)`, `Y Front (lb)`, `Y Transfer (sec)`,
+                    `Z Back (lb)`, `Z Front (lb)`, `Z Transfer (sec)`,
+                    `X-Y Back (lb)`, `X-Y Front (lb)`)
+  }, error = function(e) {
+    message("Failed to load newtforce data: ", e$message)
+    if (!is.null(con)) DBI::dbDisconnect(con)
+    NULL
+  })
+}
+
+# Get unique pitchers from database
+get_newtforce_pitchers <- function(app_id) {
+  con <- biomech_db_connect()
+  if (is.null(con)) return(character(0))
+  
+  backend <- get_biomech_backend()
+  
+  tryCatch({
+    # Use appropriate parameterized query syntax
+    if (backend$type == "sqlite") {
+      query <- "SELECT DISTINCT first_name, last_name FROM newtforce_data WHERE app_id = ? ORDER BY last_name, first_name"
+      result <- DBI::dbGetQuery(con, query, params = list(app_id))
+    } else {
+      query <- "SELECT DISTINCT first_name, last_name FROM newtforce_data WHERE app_id = $1 ORDER BY last_name, first_name"
+      result <- DBI::dbGetQuery(con, query, params = list(app_id))
+    }
+    DBI::dbDisconnect(con)
+    
+    if (nrow(result) == 0) return(character(0))
+    
+    paste(result$first_name, result$last_name)
+  }, error = function(e) {
+    message("Failed to get newtforce pitchers: ", e$message)
+    if (!is.null(con)) tryCatch(DBI::dbDisconnect(con), error = function(e) {})
+    character(0)
+  })
+}
+
+# Newtforce UI
+biomech_newtforce_ui <- function() {
+  fluidPage(
+    br(),
+    fluidRow(
+      column(
+        width = 3,
+        wellPanel(
+          h4("Upload Data"),
+          fileInput("newtforce_upload", "Upload Newtforce CSV",
+                   accept = c(".csv", "text/csv", "text/comma-separated-values,text/plain")),
+          tags$small("Upload CSV files with Newtforce data to persist across deployments."),
+          br(), br(),
+          uiOutput("newtforce_upload_status")
+        ),
+        wellPanel(
+          h4("Filters"),
+          selectInput("newtforce_pitcher", "Select Pitcher",
+                     choices = c("All" = "All"),
+                     selected = "All"),
+          dateRangeInput("newtforce_date_range", "Select Date Range",
+                        start = Sys.Date() - 365,
+                        end = Sys.Date()),
+          selectInput("newtforce_pitch_type", "Pitch Type",
+                     choices = c("All" = "All",
+                               "Fastball" = "Fastball",
+                               "Sinker" = "Sinker",
+                               "Curveball" = "Curveball",
+                               "Slider" = "Slider",
+                               "ChangeUp" = "ChangeUp",
+                               "Splitter" = "Splitter",
+                               "Cutter" = "Cutter",
+                               "Sweeper" = "Sweeper"),
+                     selected = "All")
+        )
+      ),
+      column(
+        width = 9,
+        tabsetPanel(
+          tabPanel("Raw Data",
+                  br(),
+                  DT::dataTableOutput("newtforce_raw_table")
+          ),
+          tabPanel("Averages by Pitch Type",
+                  br(),
+                  h4("Average Values by Pitch Type"),
+                  DT::dataTableOutput("newtforce_avg_table")
+          ),
+          tabPanel("Normalized by Weight",
+                  br(),
+                  h4("Weight-Normalized Values by Pitch Type"),
+                  tags$p("Values normalized by dividing by Player Weight"),
+                  DT::dataTableOutput("newtforce_normalized_table")
+          )
+        )
+      )
+    )
+  )
+}
+
+# Motion Capture UI (placeholder for now)
+biomech_motion_capture_ui <- function() {
+  fluidPage(
+    br(),
+    fluidRow(
+      column(
+        width = 12,
+        wellPanel(
+          h3("Motion Capture"),
+          p("Motion Capture data visualization coming soon...")
+        )
+      )
+    )
+  )
+}
+
+# Main Biomechanics UI with sub-navigation
+biomech_ui <- function() {
+  fluidPage(
+    tabsetPanel(
+      id = "biomech_tabs",
+      tabPanel("Newtforce", value = "newtforce", biomech_newtforce_ui()),
+      tabPanel("Motion Capture", value = "motion_capture", biomech_motion_capture_ui())
+    )
+  )
+}
+
+# Biomechanics Server
+biomech_server <- function(input, output, session, app_id_fn) {
+  
+  # Initialize database on load
+  init_biomech_db()
+  
+  # Reactive to store current data
+  newtforce_data <- reactiveVal(NULL)
+  
+  # Load data on startup
+  observe({
+    app_id <- app_id_fn()
+    if (!is.null(app_id) && nzchar(app_id)) {
+      data <- load_newtforce_data(app_id)
+      newtforce_data(data)
+    }
+  })
+  
+  # Update pitcher choices when data changes
+  observe({
+    app_id <- app_id_fn()
+    if (!is.null(app_id) && nzchar(app_id)) {
+      pitchers <- get_newtforce_pitchers(app_id)
+      choices <- c("All" = "All", setNames(pitchers, pitchers))
+      updateSelectInput(session, "newtforce_pitcher", choices = choices)
+    }
+  })
+  
+  # Handle file upload
+  observeEvent(input$newtforce_upload, {
+    req(input$newtforce_upload)
+    app_id <- app_id_fn()
+    
+    tryCatch({
+      # Read CSV (preserve exact column names)
+      df <- read.csv(input$newtforce_upload$datapath, stringsAsFactors = FALSE, check.names = FALSE)
+      
+      # Validate required columns (using actual Newtforce export column names)
+      required_cols <- c("Date", "First Name", "Last Name", "Pitch Type",
+                        "Accel Impulse (lb*s)", "Clawback (sec)", "Decel Impulse (lb*s)",
+                        "Impulse Ratio (ratio)", "Player Velo (mph)", "Player Weight (lb)",
+                        "Stride (in)", "Stride Angle (deg)", "Stride Ratio (%)",
+                        "Y Back (lb)", "Y Front (lb)", "Y Transfer (sec)",
+                        "Z Back (lb)", "Z Front (lb)", "Z Transfer (sec)",
+                        "X-Y Back (lb)", "X-Y Front (lb)")
+      
+      missing_cols <- setdiff(required_cols, colnames(df))
+      if (length(missing_cols) > 0) {
+        output$newtforce_upload_status <- renderUI({
+          tags$div(class = "alert alert-danger",
+                  tags$p(paste("Missing required columns:", paste(missing_cols, collapse = ", "))),
+                  tags$p(tags$small(paste("Found columns:", paste(colnames(df), collapse = ", ")))))
+        })
+        return()
+      }
+      
+      # Expand pitch type abbreviations
+      df$`Pitch Type` <- sapply(df$`Pitch Type`, expand_pitch_type)
+      
+      # Save to database
+      success <- save_newtforce_data(df, app_id)
+      
+      if (success) {
+        # Reload data
+        data <- load_newtforce_data(app_id)
+        newtforce_data(data)
+        
+        backend <- get_biomech_backend()
+        backend_msg <- if (backend$type == "sqlite") {
+          " (stored locally in SQLite)"
+        } else {
+          " (stored in PostgreSQL/Neon)"
+        }
+        
+        output$newtforce_upload_status <- renderUI({
+          tags$div(class = "alert alert-success",
+                  paste0("Successfully uploaded ", nrow(df), " records!", backend_msg))
+        })
+      } else {
+        backend <- get_biomech_backend()
+        backend_info <- if (backend$type == "sqlite") {
+          paste("Using local SQLite at:", backend$path)
+        } else {
+          "Using PostgreSQL/Neon database"
+        }
+        
+        output$newtforce_upload_status <- renderUI({
+          tags$div(class = "alert alert-danger",
+                  tags$p("Failed to save data to database. Please check your configuration."),
+                  tags$p(tags$small(backend_info)),
+                  tags$p(tags$small("Check the R console for detailed error messages.")))
+        })
+      }
+      
+    }, error = function(e) {
+      output$newtforce_upload_status <- renderUI({
+        tags$div(class = "alert alert-danger",
+                paste("Error uploading file:", e$message))
+      })
+    })
+  })
+  
+  # Filtered data
+  newtforce_filtered <- reactive({
+    data <- newtforce_data()
+    if (is.null(data) || nrow(data) == 0) return(NULL)
+    
+    # Filter by pitcher
+    if (input$newtforce_pitcher != "All") {
+      name_parts <- strsplit(input$newtforce_pitcher, " ")[[1]]
+      if (length(name_parts) >= 2) {
+        first <- name_parts[1]
+        last <- paste(name_parts[-1], collapse = " ")
+        data <- data %>%
+          filter(`First Name` == first, `Last Name` == last)
+      }
+    }
+    
+    # Filter by date range
+    data <- data %>%
+      mutate(date_obj = as.Date(Date, format = "%m/%d/%Y")) %>%
+      filter(date_obj >= input$newtforce_date_range[1],
+             date_obj <= input$newtforce_date_range[2]) %>%
+      dplyr::select(-date_obj)
+    
+    # Filter by pitch type
+    if (input$newtforce_pitch_type != "All") {
+      data <- data %>%
+        filter(`Pitch Type` == input$newtforce_pitch_type)
+    }
+    
+    data
+  })
+  
+  # Raw data table
+  output$newtforce_raw_table <- DT::renderDataTable({
+    data <- newtforce_filtered()
+    if (is.null(data) || nrow(data) == 0) {
+      return(DT::datatable(data.frame(Message = "No data available. Please upload a CSV file.")))
+    }
+    
+    dt <- DT::datatable(
+      data,
+      options = list(
+        pageLength = 25,
+        scrollX = TRUE,
+        order = list(list(0, 'desc')),
+        search = list(search = '', smart = TRUE, regex = FALSE, caseInsensitive = TRUE)
+      ),
+      rownames = FALSE,
+      filter = 'none'
+    )
+    
+    # Format with different decimal places for different column types
+    col_names <- colnames(data)
+    
+    # Player Weight - 0 decimals
+    if ("Player Weight (lb)" %in% col_names) {
+      dt <- dt %>% DT::formatRound(columns = "Player Weight (lb)", digits = 0)
+    }
+    
+    # Clawback, Y Transfer, Z Transfer - 2 decimals
+    two_decimal_cols <- c("Clawback (sec)", "Y Transfer (sec)", "Z Transfer (sec)")
+    two_decimal_cols <- two_decimal_cols[two_decimal_cols %in% col_names]
+    if (length(two_decimal_cols) > 0) {
+      dt <- dt %>% DT::formatRound(columns = two_decimal_cols, digits = 2)
+    }
+    
+    # All other numeric columns - 1 decimal
+    one_decimal_cols <- col_names[sapply(data, is.numeric)]
+    one_decimal_cols <- setdiff(one_decimal_cols, c("Player Weight (lb)", two_decimal_cols))
+    if (length(one_decimal_cols) > 0) {
+      dt <- dt %>% DT::formatRound(columns = one_decimal_cols, digits = 1)
+    }
+    
+    dt
+  })
+  
+  # Average table by pitch type
+  output$newtforce_avg_table <- DT::renderDataTable({
+    data <- newtforce_filtered()
+    if (is.null(data) || nrow(data) == 0) {
+      return(DT::datatable(data.frame(Message = "No data available.")))
+    }
+    
+    # Calculate averages by pitch type
+    avg_data <- data %>%
+      group_by(`Pitch Type`) %>%
+      summarise(
+        Count = n(),
+        `Accel Impulse (lb*s)` = mean(`Accel Impulse (lb*s)`, na.rm = TRUE),
+        `Clawback (sec)` = mean(`Clawback (sec)`, na.rm = TRUE),
+        `Decel Impulse (lb*s)` = mean(`Decel Impulse (lb*s)`, na.rm = TRUE),
+        `Impulse Ratio (ratio)` = mean(`Impulse Ratio (ratio)`, na.rm = TRUE),
+        `Player Velo (mph)` = mean(`Player Velo (mph)`, na.rm = TRUE),
+        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
+        `Stride (in)` = mean(`Stride (in)`, na.rm = TRUE),
+        `Stride Angle (deg)` = mean(`Stride Angle (deg)`, na.rm = TRUE),
+        `Stride Ratio (%)` = mean(`Stride Ratio (%)`, na.rm = TRUE),
+        `Y Back (lb)` = mean(`Y Back (lb)`, na.rm = TRUE),
+        `Y Front (lb)` = mean(`Y Front (lb)`, na.rm = TRUE),
+        `Y Transfer (sec)` = mean(`Y Transfer (sec)`, na.rm = TRUE),
+        `Z Back (lb)` = mean(`Z Back (lb)`, na.rm = TRUE),
+        `Z Front (lb)` = mean(`Z Front (lb)`, na.rm = TRUE),
+        `Z Transfer (sec)` = mean(`Z Transfer (sec)`, na.rm = TRUE),
+        `X-Y Back (lb)` = mean(`X-Y Back (lb)`, na.rm = TRUE),
+        `X-Y Front (lb)` = mean(`X-Y Front (lb)`, na.rm = TRUE),
+        .groups = 'drop'
+      )
+    
+    # Add "All" row
+    all_row <- data %>%
+      summarise(
+        `Pitch Type` = "All",
+        Count = n(),
+        `Accel Impulse (lb*s)` = mean(`Accel Impulse (lb*s)`, na.rm = TRUE),
+        `Clawback (sec)` = mean(`Clawback (sec)`, na.rm = TRUE),
+        `Decel Impulse (lb*s)` = mean(`Decel Impulse (lb*s)`, na.rm = TRUE),
+        `Impulse Ratio (ratio)` = mean(`Impulse Ratio (ratio)`, na.rm = TRUE),
+        `Player Velo (mph)` = mean(`Player Velo (mph)`, na.rm = TRUE),
+        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
+        `Stride (in)` = mean(`Stride (in)`, na.rm = TRUE),
+        `Stride Angle (deg)` = mean(`Stride Angle (deg)`, na.rm = TRUE),
+        `Stride Ratio (%)` = mean(`Stride Ratio (%)`, na.rm = TRUE),
+        `Y Back (lb)` = mean(`Y Back (lb)`, na.rm = TRUE),
+        `Y Front (lb)` = mean(`Y Front (lb)`, na.rm = TRUE),
+        `Y Transfer (sec)` = mean(`Y Transfer (sec)`, na.rm = TRUE),
+        `Z Back (lb)` = mean(`Z Back (lb)`, na.rm = TRUE),
+        `Z Front (lb)` = mean(`Z Front (lb)`, na.rm = TRUE),
+        `Z Transfer (sec)` = mean(`Z Transfer (sec)`, na.rm = TRUE),
+        `X-Y Back (lb)` = mean(`X-Y Back (lb)`, na.rm = TRUE),
+        `X-Y Front (lb)` = mean(`X-Y Front (lb)`, na.rm = TRUE),
+        .groups = 'drop'
+      )
+    
+    avg_data <- bind_rows(all_row, avg_data)
+    
+    dt <- DT::datatable(
+      avg_data,
+      options = list(
+        pageLength = 25,
+        scrollX = TRUE,
+        dom = 't'
+      ),
+      rownames = FALSE
+    )
+    
+    # Format with different decimal places
+    col_names <- colnames(avg_data)
+    
+    # Player Weight - 0 decimals
+    if ("Player Weight (lb)" %in% col_names) {
+      dt <- dt %>% DT::formatRound(columns = "Player Weight (lb)", digits = 0)
+    }
+    
+    # Clawback, Y Transfer, Z Transfer - 2 decimals
+    two_decimal_cols <- c("Clawback (sec)", "Y Transfer (sec)", "Z Transfer (sec)")
+    two_decimal_cols <- two_decimal_cols[two_decimal_cols %in% col_names]
+    if (length(two_decimal_cols) > 0) {
+      dt <- dt %>% DT::formatRound(columns = two_decimal_cols, digits = 2)
+    }
+    
+    # All other numeric columns (except Count and Pitch Type) - 1 decimal
+    one_decimal_cols <- col_names[sapply(avg_data, is.numeric)]
+    one_decimal_cols <- setdiff(one_decimal_cols, c("Count", "Player Weight (lb)", two_decimal_cols))
+    if (length(one_decimal_cols) > 0) {
+      dt <- dt %>% DT::formatRound(columns = one_decimal_cols, digits = 1)
+    }
+    
+    dt
+  })
+  
+  # Normalized table
+  output$newtforce_normalized_table <- DT::renderDataTable({
+    data <- newtforce_filtered()
+    if (is.null(data) || nrow(data) == 0) {
+      return(DT::datatable(data.frame(Message = "No data available.")))
+    }
+    
+    # Calculate normalized averages by pitch type
+    norm_data <- data %>%
+      group_by(`Pitch Type`) %>%
+      summarise(
+        Count = n(),
+        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
+        `Accel Impulse (Norm)` = mean(`Accel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Decel Impulse (Norm)` = mean(`Decel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Y Back (Norm)` = mean(`Y Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Y Front (Norm)` = mean(`Y Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Z Back (Norm)` = mean(`Z Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Z Front (Norm)` = mean(`Z Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        .groups = 'drop'
+      )
+    
+    # Add "All" row
+    all_row <- data %>%
+      summarise(
+        `Pitch Type` = "All",
+        Count = n(),
+        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
+        `Accel Impulse (Norm)` = mean(`Accel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Decel Impulse (Norm)` = mean(`Decel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Y Back (Norm)` = mean(`Y Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Y Front (Norm)` = mean(`Y Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Z Back (Norm)` = mean(`Z Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Z Front (Norm)` = mean(`Z Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        .groups = 'drop'
+      )
+    
+    norm_data <- bind_rows(all_row, norm_data)
+    
+    dt <- DT::datatable(
+      norm_data,
+      options = list(
+        pageLength = 25,
+        scrollX = TRUE,
+        dom = 't'
+      ),
+      rownames = FALSE
+    )
+    
+    # Format with different decimal places
+    col_names <- colnames(norm_data)
+    
+    # Player Weight - 0 decimals
+    if ("Player Weight (lb)" %in% col_names) {
+      dt <- dt %>% DT::formatRound(columns = "Player Weight (lb)", digits = 0)
+    }
+    
+    # All normalized columns (ending in "Norm") - 2 decimals
+    norm_cols <- col_names[grepl("\\(Norm\\)$", col_names)]
+    if (length(norm_cols) > 0) {
+      dt <- dt %>% DT::formatRound(columns = norm_cols, digits = 2)
+    }
+    
+    dt
+  })
+}
+
 video_upload_ui <- function() {
   fluidPage(
     br(),
@@ -19660,6 +20528,7 @@ ui <- tagList(
     tabPanel("Correlations", value = "Correlations", correlations_ui()),
     tabPanel("Custom Reports", value = "Custom Reports", custom_reports_ui("creports")),
     tabPanel("Player Plans", value = "Player Plans", player_plans_ui()),
+    tabPanel("Biomechanics", value = "Biomechanics", biomech_ui()),
     tabPanel("Video Upload", value = "Video Upload", video_upload_ui()),
     tabPanel("Notes", value = "Notes",
              fluidPage(
@@ -22611,6 +23480,9 @@ server <- function(input, output, session) {
   mod_leader_server("leader", is_active = reactive(input$top == "Leaderboard"), global_date_range = global_date_range)
   mod_comp_server("comp",   is_active = reactive(input$top == "Comparison Suite"), global_date_range = global_date_range)
   
+  # Mount biomechanics module
+  biomech_server(input, output, session, app_id_fn = reactive(current_school()))
+  
   
   # Buttons above Summary table
   output$summaryTableButtons <- renderUI({
@@ -24209,6 +25081,14 @@ server <- function(input, output, session) {
         
         # For Swing% calculation, use total pitches as denominator (same as individual pitch types)
         total_pitches_all <- total_pitches
+        all_swings <- sum(!is.na(df$PitchCall) & df$PitchCall %in% swing_levels, na.rm = TRUE)
+        all_whiffs <- sum(!is.na(df$PitchCall) & df$PitchCall == "StrikeSwinging", na.rm = TRUE)
+        all_barrels <- sum(
+          df$SessionType == "Live" & df$PitchCall == "InPlay" &
+            is.finite(df$ExitSpeed) & df$ExitSpeed >= 95 &
+            is.finite(df$Angle) & df$Angle >= 10 & df$Angle <= 35,
+          na.rm = TRUE
+        )
         
         # Create All row with dynamic column name
         all_row_data <- list(
@@ -24233,7 +25113,10 @@ server <- function(input, output, session) {
           `Barrel%`= NA_real_,
           EV = nz_mean(bbe$ExitSpeed),
           LA = nz_mean(bbe$Angle),
-          `Pitching+` = pitc_all
+          `Pitching+` = pitc_all,
+          Swings = all_swings,
+          Whiffs = all_whiffs,
+          Barrels = all_barrels
         )
         # Add the split column name dynamically
         all_row_data[[split_col_name]] <- "All"
