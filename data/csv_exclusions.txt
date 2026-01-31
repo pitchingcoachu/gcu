@@ -140,3 +140,5 @@
 20260130-UofMontevallo-2_unverified.csv
 # Auto-pruned non-team data
 20260131-TedABroerStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260131-SusanKSmithBaseballComplex-1_unverified.csv
