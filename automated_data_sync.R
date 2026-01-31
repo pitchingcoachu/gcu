@@ -323,11 +323,123 @@ deduplicate_files <- function() {
   return(duplicates_removed > 0)
 }
 
+normalize_name_list <- function(names) {
+  if (length(names) == 0) return(character(0))
+  names <- names[!is.na(names)]
+  names <- trimws(names)
+  names <- names[nzchar(names)]
+  unique(toupper(names))
+}
+
+load_team_filters <- function() {
+  filters <- list(
+    team_code = toupper(trimws(Sys.getenv("TEAM_CODE", ""))),
+    allowed_players = character(0)
+  )
+  config_path <- file.path("config", "school_config.R")
+  if (!file.exists(config_path)) {
+    return(filters)
+  }
+  env <- new.env(parent = baseenv())
+  tryCatch({
+    sys.source(config_path, envir = env)
+    if (!exists("school_config", envir = env, inherits = FALSE)) {
+      return(filters)
+    }
+    cfg <- get("school_config", envir = env, inherits = FALSE)
+    if (!is.null(cfg$team_code) && nzchar(trimws(cfg$team_code))) {
+      filters$team_code <- toupper(trimws(cfg$team_code))
+    }
+    players <- c(cfg$allowed_pitchers, cfg$allowed_hitters)
+    filters$allowed_players <- normalize_name_list(players)
+  }, error = function(e) {
+    cat("Unable to load school_config.R for filtering:", e$message, "\n")
+  })
+  filters
+}
+
+file_contains_patterns <- function(path, patterns) {
+  if (!length(patterns) || !file.exists(path)) return(TRUE)
+  patterns <- unique(patterns[nzchar(patterns)])
+  if (!length(patterns)) return(TRUE)
+
+  con <- file(path, "r")
+  on.exit(close(con))
+
+  repeat {
+    lines <- tryCatch(readLines(con, n = 512), error = function(e) character(0))
+    if (!length(lines)) break
+    upper_lines <- toupper(lines)
+    for (pattern in patterns) {
+      if (any(grepl(pattern, upper_lines, fixed = TRUE))) {
+        return(TRUE)
+      }
+    }
+  }
+
+  FALSE
+}
+
+is_team_specific_csv <- function(path, filters) {
+  if (!file.exists(path)) return(TRUE)
+  patterns <- filters$allowed_players
+  if (nzchar(filters$team_code)) {
+    patterns <- c(patterns, filters$team_code)
+  }
+  patterns <- unique(patterns[nzchar(patterns)])
+  if (!length(patterns)) return(TRUE)
+  file_contains_patterns(path, patterns)
+}
+
+extract_remote_basename <- function(path) {
+  base <- basename(path)
+  sub("^v3_\\d{4}_\\d{2}_\\d{2}_", "", base, perl = TRUE)
+}
+
+cleanup_irrelevant_team_csvs <- function(filters = list()) {
+  if (length(filters$allowed_players) == 0 && !nzchar(filters$team_code)) {
+    return(0L)
+  }
+
+  csv_dirs <- c(LOCAL_PRACTICE_DIR, LOCAL_V3_DIR)
+  removed <- 0L
+
+  for (dir in csv_dirs) {
+    csv_files <- list.files(dir, pattern = "\\.csv$", full.names = TRUE, recursive = TRUE)
+    if (!length(csv_files)) next
+
+    for (csv in csv_files) {
+      keep <- tryCatch(
+        is_team_specific_csv(csv, filters),
+        error = function(e) {
+          cat("Unable to inspect", csv, ":", e$message, "\n")
+          TRUE
+        }
+      )
+      if (keep) next
+
+      remote_basename <- extract_remote_basename(csv)
+      if (file.remove(csv)) {
+        cat("Pruned non-team CSV:", csv, "\n")
+        if (nzchar(remote_basename)) {
+          add_csv_exclusion(remote_basename, comment = "Auto-pruned non-team data")
+        }
+        removed <- removed + 1L
+      } else {
+        cat("Failed to remove non-team CSV:", csv, "\n")
+      }
+    }
+  }
+
+  removed
+}
+
 # Main sync function
 main_sync <- function() {
   cat("Starting VMI data sync at", as.character(Sys.time()), "\n")
   
   start_time <- Sys.time()
+  team_filters <- load_team_filters()
   
   # Only clean old files if this is the first run (no last_sync.txt exists)
   # This prevents re-downloading everything on subsequent runs
@@ -356,6 +468,11 @@ main_sync <- function() {
   if (practice_updated || v3_updated) {
     deduplicate_files()
   }
+
+  cleanup_count <- cleanup_irrelevant_team_csvs(team_filters)
+  if (cleanup_count > 0) {
+    cat("Removed", cleanup_count, "non-team CSV files during cleanup\n")
+  }
   
   # Update last sync timestamp and modification notification
   writeLines(as.character(Sys.time()), file.path(LOCAL_DATA_DIR, "last_sync.txt"))
@@ -365,7 +482,13 @@ main_sync <- function() {
     writeLines(as.character(Sys.time()), file.path(LOCAL_DATA_DIR, "new_data_flag.txt"))
   }
 
-  video_updated <- sync_video_map_from_neon(file.path(LOCAL_DATA_DIR, "video_map.csv"))
+  video_updated <- tryCatch(
+    sync_video_map_from_neon(file.path(LOCAL_DATA_DIR, "video_map.csv")),
+    error = function(e) {
+      cat("Skipping Neon video map sync:", e$message, "\n")
+      FALSE
+    }
+  )
   if (video_updated) {
     cat("Regenerated data/video_map.csv from Neon video metadata\n")
   }
