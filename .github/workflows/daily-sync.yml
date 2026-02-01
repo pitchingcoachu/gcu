@@ -87,11 +87,13 @@ jobs:
         Rscript -e "rsconnect::setAccountInfo(name='${{ secrets.SHINYAPPS_ACCOUNT }}', token='${{ secrets.SHINYAPPS_TOKEN }}', secret='${{ secrets.SHINYAPPS_SECRET }}')"
         
     - name: Sync GCU data
+      env:
+        R_LIBS_USER: packrat/lib-R
       run: Rscript automated_data_sync.R
         
     - name: Sync TrackMan media (EdgeR → Cloudinary)
-      run: Rscript trackman_api_sync.R
       env:
+        R_LIBS_USER: packrat/lib-R
         TM_CLIENT_ID: ${{ secrets.TM_CLIENT_ID }}
         TM_CLIENT_SECRET: ${{ secrets.TM_CLIENT_SECRET }}
         CLOUDINARY_CLOUD_NAME: ${{ secrets.CLOUDINARY_CLOUD_NAME }}
@@ -99,6 +101,7 @@ jobs:
         CLOUDINARY_FOLDER: ${{ secrets.CLOUDINARY_FOLDER }}
         TM_LOOKBACK_DAYS: ${{ secrets.TM_LOOKBACK_DAYS }}
         TM_ENV: ${{ secrets.TM_ENV }}
+      run: Rscript trackman_api_sync.R
         
     - name: Check if data directory exists
       id: check_data
@@ -114,6 +117,8 @@ jobs:
         
     - name: Deploy to shinyapps.io
       if: steps.check_data.outputs.data_updated == 'true' || github.event_name == 'workflow_dispatch'
+      env:
+        R_LIBS_USER: packrat/lib-R
       run: Rscript deploy_script.R
       
     - name: Commit updated data
