@@ -6,6 +6,8 @@
 options(repos = c(CRAN = "https://cloud.r-project.org/"))
 options(timeout = 300)
 
+Sys.setenv(R_LIBS_USER = "packrat/lib-R")
+
 cat("CBU Baseball Analytics - Package Installation\n")
 cat("=============================================\n")
 
