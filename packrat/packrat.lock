@@ -11,10 +11,6 @@ Package: MASS
 Source: CRAN
 Version: 7.3-61
 
-Package: RCurl
-Source: CRAN
-Version: 1.98-1.16
-
 Package: akima
 Source: CRAN
 Version: 0.6-3.4

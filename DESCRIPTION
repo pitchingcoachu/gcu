@@ -37,8 +37,6 @@ Imports:
     purrr (>= 1.0.0),
     akima (>= 0.6.0),
     plotly (>= 4.10.0),
-    RCurl (>= 1.98.0),
     jsonlite (>= 1.8.0)
 Encoding: UTF-8
 LazyData: true
-

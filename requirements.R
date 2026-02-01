@@ -34,7 +34,6 @@ required_packages <- c(
   "stringr",
   "akima",
   "plotly",
-  "RCurl",
   "jsonlite",
   "digest",
   "colourpicker",

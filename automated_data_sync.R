@@ -4,7 +4,7 @@
 
 # Copy this content to your automated_data_sync.R file
 
-library(RCurl)
+library(curl)
 library(readr)
 library(dplyr)
 library(lubridate)
@@ -34,7 +34,10 @@ dir.create(LOCAL_V3_DIR, recursive = TRUE, showWarnings = FALSE)
 list_ftp_files <- function(ftp_path) {
   url <- paste0("ftp://", FTP_HOST, ftp_path)
   tryCatch({
-    files <- getURL(url, userpwd = FTP_USERPWD, ftp.use.epsv = FALSE, dirlistonly = TRUE)
+    handle <- curl::new_handle(userpwd = FTP_USERPWD)
+    curl::handle_setopt(handle, ftp_use_epsv = FALSE)
+    contents <- curl::curl_fetch_memory(url, handle = handle)$content
+    files <- rawToChar(contents)
     strsplit(files, "\n")[[1]]
   }, error = function(e) {
     cat("Error listing files in", ftp_path, ":", e$message, "\n")
@@ -58,9 +61,11 @@ download_csv <- function(remote_file, local_file) {
   url <- paste0("ftp://", FTP_HOST, remote_file)
   
   tryCatch({
-    # Download file to temporary location using RCurl with proper credentials
+    # Download file to temporary location using curl with proper credentials
     temp_file <- tempfile(fileext = ".csv")
-    bin <- RCurl::getBinaryURL(url, userpwd = FTP_USERPWD, ftp.use.epsv = FALSE)
+    handle <- curl::new_handle(userpwd = FTP_USERPWD)
+    curl::handle_setopt(handle, ftp_use_epsv = FALSE)
+    bin <- curl::curl_fetch_memory(url, handle = handle)$content
     writeBin(bin, temp_file)
     
     # Read data to check if valid

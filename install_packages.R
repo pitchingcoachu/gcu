@@ -76,7 +76,6 @@ app_packages <- c(
   "curl",
   "akima",
   "plotly",
-  "RCurl",
   "jsonlite",
   "ggiraph",
   "colourpicker",
