@@ -74,6 +74,7 @@ app_packages <- c(
   "httr2",
   "MASS",
   "curl",
+  "RCurl",
   "akima",
   "plotly",
   "jsonlite",

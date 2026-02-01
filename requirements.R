@@ -29,6 +29,7 @@ required_packages <- c(
   "httr2",
   "MASS",
   "curl",
+  "RCurl",
   "readr",
   "lubridate",
   "stringr",
