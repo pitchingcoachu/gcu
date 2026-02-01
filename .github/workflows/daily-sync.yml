@@ -58,6 +58,14 @@ jobs:
         CREDENTIALS_SQLITE_PATH=/home/shiny/credentials.sqlite
         EOF
 
+    - name: Cache Packrat library
+      uses: actions/cache@v4
+      with:
+        path: packrat/lib-R
+        key: ${{ runner.os }}-r-packrat-${{ hashFiles('packrat/packrat.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-r-packrat-
+
     - name: Install R packages
       run: Rscript install_packages.R
           
@@ -69,7 +77,7 @@ jobs:
       run: |
         Rscript -e "rsconnect::setAccountInfo(name='${{ secrets.SHINYAPPS_ACCOUNT }}', token='${{ secrets.SHINYAPPS_TOKEN }}', secret='${{ secrets.SHINYAPPS_SECRET }}')"
         
-    - name: Sync OSU data
+    - name: Sync GCU data
       run: Rscript automated_data_sync.R
         
     - name: Sync TrackMan media (EdgeR → Cloudinary)
