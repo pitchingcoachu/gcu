@@ -41,7 +41,8 @@ jobs:
           libgdal-dev \
           libgeos-dev \
           libproj-dev \
-          libudunits2-dev
+          libudunits2-dev \
+          librsvg2-dev
 
     - name: Write .Renviron
       run: |

@@ -124,11 +124,6 @@ if (!packrat_enabled) {
 } else {
   cat("\nPackrat already restored all packages; skipping optional installs\n")
 }
-  cat("\nInstalling optional packages...\n")
-  for (pkg in optional_packages) {
-    install_package_safe(pkg, critical = FALSE)
-  }
-}
 
 # Check for critical package failures
 if (length(failed_packages) > 0) {
