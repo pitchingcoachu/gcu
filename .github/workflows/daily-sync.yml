@@ -58,7 +58,20 @@ jobs:
         CREDENTIALS_SQLITE_PATH=/home/shiny/credentials.sqlite
         EOF
 
+    - name: Ensure Packrat library path
+      run: mkdir -p packrat/lib-R
+
+    - name: Cache Packrat library
+      uses: actions/cache@v4
+      with:
+        path: packrat/lib-R
+        key: ${{ runner.os }}-r-packrat-${{ hashFiles('packrat/packrat.lock') }}
+        restore-keys: |
+          ${{ runner.os }}-r-packrat-
+
     - name: Install R packages
+      env:
+        R_LIBS_USER: packrat/lib-R
       run: Rscript install_packages.R
           
     - name: Configure rsconnect

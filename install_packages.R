@@ -9,6 +9,25 @@ options(timeout = 300)
 cat("CBU Baseball Analytics - Package Installation\n")
 cat("=============================================\n")
 
+packrat_enabled <- FALSE
+if (!requireNamespace("packrat", quietly = TRUE)) {
+  cat("Installing packrat runtime...\n")
+  install.packages("packrat", dependencies = TRUE, quiet = TRUE)
+}
+
+if (requireNamespace("packrat", quietly = TRUE)) {
+  tryCatch({
+    packrat::restore(prompt = FALSE)
+    packrat::on()
+    packrat_enabled <- TRUE
+    cat("Packrat restore complete; using packrat library tree\n")
+  }, error = function(e) {
+    cat("✗ Packrat restore failed:", e$message, "\n")
+  })
+} else {
+  cat("✗ Packrat installation failed; proceeding without packrat restore\n")
+}
+
 # Track installation failures
 failed_packages <- c()
 
@@ -95,7 +114,16 @@ for (pkg in app_packages) {
 # Optional packages (nice to have but not critical)
 optional_packages <- character(0)
 
-if (length(optional_packages)) {
+if (!packrat_enabled) {
+  if (length(optional_packages)) {
+    cat("\nInstalling optional packages...\n")
+    for (pkg in optional_packages) {
+      install_package_safe(pkg, critical = FALSE)
+    }
+  }
+} else {
+  cat("\nPackrat already restored all packages; skipping optional installs\n")
+}
   cat("\nInstalling optional packages...\n")
   for (pkg in optional_packages) {
     install_package_safe(pkg, critical = FALSE)
