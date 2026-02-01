@@ -142,3 +142,17 @@
 20260131-TedABroerStadium-1_unverified.csv
 # Auto-pruned non-team data
 20260131-SusanKSmithBaseballComplex-1_unverified.csv
+# Auto-pruned non-team data
+20260130-TedABroerStadium-1.csv
+# Auto-pruned non-team data
+20260130-TedABroerStadium-2.csv
+# Auto-pruned non-team data
+20260131-GoldenWestCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260131-IrwinField-1_unverified.csv
+# Auto-pruned non-team data
+20260131-PaulDemieMainieriField-1_unverified.csv
+# Auto-pruned non-team data
+20260131-PaulDemieMainieriField-2_unverified.csv
+# Auto-pruned non-team data
+20260131-RodenField-1_unverified.csv
