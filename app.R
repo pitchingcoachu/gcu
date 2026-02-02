@@ -22947,9 +22947,9 @@ server <- function(input, output, session) {
         var orientationOptions = Array.isArray(cfg.orientationOptions) ? cfg.orientationOptions.slice() : [];
         if (!orientationOptions.length) {
           orientationOptions.push({
-            id: "primary",
-            label: "Primary",
-            type: "rotation",
+            id: 'primary',
+            label: 'Primary',
+            type: 'rotation',
             rotation: {
               x: seamRotX,
               y: seamRotY,
@@ -22959,9 +22959,9 @@ server <- function(input, output, session) {
         }
         var orientationMap = {};
         orientationOptions.forEach(function(opt, idx) {
-          if (!opt.id) opt.id = "orientation_" + idx;
+          if (!opt.id) opt.id = 'orientation_' + idx;
           if (!opt.label) opt.label = opt.id;
-          if (opt.type === "vector" && opt.vector) {
+          if (opt.type === 'vector' && opt.vector) {
             opt.matrix = buildOrientationMatrixFromVector(opt.vector);
           }
           orientationMap[opt.id] = opt;
@@ -23015,7 +23015,7 @@ server <- function(input, output, session) {
 
         function getOrientationPaths(radius) {
           var orientationId = orientationMap[activeOrientationId] ? activeOrientationId : defaultOrientationId;
-          var cacheKey = orientationId + ":" + radius;
+          var cacheKey = orientationId + ':' + radius;
           if (orientationPathsCache[cacheKey]) return orientationPathsCache[cacheKey];
           var basePaths = getBaseSeamPaths(radius);
           var orientation = orientationMap[orientationId];
