@@ -21665,8 +21665,10 @@ server <- function(input, output, session) {
       }
     }
     
-    tilt_src <- get_first_col(row, c("BreakTilt", "bTilt", "ReleaseTilt", "rTilt"))
-    btilt    <- tags$span(deg_to_clock(tilt_src))
+    rtilt_val <- get_first_col(row, c("ReleaseTilt", "rTilt"))
+    btilt_val <- get_first_col(row, c("BreakTilt", "bTilt"))
+    rtilt     <- tags$span(deg_to_clock(rtilt_val))
+    btilt     <- tags$span(deg_to_clock(btilt_val))
     
     # Use RelHeight / RelSide (1 decimal)
     height_v <- metric_val(row, "RelHeight", fmt_num(1, ""))
@@ -21691,6 +21693,7 @@ server <- function(input, output, session) {
         metric_value_only(spin_val),
         # SpinEff / bTilt / Height / Side with bold titles
         metric_row("SpinEff", spin_eff),
+        metric_row("rTilt",   rtilt),
         metric_row("bTilt",   btilt),
         metric_row("Height",  height_v),
         metric_row("Side",    side_v)
@@ -22944,7 +22947,6 @@ server <- function(input, output, session) {
           ctx.translate(cx, cy);
           drawBaseballSeams(radius, rotation);
           ctx.restore();
-          drawSpinDirection(cx, cy, radius, rotation);
         }
         
         function drawBaseballSeams(radius, rotation) {
@@ -23038,36 +23040,6 @@ server <- function(input, output, session) {
           }
         }
         
-        function drawSpinDirection(cx, cy, radius, rotation) {
-          ctx.save();
-          ctx.translate(cx, cy);
-          ctx.rotate(rotation);
-          var arrows = 8;
-          ctx.strokeStyle = 'rgba(30, 136, 229, 0.4)';
-          ctx.fillStyle = 'rgba(30, 136, 229, 0.5)';
-          ctx.lineWidth = 1.5;
-          ctx.shadowColor = 'rgba(0,0,0,0.2)';
-          ctx.shadowBlur = radius * 0.03;
-          for (var i = 0; i < arrows; i++) {
-            var t = (i / arrows) * Math.PI + rotation * 0.5;
-            var x = Math.cos(t) * radius * 0.75;
-            var y = Math.sin(t) * radius * 0.22;
-            ctx.save();
-            ctx.translate(x, y);
-            ctx.rotate(t + Math.PI / 2);
-            ctx.beginPath();
-            ctx.moveTo(0, -radius * 0.035);
-            ctx.lineTo(radius * 0.03, radius * 0.015);
-            ctx.lineTo(0, radius * 0.08);
-            ctx.lineTo(-radius * 0.03, radius * 0.015);
-            ctx.closePath();
-            ctx.fill();
-            ctx.stroke();
-            ctx.restore();
-          }
-          ctx.restore();
-        }
-
         function drawAxis(cx, cy, radius) {
           var direction = mapAxisToView(axisVec);
           if (!direction) return;
@@ -23251,7 +23223,7 @@ server <- function(input, output, session) {
                             ifelse(is.finite(seam_rot_x), seam_rot_x * 180/pi, 0),
                             ifelse(is.finite(seam_rot_y), seam_rot_y * 180/pi, 0),
                             ifelse(is.finite(seam_rot_z), seam_rot_z * 180/pi, 0))
-    spin_speed_default <- 0.15
+    spin_speed_default <- 0.08
     spin_speed_min <- 0.01
     spin_speed_max <- 1.5
     spin_speed_step <- 0.01
@@ -23330,7 +23302,6 @@ server <- function(input, output, session) {
         style = "margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 8px; font-size: 0.85rem;",
         HTML(paste(
           "<strong style='color: #d32f2f;'>● Red Arrow:</strong> Spin Axis (the axis the ball rotates around)",
-          "<strong style='color: #1e88e5;'>● Blue Arrows:</strong> Rotation Direction (shows which way ball is spinning)",
           "<strong style='color: #CC0000;'>● Red Seams:</strong> Baseball stitching (changes based on grip/release)",
           sep = "<br/>"
         ))
