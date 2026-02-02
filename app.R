@@ -22987,7 +22987,7 @@ server <- function(input, output, session) {
           refreshOrientationButtons();
         }
         if (orientationContainer) {
-          orientationContainer.innerHTML = "";
+          orientationContainer.innerHTML = '';
           orientationButtons = {};
           orientationOptions.forEach(function(opt) {
             var btn = document.createElement('button');
