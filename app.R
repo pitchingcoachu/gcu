@@ -23157,6 +23157,7 @@ server <- function(input, output, session) {
           drawBaseballSeams(radius, rotation);
           drawClockNumbers(ctx, radius);
           drawTiltArrows(ctx, cx, cy, radius, releaseTiltAngle, breakTiltAngle);
+          drawTiltNumbersPointer(ctx, cx, cy, radius);
           ctx.restore();
         }
 
@@ -23293,61 +23294,77 @@ server <- function(input, output, session) {
         function drawAxis(cx, cy, radius) {
           var direction = mapAxisToView(axisVec);
           if (!direction) return;
-          ctx.save();
-          ctx.translate(cx, cy);
           var depthFactor = Math.min(Math.abs(axisVec[0] || 0), 1);
           var arrowLen = radius * (1.05 + depthFactor * 0.4);
-          
-          // Draw shadow for the axis line
-          ctx.strokeStyle = 'rgba(0,0,0,0.2)';
-          ctx.lineWidth = 6;
-          ctx.lineCap = 'round';
+          var headLen = radius * 0.26;
+          var shaftWidth = radius * 0.22;
+          drawSpinAxisArrow3D(ctx, cx, cy, direction, arrowLen, headLen, shaftWidth, radius);
+        }
+
+        function drawSpinAxisArrow3D(ctx, cx, cy, direction, arrowLen, headLen, shaftWidth, radius) {
+          ctx.save();
+          ctx.translate(cx, cy);
+          var angle = Math.atan2(direction.y, direction.x);
+          ctx.rotate(angle);
+          ctx.shadowColor = 'rgba(0,0,0,0.25)';
+          ctx.shadowBlur = radius * 0.08;
+          ctx.shadowOffsetX = 2;
+          ctx.shadowOffsetY = 2;
+          var shaftLen = arrowLen - headLen;
+          var grad = ctx.createLinearGradient(0, 0, shaftLen, 0);
+          grad.addColorStop(0, '#8a0000');
+          grad.addColorStop(1, '#f44336');
+          ctx.fillStyle = grad;
           ctx.beginPath();
-          ctx.moveTo(2, 2);
-          ctx.lineTo(direction.x * arrowLen + 2, direction.y * arrowLen + 2);
-          ctx.stroke();
-          
-          // Draw main axis line
-          ctx.strokeStyle = '#d32f2f';
-          ctx.lineWidth = 4;
-          ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.moveTo(0, 0);
-          ctx.lineTo(direction.x * arrowLen, direction.y * arrowLen);
-          ctx.stroke();
-          
-          // Draw arrowhead
-          var headLen = radius * 0.22;
-          var perpX = -direction.y;
-          var perpY = direction.x;
-          
-          // Shadow for arrowhead
-          ctx.fillStyle = 'rgba(0,0,0,0.2)';
-          ctx.beginPath();
-          ctx.moveTo(direction.x * arrowLen + 2, direction.y * arrowLen + 2);
-          ctx.lineTo(direction.x * arrowLen - perpX * headLen - direction.x * headLen * 0.3 + 2,
-                     direction.y * arrowLen - perpY * headLen - direction.y * headLen * 0.3 + 2);
-          ctx.lineTo(direction.x * arrowLen + perpX * headLen - direction.x * headLen * 0.3 + 2,
-                     direction.y * arrowLen + perpY * headLen - direction.y * headLen * 0.3 + 2);
+          ctx.moveTo(0, -shaftWidth / 2);
+          ctx.lineTo(shaftLen, -shaftWidth / 2);
+          ctx.lineTo(shaftLen, shaftWidth / 2);
+          ctx.lineTo(0, shaftWidth / 2);
           ctx.closePath();
           ctx.fill();
-          
-          // Main arrowhead
+          ctx.shadowBlur = 0;
+          ctx.shadowOffsetX = 0;
+          ctx.shadowOffsetY = 0;
           ctx.fillStyle = '#d32f2f';
           ctx.beginPath();
-          ctx.moveTo(direction.x * arrowLen, direction.y * arrowLen);
-          ctx.lineTo(direction.x * arrowLen - perpX * headLen - direction.x * headLen * 0.3,
-                     direction.y * arrowLen - perpY * headLen - direction.y * headLen * 0.3);
-          ctx.lineTo(direction.x * arrowLen + perpX * headLen - direction.x * headLen * 0.3,
-                     direction.y * arrowLen + perpY * headLen - direction.y * headLen * 0.3);
+          ctx.moveTo(shaftLen, -shaftWidth / 2 * 1.1);
+          ctx.lineTo(shaftLen + headLen, 0);
+          ctx.lineTo(shaftLen, shaftWidth / 2 * 1.1);
           ctx.closePath();
           ctx.fill();
-          
-          // Add highlight to arrowhead
-          ctx.strokeStyle = 'rgba(255,255,255,0.3)';
-          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(255,255,255,0.65)';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(shaftLen * 0.1, -shaftWidth * 0.25);
+          ctx.lineTo(shaftLen, -shaftWidth * 0.25);
           ctx.stroke();
-          
+          ctx.restore();
+        }
+
+        function drawTiltNumbersPointer(ctx, cx, cy, radius) {
+          var length = radius * 1.15;
+          var headSize = radius * 0.06;
+          var endX = cx + length;
+          ctx.save();
+          ctx.strokeStyle = 'rgba(0,0,0,0.35)';
+          ctx.fillStyle = 'rgba(0,0,0,0.35)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 4]);
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(endX, cy);
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.beginPath();
+          ctx.moveTo(endX, cy);
+          ctx.lineTo(endX - headSize, cy - headSize * 0.6);
+          ctx.lineTo(endX - headSize, cy + headSize * 0.6);
+          ctx.closePath();
+          ctx.fill();
+          ctx.font = Math.max(12, radius * 0.08) + "px 'Inter', 'Helvetica Neue', sans-serif";
+          ctx.textAlign = 'left';
+          ctx.textBaseline = 'middle';
+          ctx.fillText('Tilt numbers', endX + headSize * 1.5, cy);
           ctx.restore();
         }
 
