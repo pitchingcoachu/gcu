@@ -22788,6 +22788,13 @@ server <- function(input, output, session) {
         return { x: x / len, y: y / len, z: z / len };
       }
 
+      function tiltDegreesToCanvasAngle(deg) {
+        if (!isFinite(deg)) return null;
+        var angle = (deg + 90) % 360;
+        if (angle < 0) angle += 360;
+        return angle * Math.PI / 180;
+      }
+
       function rotatePointX(point, angle) {
         var c = Math.cos(angle);
         var s = Math.sin(angle);
@@ -22942,6 +22949,12 @@ server <- function(input, output, session) {
         var seamRotZ = Number(cfg.seamRotationZ) || 0;
         
         var tilt = Number(cfg.tilt) || 0;
+        var releaseTiltVal = Number(cfg.releaseTilt);
+        if (!isFinite(releaseTiltVal)) releaseTiltVal = null;
+        var breakTiltVal = Number(cfg.breakTilt);
+        if (!isFinite(breakTiltVal)) breakTiltVal = null;
+        var releaseTiltAngle = releaseTiltVal !== null ? tiltDegreesToCanvasAngle(releaseTiltVal) : null;
+        var breakTiltAngle = breakTiltVal !== null ? tiltDegreesToCanvasAngle(breakTiltVal) : null;
         var baseSeamCache = { radius: 0, paths: null };
         var orientationPathsCache = {};
         var orientationOptions = Array.isArray(cfg.orientationOptions) ? cfg.orientationOptions.slice() : [];
@@ -23143,9 +23156,49 @@ server <- function(input, output, session) {
           ctx.translate(cx, cy);
           drawBaseballSeams(radius, rotation);
           drawClockNumbers(ctx, radius);
+          drawTiltArrows(ctx, cx, cy, radius, releaseTiltAngle, breakTiltAngle);
           ctx.restore();
         }
-        
+
+        function drawTiltArrow(ctx, cx, cy, radius, angle, color, dashed) {
+          if (angle === null || !isFinite(angle)) return;
+          var length = radius * 0.62;
+          var endX = cx + Math.cos(angle) * length;
+          var endY = cy + Math.sin(angle) * length;
+          ctx.save();
+          ctx.strokeStyle = color;
+          ctx.fillStyle = color;
+          ctx.lineWidth = 2.5;
+          ctx.lineCap = 'round';
+          ctx.setLineDash(dashed ? [6, 5] : []);
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+          var headLen = radius * 0.08;
+          var perpAngle = angle + Math.PI / 2;
+          var perpX = Math.cos(perpAngle);
+          var perpY = Math.sin(perpAngle);
+          var baseX = endX - Math.cos(angle) * headLen;
+          var baseY = endY - Math.sin(angle) * headLen;
+          ctx.beginPath();
+          ctx.moveTo(endX, endY);
+          ctx.lineTo(baseX + perpX * headLen * 0.4, baseY + perpY * headLen * 0.4);
+          ctx.lineTo(baseX - perpX * headLen * 0.4, baseY - perpY * headLen * 0.4);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+
+        function drawTiltArrows(ctx, cx, cy, radius, releaseAngle, breakAngle) {
+          if (releaseAngle !== null && isFinite(releaseAngle)) {
+            drawTiltArrow(ctx, cx, cy, radius, releaseAngle, '#ffb300', true);
+          }
+          if (breakAngle !== null && isFinite(breakAngle)) {
+            drawTiltArrow(ctx, cx, cy, radius, breakAngle, '#4caf50', false);
+          }
+        }
+
         function drawBaseballSeams(radius, rotation) {
           var orientationPaths = getOrientationPaths(radius);
           orientationPaths.forEach(function(path) {
@@ -23472,6 +23525,8 @@ server <- function(input, output, session) {
       seamRotationX = ifelse(is.finite(seam_rot_x), seam_rot_x, 0),
       seamRotationY = ifelse(is.finite(seam_rot_y), seam_rot_y, 0),
       seamRotationZ = ifelse(is.finite(seam_rot_z), seam_rot_z, 0),
+      releaseTilt = ifelse(is.finite(rtilt_val), rtilt_val, NA_real_),
+      breakTilt = ifelse(is.finite(btilt_val), btilt_val, NA_real_),
       spinSpeedDefault = spin_speed_default,
       spinSpeedMin = spin_speed_min,
       spinSpeedMax = spin_speed_max,
