@@ -22682,6 +22682,51 @@ server <- function(input, output, session) {
       font-weight:600;
       text-align:right;
     }
+    .spin-orientation-control {
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      width:100%;
+      margin-top:6px;
+    }
+    .spin-orientation-title {
+      font-size:0.75rem;
+      letter-spacing:0.08em;
+      text-transform:uppercase;
+      color:#666;
+      font-weight:600;
+      margin-bottom:4px;
+    }
+    .spin-orientation-controls {
+      display:flex;
+      flex-wrap:wrap;
+      justify-content:center;
+      gap:6px;
+      width:100%;
+      max-width:420px;
+    }
+    .spin-orientation-button {
+      border:1px solid rgba(0,0,0,0.12);
+      border-radius:999px;
+      padding:4px 10px;
+      background:#fff;
+      color:#262f44;
+      font-size:0.8rem;
+      font-weight:600;
+      transition:all 0.2s ease;
+      cursor:pointer;
+      min-width:72px;
+      text-align:center;
+    }
+    .spin-orientation-button.active {
+      background:#1e88e5;
+      border-color:#1e88e5;
+      color:#ffffff;
+    }
+    .spin-orientation-button:focus {
+      outline:none;
+      box-shadow:0 0 0 2px rgba(30,136,229,0.3);
+    }
     .spin-canvas-card .spin-info {
       font-size:0.85rem;
       color:#333;
@@ -22819,11 +22864,66 @@ server <- function(input, output, session) {
         });
       }
 
-      function ensureSeamCache(radius, cache, rotX, rotY, rotZ) {
-        if (cache.radius === radius && cache.paths) return;
-        var basePaths = buildSeamPaths(radius);
-        cache.paths = orientSeamPaths(basePaths, rotX, rotY, rotZ);
-        cache.radius = radius;
+      function normalizeVecObject(vec) {
+        var x = Number(vec && vec.x) || 0;
+        var y = Number(vec && vec.y) || 0;
+        var z = Number(vec && vec.z) || 0;
+        var len = Math.sqrt(x * x + y * y + z * z);
+        if (len < 1e-6) return null;
+        return { x: x / len, y: y / len, z: z / len };
+      }
+
+      function crossVec(a, b) {
+        return {
+          x: a.y * b.z - a.z * b.y,
+          y: a.z * b.x - a.x * b.z,
+          z: a.x * b.y - a.y * b.x
+        };
+      }
+
+      function buildOrientationMatrixFromVector(vec) {
+        var target = normalizeVecObject(vec);
+        if (!target) return null;
+        var reference = { x: 0, y: 0, z: 1 };
+        if (Math.abs(target.x * reference.x + target.y * reference.y + target.z * reference.z) > 0.98) {
+          reference = { x: 0, y: 1, z: 0 };
+        }
+        var newX = crossVec(reference, target);
+        var normalizedX = normalizeVecObject(newX);
+        if (!normalizedX) return null;
+        var newZ = crossVec(target, normalizedX);
+        var normalizedZ = normalizeVecObject(newZ);
+        if (!normalizedZ) return null;
+        return { x: normalizedX, y: target, z: normalizedZ };
+      }
+
+      function applyMatrixToPaths(paths, matrix) {
+        if (!matrix || !matrix.x || !matrix.y || !matrix.z) return paths;
+        return paths.map(function(path) {
+          return path.map(function(point) {
+            return {
+              x: point.x * matrix.x.x + point.y * matrix.y.x + point.z * matrix.z.x,
+              y: point.x * matrix.x.y + point.y * matrix.y.y + point.z * matrix.z.y,
+              z: point.x * matrix.x.z + point.y * matrix.y.z + point.z * matrix.z.z
+            };
+          });
+        });
+      }
+
+      function drawClockNumbers(ctx, radius) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
+        ctx.font = Math.max(10, radius * 0.14) + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        var clockRadius = radius * 0.92;
+        for (var hour = 1; hour <= 12; hour++) {
+          var angle = ((hour - 3) / 12) * Math.PI * 2;
+          var x = Math.cos(angle) * clockRadius;
+          var y = Math.sin(angle) * clockRadius;
+          ctx.fillText(hour.toString(), x, y);
+        }
+        ctx.restore();
       }
 
       function SpinAnimator(cfg) {
@@ -22842,7 +22942,103 @@ server <- function(input, output, session) {
         var seamRotZ = Number(cfg.seamRotationZ) || 0;
         
         var tilt = Number(cfg.tilt) || 0;
-        var seamCache = { radius: 0, paths: null };
+        var baseSeamCache = { radius: 0, paths: null };
+        var orientationPathsCache = {};
+        var orientationOptions = Array.isArray(cfg.orientationOptions) ? cfg.orientationOptions.slice() : [];
+        if (!orientationOptions.length) {
+          orientationOptions.push({
+            id: "primary",
+            label: "Primary",
+            type: "rotation",
+            rotation: {
+              x: seamRotX,
+              y: seamRotY,
+              z: seamRotZ
+            }
+          });
+        }
+        var orientationMap = {};
+        orientationOptions.forEach(function(opt, idx) {
+          if (!opt.id) opt.id = "orientation_" + idx;
+          if (!opt.label) opt.label = opt.id;
+          if (opt.type === "vector" && opt.vector) {
+            opt.matrix = buildOrientationMatrixFromVector(opt.vector);
+          }
+          orientationMap[opt.id] = opt;
+        });
+        var defaultOrientationId = cfg.defaultOrientationId && orientationMap[cfg.defaultOrientationId]
+          ? cfg.defaultOrientationId
+          : orientationOptions[0].id;
+        var activeOrientationId = defaultOrientationId;
+        var orientationContainer = cfg.orientationContainerId ? document.getElementById(cfg.orientationContainerId) : null;
+        var orientationButtons = {};
+        function refreshOrientationButtons() {
+          Object.keys(orientationButtons).forEach(function(key) {
+            var btn = orientationButtons[key];
+            if (!btn) return;
+            btn.classList.toggle('active', key === activeOrientationId);
+          });
+        }
+        function setActiveOrientation(id) {
+          if (!id || !orientationMap[id]) return;
+          if (activeOrientationId === id) return;
+          activeOrientationId = id;
+          orientationPathsCache = {};
+          refreshOrientationButtons();
+        }
+        if (orientationContainer) {
+          orientationContainer.innerHTML = "";
+          orientationButtons = {};
+          orientationOptions.forEach(function(opt) {
+            var btn = document.createElement('button');
+            btn.type = 'button';
+            btn.className = 'spin-orientation-button';
+            btn.textContent = opt.label;
+            var tooltipParts = [];
+            if (isFinite(Number(opt.horizontal))) tooltipParts.push('H: ' + Number(opt.horizontal).toFixed(1) + '°');
+            if (isFinite(Number(opt.vertical))) tooltipParts.push('V: ' + Number(opt.vertical).toFixed(1) + '°');
+            if (tooltipParts.length) btn.title = tooltipParts.join(' · ');
+            btn.addEventListener('click', function() {
+              setActiveOrientation(opt.id);
+            });
+            orientationContainer.appendChild(btn);
+            orientationButtons[opt.id] = btn;
+          });
+          refreshOrientationButtons();
+        }
+        function getBaseSeamPaths(radius) {
+          if (baseSeamCache.radius === radius && baseSeamCache.paths) return baseSeamCache.paths;
+          baseSeamCache.paths = buildSeamPaths(radius);
+          baseSeamCache.radius = radius;
+          return baseSeamCache.paths;
+        }
+
+        function getOrientationPaths(radius) {
+          var orientationId = orientationMap[activeOrientationId] ? activeOrientationId : defaultOrientationId;
+          var cacheKey = orientationId + ":" + radius;
+          if (orientationPathsCache[cacheKey]) return orientationPathsCache[cacheKey];
+          var basePaths = getBaseSeamPaths(radius);
+          var orientation = orientationMap[orientationId];
+          var paths;
+          if (orientation && orientation.type === 'rotation' && orientation.rotation) {
+            paths = orientSeamPaths(
+              basePaths,
+              Number(orientation.rotation.x) || 0,
+              Number(orientation.rotation.y) || 0,
+              Number(orientation.rotation.z) || 0
+            );
+          } else if (orientation && orientation.matrix) {
+            paths = applyMatrixToPaths(basePaths, orientation.matrix);
+          } else {
+            paths = basePaths.map(function(path) {
+              return path.map(function(pt) {
+                return { x: pt.x, y: pt.y, z: pt.z };
+              });
+            });
+          }
+          orientationPathsCache[cacheKey] = paths;
+          return paths;
+        }
         var speedLabel = cfg.speedLabelId ? document.getElementById(cfg.speedLabelId) : null;
         var slider = cfg.sliderId ? document.getElementById(cfg.sliderId) : null;
         var speedSlider = cfg.speedSliderId ? document.getElementById(cfg.speedSliderId) : null;
@@ -22946,12 +23142,13 @@ server <- function(input, output, session) {
           ctx.save();
           ctx.translate(cx, cy);
           drawBaseballSeams(radius, rotation);
+          drawClockNumbers(ctx, radius);
           ctx.restore();
         }
         
         function drawBaseballSeams(radius, rotation) {
-          ensureSeamCache(radius, seamCache, seamRotX, seamRotY, seamRotZ);
-          seamCache.paths.forEach(function(path) {
+          var orientationPaths = getOrientationPaths(radius);
+          orientationPaths.forEach(function(path) {
             var rotatedPath = path.map(function(point) {
               return rotatePointAroundAxis(point, axisDir, rotation);
             });
@@ -23209,6 +23406,39 @@ server <- function(input, output, session) {
     seam_rot_y <- get_col("SpinAxis3dSeamOrientationRotationY")
     seam_rot_z <- get_col("SpinAxis3dSeamOrientationRotationZ")
 
+    orientation_options <- list(
+      list(
+        id = "primary",
+        label = "Primary",
+        type = "rotation",
+        rotation = list(
+          x = ifelse(is.finite(seam_rot_x), seam_rot_x, 0),
+          y = ifelse(is.finite(seam_rot_y), seam_rot_y, 0),
+          z = ifelse(is.finite(seam_rot_z), seam_rot_z, 0)
+        )
+      )
+    )
+    for (amb_idx in seq_len(4)) {
+      ball_x <- get_col(sprintf("SpinAxis3dSeamOrientationBallXAmb%d", amb_idx))
+      ball_y <- get_col(sprintf("SpinAxis3dSeamOrientationBallYAmb%d", amb_idx))
+      ball_z <- get_col(sprintf("SpinAxis3dSeamOrientationBallZAmb%d", amb_idx))
+      if (!all(is.finite(c(ball_x, ball_y, ball_z)))) next
+      horiz <- get_col(sprintf("SpinAxis3dSeamOrientationBallAngleHorizontalAmb%d", amb_idx))
+      vert <- get_col(sprintf("SpinAxis3dSeamOrientationBallAngleVerticalAmb%d", amb_idx))
+      orientation_options[[length(orientation_options) + 1]] <- list(
+        id = paste0("amb", amb_idx),
+        label = paste0("Amb ", amb_idx),
+        type = "vector",
+        vector = list(
+          x = ball_x,
+          y = ball_y,
+          z = ball_z
+        ),
+        horizontal = ifelse(is.finite(horiz), horiz, NA_real_),
+        vertical = ifelse(is.finite(vert), vert, NA_real_)
+      )
+    }
+
     spin_rate_text <- if (is.finite(spin_rate_val)) sprintf("%.0f rpm", spin_rate_val) else "N/A"
     spin_eff_text <- if (is.finite(spin_eff_val)) {
       eff_pct <- if (spin_eff_val <= 1) spin_eff_val * 100 else spin_eff_val
@@ -23246,6 +23476,9 @@ server <- function(input, output, session) {
       spinSpeedMin = spin_speed_min,
       spinSpeedMax = spin_speed_max,
       spinSpeedStep = spin_speed_step,
+      orientationOptions = orientation_options,
+      defaultOrientationId = orientation_options[[1]]$id,
+      orientationContainerId = paste0(prefix, "_orientation"),
       autoplay = TRUE
     )
     config_json <- jsonlite::toJSON(config, auto_unbox = TRUE)
@@ -23296,6 +23529,14 @@ server <- function(input, output, session) {
           value = sprintf("%.2f", spin_speed_default)
         ),
         tags$span(id = config$speedLabelId, sprintf("Animation speed: %.2fx", spin_speed_default))
+      ),
+      tags$div(
+        class = "spin-orientation-control",
+        tags$div(class = "spin-orientation-title", "Seam orientation"),
+        tags$div(
+          class = "spin-orientation-controls",
+          id = config$orientationContainerId
+        )
       ),
       tags$div(
         class = "spin-legend",
