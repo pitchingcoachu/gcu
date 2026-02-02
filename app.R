@@ -22738,7 +22738,12 @@ server <- function(input, output, session) {
         var axisVec = Array.isArray(cfg.axisVector) ? cfg.axisVector : [0,0,1];
         var spinRate = Number(cfg.spinRate);
         if (!isFinite(spinRate) || spinRate <= 0) spinRate = 1800;
-        var seamRotation = Number(cfg.seamRotation) || 0;
+        
+        // Seam orientation - these are the Euler angles from TrackMan (in radians)
+        var seamRotX = Number(cfg.seamRotationX) || 0;
+        var seamRotY = Number(cfg.seamRotationY) || 0;
+        var seamRotZ = Number(cfg.seamRotationZ) || 0;
+        
         var tilt = Number(cfg.tilt) || 0;
         var speedLabel = cfg.speedLabelId ? document.getElementById(cfg.speedLabelId) : null;
         var slider = cfg.sliderId ? document.getElementById(cfg.sliderId) : null;
@@ -22842,16 +22847,23 @@ server <- function(input, output, session) {
         function drawSeam(cx, cy, radius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          var baseAngle = seamRotation * Math.PI / 180;
-          var tiltRad = tilt * Math.PI / 180;
-          ctx.rotate(baseAngle + rotation);
-          ctx.rotate(tiltRad);
+          
+          // Apply seam orientation from TrackMan data
+          // These are Euler angles (in radians) that orient the seam pattern
+          // Order matters: we apply rotations in X, Y, Z order
+          
+          // First apply the time-based rotation (the ball spinning)
+          ctx.rotate(rotation);
+          
+          // Then apply the fixed seam orientation from TrackMan
+          // Note: We only use Z rotation for 2D canvas (the others would need 3D projection)
+          ctx.rotate(seamRotZ);
           
           // Draw authentic baseball seams
           drawBaseballSeams(radius);
           
           ctx.restore();
-          drawSpinDirection(cx, cy, radius, rotation, baseAngle);
+          drawSpinDirection(cx, cy, radius, rotation);
         }
         
         function drawBaseballSeams(radius) {
@@ -22971,10 +22983,10 @@ server <- function(input, output, session) {
           }
         }
         
-        function drawSpinDirection(cx, cy, radius, rotation, baseAngle) {
+        function drawSpinDirection(cx, cy, radius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          ctx.rotate(baseAngle);
+          ctx.rotate(rotation);
           var arrows = 8;
           ctx.strokeStyle = 'rgba(30, 136, 229, 0.4)';
           ctx.fillStyle = 'rgba(30, 136, 229, 0.5)';
@@ -23164,7 +23176,11 @@ server <- function(input, output, session) {
     if (!is.finite(spin_rate_val) || spin_rate_val <= 0) spin_rate_val <- 1800
     spin_eff_val <- get_col("SpinAxis3dSpinEfficiency")
     tilt_val <- get_col("SpinAxis3dTilt")
-    seam_rot <- get_col("SpinAxis3dSeamOrientationRotationZ")
+    
+    # Get all three seam orientation rotation angles (in radians from TrackMan)
+    seam_rot_x <- get_col("SpinAxis3dSeamOrientationRotationX")
+    seam_rot_y <- get_col("SpinAxis3dSeamOrientationRotationY")
+    seam_rot_z <- get_col("SpinAxis3dSeamOrientationRotationZ")
 
     spin_rate_text <- if (is.finite(spin_rate_val)) sprintf("%.0f rpm", spin_rate_val) else "N/A"
     spin_eff_text <- if (is.finite(spin_eff_val)) {
@@ -23176,7 +23192,10 @@ server <- function(input, output, session) {
     tilt_raw_str <- if (is.null(tilt_raw) || is.na(tilt_raw)) "" else trimws(as.character(tilt_raw))
     tilt_label <- if (nzchar(tilt_raw_str)) tilt_raw_str else tilt_text
     axis_text <- sprintf("%.2f / %.2f / %.2f", axis_vec[1], axis_vec[2], axis_vec[3])
-    seam_rot_text <- if (is.finite(seam_rot)) sprintf("%.1f°", seam_rot) else "N/A"
+    seam_rot_text <- sprintf("X:%.1f° Y:%.1f° Z:%.1f°", 
+                            ifelse(is.finite(seam_rot_x), seam_rot_x * 180/pi, 0),
+                            ifelse(is.finite(seam_rot_y), seam_rot_y * 180/pi, 0),
+                            ifelse(is.finite(seam_rot_z), seam_rot_z * 180/pi, 0))
     spin_speed_default <- 0.15
     spin_speed_min <- 0.01
     spin_speed_max <- 1.5
@@ -23193,7 +23212,9 @@ server <- function(input, output, session) {
       spinRate = spin_rate_val,
       spinEff = spin_eff_val,
       tilt = tilt_val,
-      seamRotation = seam_rot,
+      seamRotationX = ifelse(is.finite(seam_rot_x), seam_rot_x, 0),
+      seamRotationY = ifelse(is.finite(seam_rot_y), seam_rot_y, 0),
+      seamRotationZ = ifelse(is.finite(seam_rot_z), seam_rot_z, 0),
       spinSpeedDefault = spin_speed_default,
       spinSpeedMin = spin_speed_min,
       spinSpeedMax = spin_speed_max,
@@ -23250,13 +23271,23 @@ server <- function(input, output, session) {
         tags$span(id = config$speedLabelId, sprintf("Animation speed: %.2fx", spin_speed_default))
       ),
       tags$div(
+        class = "spin-legend",
+        style = "margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 8px; font-size: 0.85rem;",
+        HTML(paste(
+          "<strong style='color: #d32f2f;'>● Red Arrow:</strong> Spin Axis (the axis the ball rotates around)",
+          "<strong style='color: #1e88e5;'>● Blue Arrows:</strong> Rotation Direction (shows which way ball is spinning)",
+          "<strong style='color: #CC0000;'>● Red Seams:</strong> Baseball stitching (changes based on grip/release)",
+          sep = "<br/>"
+        ))
+      ),
+      tags$div(
         class = "spin-info",
         HTML(paste(
-          sprintf("Spin Rate: %s", spin_rate_text),
-          sprintf("Spin Eff: %s", spin_eff_text),
-          sprintf("Tilt: %s", tilt_label),
-          sprintf("Seam rot: %s", seam_rot_text),
-          sprintf("Axis (X/Y/Z): %s", axis_text),
+          sprintf("<strong>Spin Rate:</strong> %s", spin_rate_text),
+          sprintf("<strong>Spin Eff:</strong> %s", spin_eff_text),
+          sprintf("<strong>Tilt:</strong> %s", tilt_label),
+          sprintf("<strong>Seam Orient:</strong> %s", seam_rot_text),
+          sprintf("<strong>Axis (X/Y/Z):</strong> %s", axis_text),
           sep = "<br/>"
         ))
       ),
