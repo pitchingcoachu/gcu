@@ -22847,7 +22847,7 @@ server <- function(input, output, session) {
           ctx.rotate(baseAngle + rotation);
           ctx.rotate(tiltRad);
           
-          // Draw the two interlocking C-shaped seam curves that form a baseball
+          // Draw authentic baseball seams
           drawBaseballSeams(radius);
           
           ctx.restore();
@@ -22855,64 +22855,119 @@ server <- function(input, output, session) {
         }
         
         function drawBaseballSeams(radius) {
-          // A baseball has two interlocking C-shaped curves
-          // Each curve is like a sine wave wrapped around the sphere
-          var numStitches = 108; // More stitches for complete coverage
-          var seamWidth = radius * 0.055;
+          // Baseball seams follow a specific 3D curve on a sphere
+          // The classic baseball has two mirror-image curves that form a figure-8 pattern
           
-          // Draw both seam curves
-          for (var curve = 0; curve < 2; curve++) {
-            var curveOffset = curve * Math.PI; // Second curve is 180 degrees offset
+          var stitchCount = 120; // Total stitches per curve
+          var seamHeight = radius * 0.08; // Height of the raised seam
+          
+          // Draw both seam curves (they're mirror images)
+          for (var seamNum = 0; seamNum < 2; seamNum++) {
+            var seamOffset = seamNum * Math.PI;
             
-            for (var i = 0; i < numStitches; i++) {
-              var t = (i / numStitches) * Math.PI * 2;
-              var angle = t + curveOffset;
+            // Build the seam path
+            var seamPath = [];
+            for (var i = 0; i <= stitchCount; i++) {
+              var u = (i / stitchCount) * Math.PI * 2;
+              var theta = u + seamOffset;
               
-              // Create the figure-8 pattern by varying the y-offset
-              // This creates the characteristic baseball seam shape
-              var sineFactor = Math.sin(angle * 2); // Creates the S-curve
+              // The classic baseball seam follows this parametric curve:
+              // It creates two interlocking curves that wrap around the sphere
+              // The key is the latitude varies as a sine wave
+              var latitude = Math.asin(Math.sin(2 * theta) * 0.4); // Max latitude ±23.6 degrees
+              var longitude = theta;
               
-              // Position on the sphere
-              var x = Math.cos(angle) * radius * 0.85;
-              var y = sineFactor * radius * 0.45; // Sine wave amplitude
-              var z = Math.sin(angle) * radius * 0.85;
+              // Convert spherical coordinates to 3D Cartesian
+              var x3d = radius * Math.cos(latitude) * Math.cos(longitude);
+              var y3d = radius * Math.sin(latitude);
+              var z3d = radius * Math.cos(latitude) * Math.sin(longitude);
               
-              // 3D to 2D projection - only draw visible stitches (front hemisphere)
-              // Visibility is based on z-position (depth)
-              if (z < -radius * 0.25) continue; // Don't draw back side
-              
-              // Calculate opacity based on depth for more realism
-              var depthOpacity = Math.max(0.3, (z + radius) / (radius * 1.5));
-              
-              // Calculate stitch angle perpendicular to seam curve
-              var dx = -Math.sin(angle) * radius * 0.85;
-              var dy = Math.cos(angle * 2) * 2 * radius * 0.45; // Derivative of sine
-              var stitchAngle = Math.atan2(dy, dx);
-              
-              ctx.save();
-              ctx.translate(x, y);
-              ctx.rotate(stitchAngle);
-              
-              // Draw the individual stitch
-              var stitchColor = 'rgba(196, 30, 26, ' + depthOpacity + ')';
-              ctx.strokeStyle = stitchColor;
-              ctx.lineWidth = 2.8;
-              ctx.lineCap = 'round';
-              ctx.beginPath();
-              ctx.moveTo(-seamWidth / 2, 0);
-              ctx.lineTo(seamWidth / 2, 0);
-              ctx.stroke();
-              
-              // Add darker outline for each stitch
-              ctx.strokeStyle = 'rgba(120, 15, 15, ' + (depthOpacity * 0.6) + ')';
-              ctx.lineWidth = 3.2;
-              ctx.beginPath();
-              ctx.moveTo(-seamWidth / 2, 0.5);
-              ctx.lineTo(seamWidth / 2, 0.5);
-              ctx.stroke();
-              
-              ctx.restore();
+              seamPath.push({ x: x3d, y: y3d, z: z3d, u: u });
             }
+            
+            // Draw the continuous seam curve with stitching
+            drawSeamCurve(seamPath, radius);
+          }
+        }
+        
+        function drawSeamCurve(seamPath, radius) {
+          // First, draw the red thread as a continuous curve
+          ctx.strokeStyle = '#CC0000';
+          ctx.lineWidth = 3.5;
+          ctx.lineCap = 'round';
+          ctx.lineJoin = 'round';
+          
+          // Draw both edges of the seam for thickness
+          for (var edgeOffset of [-1, 1]) {
+            ctx.beginPath();
+            var firstVisible = true;
+            
+            for (var i = 0; i < seamPath.length; i++) {
+              var point = seamPath[i];
+              
+              // Only draw visible parts (front hemisphere)
+              if (point.z < -radius * 0.15) {
+                firstVisible = true;
+                continue;
+              }
+              
+              // Calculate perpendicular offset for seam width
+              var next = seamPath[(i + 1) % seamPath.length];
+              var tangentX = next.x - point.x;
+              var tangentY = next.y - point.y;
+              var tangentLen = Math.sqrt(tangentX * tangentX + tangentY * tangentY);
+              if (tangentLen > 0) {
+                tangentX /= tangentLen;
+                tangentY /= tangentLen;
+              }
+              
+              var perpX = -tangentY * edgeOffset * 2;
+              var perpY = tangentX * edgeOffset * 2;
+              
+              var x = point.x + perpX;
+              var y = point.y + perpY;
+              
+              if (firstVisible) {
+                ctx.moveTo(x, y);
+                firstVisible = false;
+              } else {
+                ctx.lineTo(x, y);
+              }
+            }
+            ctx.stroke();
+          }
+          
+          // Now draw individual stitches across the seam
+          var stitchSpacing = 4; // Draw every Nth point as a stitch
+          ctx.strokeStyle = '#CC0000';
+          ctx.lineWidth = 2.5;
+          
+          for (var i = 0; i < seamPath.length; i += stitchSpacing) {
+            var point = seamPath[i];
+            
+            // Skip back-facing stitches
+            if (point.z < -radius * 0.15) continue;
+            
+            // Calculate the tangent direction
+            var next = seamPath[(i + 1) % seamPath.length];
+            var tangentX = next.x - point.x;
+            var tangentY = next.y - point.y;
+            var tangentLen = Math.sqrt(tangentX * tangentX + tangentY * tangentY);
+            if (tangentLen > 0) {
+              tangentX /= tangentLen;
+              tangentY /= tangentLen;
+            }
+            
+            // Perpendicular direction for stitches (crosses the seam)
+            var perpX = -tangentY;
+            var perpY = tangentX;
+            
+            // Draw stitch perpendicular to seam
+            var stitchLen = radius * 0.06;
+            ctx.beginPath();
+            ctx.moveTo(point.x - perpX * stitchLen, point.y - perpY * stitchLen);
+            ctx.lineTo(point.x + perpX * stitchLen, point.y + perpY * stitchLen);
+            ctx.stroke();
           }
         }
         
