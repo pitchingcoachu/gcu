@@ -23361,7 +23361,7 @@ server <- function(input, output, session) {
           ctx.lineTo(endX - headSize, cy + headSize * 0.6);
           ctx.closePath();
           ctx.fill();
-          ctx.font = Math.max(12, radius * 0.08) + "px 'Inter', 'Helvetica Neue', sans-serif";
+          ctx.font = Math.max(12, radius * 0.08) + \"px 'Inter', 'Helvetica Neue', sans-serif\";
           ctx.textAlign = 'left';
           ctx.textBaseline = 'middle';
           ctx.fillText('Tilt numbers', endX + headSize * 1.5, cy);
