@@ -22582,206 +22582,324 @@ server <- function(input, output, session) {
     invisible(TRUE)
   }
 
-  rotate_points_3d <- function(coords, R) {
-    if (is.null(R)) return(coords)
-    mat <- as.matrix(coords)
-    if (ncol(mat) < 3) stop("coords must contain x/y/z columns", call. = FALSE)
-    rotated <- t(R %*% t(mat))
-    colnames(rotated) <- c("x", "y", "z")
-    rotated
-  }
-
-  make_spin_rotation_matrix <- function(rx_deg = 0, ry_deg = 0, rz_deg = 0) {
-    to_rad <- function(val) {
-      if (is.null(val)) return(0)
-      num <- suppressWarnings(as.numeric(val))
-      if (!is.finite(num)) return(0)
-      num * pi / 180
+  spin_visual_css <- shiny::singleton(tags$style(HTML("
+    .spin-canvas-card {
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      gap:8px;
+      width:100%;
     }
-    rx <- to_rad(rx_deg)
-    ry <- to_rad(ry_deg)
-    rz <- to_rad(rz_deg)
-    Rx <- matrix(c(1, 0, 0,
-                   0, cos(rx), -sin(rx),
-                   0, sin(rx),  cos(rx)), nrow = 3, byrow = TRUE)
-    Ry <- matrix(c(cos(ry), 0, sin(ry),
-                   0,       1,      0,
-                  -sin(ry), 0, cos(ry)), nrow = 3, byrow = TRUE)
-    Rz <- matrix(c(cos(rz), -sin(rz), 0,
-                   sin(rz),  cos(rz), 0,
-                        0,       0, 1), nrow = 3, byrow = TRUE)
-    Rz %*% Ry %*% Rx
-  }
+    .spin-canvas-container {
+      width:100%;
+      max-width:480px;
+    }
+    .spin-canvas {
+      width:100%;
+      aspect-ratio:1 / 1;
+      border-radius:50%;
+    }
+    .spin-canvas-card .spin-controls {
+      display:flex;
+      align-items:center;
+      gap:8px;
+      width:100%;
+    }
+    .spin-canvas-card .spin-controls input[type=range] {
+      flex:1;
+      cursor:pointer;
+    }
+    .spin-canvas-card .spin-info {
+      font-size:0.85rem;
+      color:#333;
+      text-align:center;
+      line-height:1.4;
+    }
+    .spin-canvas-card .spin-canvas-label {
+      font-weight:700;
+      letter-spacing:0.02em;
+      color:#0f1115;
+    }
+    .spin-placeholder {
+      width:100%;
+      min-height:360px;
+      border-radius:12px;
+      background:#111;
+      color:#fff;
+      display:flex;
+      align-items:center;
+      justify-content:center;
+      font-size:1rem;
+      padding:40px;
+      text-align:center;
+      box-shadow: inset 0 0 20px rgba(255,255,255,0.04);
+    }
+    .spin-canvas {
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+      background: radial-gradient(circle at 35% 25%, #ffffff, #f3f0ea 45%, #d5ccb5 100%);
+    }
+  ")))
 
-  build_spin_visual_plot <- function(row, title_text = NULL) {
-    scene_base <- list(
-      camera = list(eye = list(x = 0.6, y = -2.15, z = 0.9)),
-      aspectmode = "manual",
-      aspectratio = list(x = 1, y = 1, z = 1),
-      xaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE, showbackground = FALSE),
-      yaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE, showbackground = FALSE),
-      zaxis = list(showgrid = FALSE, zeroline = FALSE, showticklabels = FALSE, showbackground = FALSE)
-    )
+  spin_visual_script <- shiny::singleton(tags$script(HTML("
+    (function(){
+      function SpinAnimator(cfg) {
+        var canvas = document.getElementById(cfg.canvasId);
+        if (!canvas) return;
+        var ctx = canvas.getContext('2d');
+        var axisVec = Array.isArray(cfg.axisVector) ? cfg.axisVector : [0,0,1];
+        var spinRate = Number(cfg.spinRate);
+        if (!isFinite(spinRate) || spinRate <= 0) spinRate = 1800;
+        var seamRotation = Number(cfg.seamRotation) || 0;
+        var tilt = Number(cfg.tilt) || 0;
+        var slider = cfg.sliderId ? document.getElementById(cfg.sliderId) : null;
+        var playBtn = cfg.playBtnId ? document.getElementById(cfg.playBtnId) : null;
+        var pauseBtn = cfg.pauseBtnId ? document.getElementById(cfg.pauseBtnId) : null;
+        var running = cfg.autoplay !== false;
+        var angle = 0;
+        var speed = (spinRate / 60) * 2 * Math.PI;
+        var lastTs = null;
+        var sliderUpdating = false;
 
-    display_title <- if (!is.null(title_text) && nzchar(title_text)) title_text else "Spin Visual"
+        function ensureSize() {
+          var parent = canvas.parentElement;
+          var width = parent ? parent.clientWidth : canvas.clientWidth;
+          var size = Math.max(200, width);
+          if (canvas.width !== size) {
+            canvas.width = size;
+            canvas.height = size;
+          }
+          return size;
+        }
+
+        function draw() {
+          var size = ensureSize();
+          var cx = size / 2;
+          var cy = size / 2;
+          var radius = size * 0.43;
+          ctx.clearRect(0, 0, size, size);
+          var grad = ctx.createRadialGradient(cx - radius*0.25, cy - radius*0.25, radius * 0.05, cx, cy, radius);
+          grad.addColorStop(0, '#ffffff');
+          grad.addColorStop(0.6, '#f3f0ea');
+          grad.addColorStop(1, '#d5ccb5');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, 0, Math.PI*2);
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = 'rgba(0,0,0,0.12)';
+          ctx.stroke();
+          drawSeam(ctx, cx, cy, radius, angle);
+          drawAxis(ctx, cx, cy, radius);
+        }
+
+        function drawSeam(ctx, cx, cy, radius, angleVal) {
+          ctx.save();
+          ctx.translate(cx, cy);
+          var baseAngle = (seamRotation * Math.PI / 180);
+          var tiltRad = tilt * Math.PI / 180;
+          ctx.rotate(baseAngle);
+          for (var i = 0; i < 2; i++) {
+            ctx.save();
+            ctx.rotate(angleVal + i * Math.PI);
+            ctx.rotate(tiltRad);
+            ctx.beginPath();
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = '#cf2f1f';
+            ctx.setLineDash([6, 6]);
+            ctx.ellipse(0, 0, radius * 0.8, radius * 0.26, Math.PI / 2, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.restore();
+          }
+          ctx.restore();
+          ctx.setLineDash([]);
+          drawStitchHighlights(ctx, cx, cy, radius, angleVal);
+        }
+
+        function drawStitchHighlights(ctx, cx, cy, radius, angleVal) {
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.rotate(angleVal + Math.PI / 2);
+          ctx.rotate((tilt * Math.PI / 180) * 0.5);
+          ctx.lineWidth = 2;
+          ctx.strokeStyle = '#aa1f1f';
+          for (var i = -4; i <= 4; i++) {
+            ctx.beginPath();
+            var offsetY = i * radius * 0.08;
+            var wiggle = (i % 2 === 0) ? 0.035 : -0.035;
+            ctx.moveTo(-radius * 0.08, offsetY);
+            ctx.lineTo(radius * 0.08, offsetY + wiggle * radius);
+            ctx.stroke();
+          }
+          ctx.restore();
+        }
+
+        function drawAxis(ctx, cx, cy, radius) {
+          var projX = axisVec[0] || 0;
+          var projY = axisVec[2] || 0;
+          var len = Math.sqrt(projX * projX + projY * projY);
+          if (len < 0.0001) return;
+          var normX = projX / len;
+          var normY = projY / len;
+          var arrowLen = radius * (1 + Math.abs(axisVec[1] || 0) * 0.45);
+          ctx.save();
+          ctx.translate(cx, cy);
+          ctx.strokeStyle = '#d32f2f';
+          ctx.fillStyle = '#d32f2f';
+          ctx.lineWidth = 6;
+          ctx.beginPath();
+          ctx.moveTo(0, 0);
+          ctx.lineTo(normX * arrowLen, -normY * arrowLen);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.moveTo(normX * arrowLen, -normY * arrowLen);
+          ctx.lineTo(normX * arrowLen - normY * 0.15 * radius, -normY * arrowLen - normX * 0.15 * radius);
+          ctx.lineTo(normX * arrowLen + normY * 0.15 * radius, -normY * arrowLen + normX * 0.15 * radius);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
+        }
+
+        function updateSliderVal() {
+          if (!slider || sliderUpdating) return;
+          sliderUpdating = true;
+          var deg = ((angle * 180 / Math.PI) % 360 + 360) % 360;
+          slider.value = deg;
+          sliderUpdating = false;
+        }
+
+        if (slider) {
+          slider.value = 0;
+          slider.setAttribute('min', '0');
+          slider.setAttribute('max', '360');
+          slider.setAttribute('step', '1');
+          slider.addEventListener('input', function() {
+            sliderUpdating = true;
+            var deg = parseFloat(this.value) || 0;
+            angle = deg * Math.PI / 180;
+            running = false;
+            sliderUpdating = false;
+            draw();
+          });
+        }
+
+        if (playBtn) {
+          playBtn.addEventListener('click', function() { running = true; });
+        }
+        if (pauseBtn) {
+          pauseBtn.addEventListener('click', function() { running = false; });
+        }
+
+        function step(ts) {
+          if (!lastTs) lastTs = ts;
+          var delta = (ts - lastTs) / 1000;
+          lastTs = ts;
+          if (running) {
+            angle = (angle + speed * delta) % (Math.PI * 2);
+            updateSliderVal();
+          }
+          draw();
+          requestAnimationFrame(step);
+        }
+
+        requestAnimationFrame(step);
+      }
+
+      function initSpinVisual(cfg) {
+        try {
+          new SpinAnimator(cfg || {});
+        } catch (err) {
+          console && console.error && console.error('Spin visual init error', err);
+        }
+      }
+      window.initSpinVisual = window.initSpinVisual || initSpinVisual;
+    })();
+  ")))
+
+  make_spin_card <- function(row, label_text, prefix) {
     if (is.null(row) || !nrow(row)) {
-      empty_plot <- plotly::plot_ly()
-      return(plotly::config(
-        plotly::layout(
-          empty_plot,
-          title = display_title,
-          scene = scene_base,
-          margin = list(l = 0, r = 0, b = 20, t = 40),
-          annotations = list(
-            list(
-              text = "Spin data not available for this pitch.",
-              xref = "paper",
-              yref = "paper",
-              x = 0.5,
-              y = 0.5,
-              showarrow = FALSE,
-              font = list(size = 14, color = "#444444")
-            )
-          )
-        ),
-        displayModeBar = FALSE
-      ))
+      return(tags$div(class = "spin-placeholder", "Select a pitch with spin data to visualize the baseball rotation."))
     }
 
-    row_data <- row[1, , drop = FALSE]
-    row_list <- as.list(row_data)
-    get_numeric <- function(name) {
-      val <- row_list[[name]]
+    get_col <- function(name) {
+      val <- row[[name]]
       if (is.null(val)) return(NA_real_)
       suppressWarnings(as.numeric(val))
     }
 
-    rot_mat <- make_spin_rotation_matrix(
-      row_list[["SpinAxis3dSeamOrientationRotationX"]],
-      row_list[["SpinAxis3dSeamOrientationRotationY"]],
-      row_list[["SpinAxis3dSeamOrientationRotationZ"]]
-    )
-
-    phi <- seq(0, pi, length.out = 32)
-    theta <- seq(0, 2 * pi, length.out = 64)
-    sphere_coords <- cbind(
-      as.vector(outer(sin(phi), cos(theta))),
-      as.vector(outer(sin(phi), sin(theta))),
-      as.vector(outer(cos(phi), rep(1, length(theta))))
-    )
-    rotated <- rotate_points_3d(sphere_coords, rot_mat)
-    n_phi <- length(phi)
-    n_theta <- length(theta)
-    x_mat <- matrix(rotated[, 1], nrow = n_phi, ncol = n_theta)
-    y_mat <- matrix(rotated[, 2], nrow = n_phi, ncol = n_theta)
-    z_mat <- matrix(rotated[, 3], nrow = n_phi, ncol = n_theta)
-
-    base_plot <- plotly::plot_ly(
-      x = x_mat,
-      y = y_mat,
-      z = z_mat,
-      type = "surface",
-      colorscale = list(c(0, "white"), c(1, "#d9d9d9")),
-      showscale = FALSE,
-      hoverinfo = "none",
-      lighting = list(ambient = 0.7, diffuse = 0.6, roughness = 0.9, specular = 0.2),
-      lightposition = list(x = 0, y = 200, z = 0),
-      opacity = 0.95
-    )
-
-    seam_theta <- seq(0, 2 * pi, length.out = 240)
-    seam_template <- function(offset = 0) {
-      data.frame(
-        x = cos(seam_theta),
-        y = sin(seam_theta),
-        z = sin(2 * seam_theta + offset) * 0.16
-      )
-    }
-    seam_loops <- lapply(c(0, pi / 2), function(off) rotate_points_3d(seam_template(off), rot_mat))
-    spin_plot <- Reduce(function(plot, seam) {
-      plotly::add_trace(
-        plot,
-        x = seam[, 1],
-        y = seam[, 2],
-        z = seam[, 3],
-        type = "scatter3d",
-        mode = "lines",
-        line = list(color = "#a31b1f", width = 5),
-        hoverinfo = "none",
-        showlegend = FALSE
-      )
-    }, seam_loops, init = base_plot)
-
     axis_vec <- c(
-      get_numeric("SpinAxis3dVectorX"),
-      get_numeric("SpinAxis3dVectorY"),
-      get_numeric("SpinAxis3dVectorZ")
+      get_col("SpinAxis3dVectorX"),
+      get_col("SpinAxis3dVectorY"),
+      get_col("SpinAxis3dVectorZ")
     )
-    axis_vec[is.na(axis_vec)] <- 0
-    axis_norm <- sqrt(sum(axis_vec^2))
-    axis_unit <- if (axis_norm > 0) axis_vec / axis_norm else c(0, 0, 1)
-    axis_line <- rbind(axis_unit * -0.15, axis_unit * 1.05)
+    axis_vec <- vapply(axis_vec, function(v) if (is.finite(v)) v else 0, numeric(1))
+    spin_rate_val <- get_col("SpinAxis3dActiveSpinRate")
+    if (!is.finite(spin_rate_val) || spin_rate_val <= 0) spin_rate_val <- 1800
+    spin_eff_val <- get_col("SpinAxis3dSpinEfficiency")
+    tilt_val <- get_col("SpinAxis3dTilt")
+    seam_rot <- get_col("SpinAxis3dSeamOrientationRotationZ")
 
-    spin_plot <- plotly::add_trace(
-      spin_plot,
-      x = axis_line[, 1],
-      y = axis_line[, 2],
-      z = axis_line[, 3],
-      type = "scatter3d",
-      mode = "lines",
-      line = list(color = "#1f77b4", width = 6),
-      hoverinfo = "none",
-      showlegend = FALSE
-    )
-    spin_plot <- plotly::add_trace(
-      spin_plot,
-      x = axis_line[2, 1],
-      y = axis_line[2, 2],
-      z = axis_line[2, 3],
-      type = "scatter3d",
-      mode = "markers",
-      marker = list(size = 5, color = "#1f77b4"),
-      hoverinfo = "none",
-      showlegend = FALSE
-    )
-
-    spin_rate_val <- get_numeric("SpinAxis3dActiveSpinRate")
-    spin_eff_val <- get_numeric("SpinAxis3dSpinEfficiency")
-    tilt_val <- get_numeric("SpinAxis3dTilt")
     spin_rate_text <- if (is.finite(spin_rate_val)) sprintf("%.0f rpm", spin_rate_val) else "N/A"
-    eff_display <- if (is.finite(spin_eff_val)) {
+    spin_eff_text <- if (is.finite(spin_eff_val)) {
       eff_pct <- if (spin_eff_val <= 1) spin_eff_val * 100 else spin_eff_val
       sprintf("%.1f%%", eff_pct)
     } else "N/A"
     tilt_text <- if (is.finite(tilt_val)) sprintf("%.1f°", tilt_val) else "N/A"
-    info_text <- paste0(
-      "Spin Rate: ", spin_rate_text,
-      "<br/>Spin Eff: ", eff_display,
-      "<br/>Tilt: ", tilt_text,
-      "<br/>Axis shown in blue"
-    )
 
-    spin_plot <- plotly::layout(
-      spin_plot,
-      title = display_title,
-      scene = scene_base,
-      margin = list(l = 0, r = 0, b = 20, t = 40),
-      annotations = list(
-        list(
-          text = info_text,
-          xref = "paper",
-          yref = "paper",
-          x = 0,
-          y = -0.12,
-          showarrow = FALSE,
-          align = "left",
-          font = list(size = 12, color = "#333333")
+    config <- list(
+      canvasId = paste0(prefix, "_canvas"),
+      playBtnId = paste0(prefix, "_play"),
+      pauseBtnId = paste0(prefix, "_pause"),
+      sliderId = paste0(prefix, "_slider"),
+      axisVector = axis_vec,
+      spinRate = spin_rate_val,
+      spinEff = spin_eff_val,
+      tilt = tilt_val,
+      seamRotation = seam_rot,
+      autoplay = TRUE
+    )
+    config_json <- jsonlite::toJSON(config, auto_unbox = TRUE)
+
+    tags$div(
+      class = "spin-canvas-card",
+      tags$div(class = "spin-canvas-label", label_text),
+      tags$div(
+        class = "spin-canvas-container",
+        tags$canvas(id = config$canvasId, class = "spin-canvas")
+      ),
+      tags$div(
+        class = "spin-controls",
+        tags$button(
+          id = config$playBtnId,
+          type = "button",
+          class = "btn btn-sm btn-outline-secondary",
+          tagList(icon("play"), " Play")
+        ),
+        tags$button(
+          id = config$pauseBtnId,
+          type = "button",
+          class = "btn btn-sm btn-outline-secondary",
+          tagList(icon("pause"), " Pause")
+        ),
+        tags$input(
+          id = config$sliderId,
+          type = "range",
+          min = "0",
+          max = "360",
+          step = "1",
+          value = "0"
         )
       ),
-      showlegend = FALSE
+      tags$div(
+        class = "spin-info",
+        HTML(paste(
+          sprintf("Spin Rate: %s", spin_rate_text),
+          sprintf("Spin Eff: %s", spin_eff_text),
+          sprintf("Tilt: %s", tilt_text),
+          sep = "<br/>"
+        ))
+      ),
+      tags$script(HTML(sprintf("initSpinVisual(%s);", as.character(config_json))))
     )
-
-    plotly::config(spin_plot, displayModeBar = FALSE)
   }
 
   show_pitch_spin_sequence <- function(rows, label = NULL, start_index = 1,
@@ -22792,7 +22910,9 @@ server <- function(input, output, session) {
       return(invisible(FALSE))
     }
 
-    pool_df <- tryCatch(as.data.frame(compare_pool), error = function(e) NULL)
+    pool_df <- tryCatch({
+      if (!is.null(compare_pool)) as.data.frame(compare_pool, stringsAsFactors = FALSE) else rows_df
+    }, error = function(e) rows_df)
     if (is.null(pool_df) || !nrow(pool_df)) pool_df <- rows_df
     if (is.null(rownames(pool_df))) rownames(pool_df) <- as.character(seq_len(nrow(pool_df)))
 
@@ -22811,8 +22931,6 @@ server <- function(input, output, session) {
 
     uid_base <- paste0("pspin_", as.integer((as.numeric(Sys.time()) * 1000) %% 1e9))
     modal_id <- paste0(uid_base, "_spin_modal")
-    spin_plot_id <- paste0(uid_base, "_spin_plot")
-    cmp_spin_plot_id <- paste0(uid_base, "_spin_plot_cmp")
     compare_toggle_id <- paste0(uid_base, "_compare")
     primary_select_id <- paste0(uid_base, "_primary_select")
     compare_select_id <- paste0(uid_base, "_compare_select")
@@ -22860,7 +22978,9 @@ server <- function(input, output, session) {
       if (isTRUE(compare_mode())) {
         primary_val <- idx()
         secondary_idx(default_secondary_for(primary_val))
-        updateSelectizeInput(session, primary_select_id, selected = as.character(primary_val))
+        if (is.finite(primary_val)) {
+          updateSelectizeInput(session, primary_select_id, selected = as.character(primary_val))
+        }
       } else {
         secondary_idx(NA_integer_)
       }
@@ -22870,8 +22990,12 @@ server <- function(input, output, session) {
       if (!compare_available || !isTRUE(compare_mode())) return()
       cur <- idx()
       sec <- secondary_idx()
-      if (!is.finite(sec) || sec == cur) secondary_idx(default_secondary_for(cur))
-      updateSelectizeInput(session, primary_select_id, selected = as.character(cur))
+      if (!is.finite(sec) || sec == cur) {
+        secondary_idx(default_secondary_for(cur))
+      }
+      if (is.finite(cur)) {
+        updateSelectizeInput(session, primary_select_id, selected = as.character(cur))
+      }
     }, ignoreNULL = TRUE)
 
     observeEvent(input[[primary_select_id]], {
@@ -22890,19 +23014,9 @@ server <- function(input, output, session) {
       }
     }, ignoreNULL = TRUE)
 
-    output[[spin_plot_id]] <- plotly::renderPlotly({
-      build_spin_visual_plot(current_row(), title_text = label)
-    })
-
-    output[[cmp_spin_plot_id]] <- plotly::renderPlotly({
-      build_spin_visual_plot(cmp_current_row(), title_text = label)
-    })
-
     compare_choices <- stats::setNames(
       as.character(seq_len(n_total)),
-      vapply(seq_len(n_total), function(i) {
-        make_pitch_option_label(pool_df[i, , drop = FALSE], i)
-      }, character(1))
+      vapply(seq_len(n_total), function(i) make_pitch_option_label(pool_df[i, , drop = FALSE], i), character(1))
     )
 
     output[[modal_id]] <- renderUI({
@@ -22910,7 +23024,6 @@ server <- function(input, output, session) {
       if (!is.finite(cur_idx)) cur_idx <- 1L
       cur_idx <- max(1L, min(n_total, cur_idx))
       seq_txt <- sprintf("%d of %d", cur_idx, n_total)
-      height <- if (isTRUE(compare_mode())) "60vh" else "78vh"
 
       compare_btn_label <- if (isTRUE(compare_mode())) tagList(icon("eye-slash"), "Single View") else tagList(icon("columns"), "Compare")
       compare_btn <- actionButton(
@@ -22938,13 +23051,13 @@ server <- function(input, output, session) {
           tags$div(
             style = "display:flex;flex-direction:column;min-width:220px;gap:4px;",
             tags$label("Secondary Pitch", `for` = compare_select_id, style = "margin:0;font-weight:600;"),
-              selectizeInput(
-                compare_select_id,
-                label = NULL,
-                choices = compare_choices,
-                selected = if (is.finite(secondary_idx())) as.character(secondary_idx()) else NULL,
-                options = list(placeholder = "Choose secondary pitch")
-              )
+            selectizeInput(
+              compare_select_id,
+              label = NULL,
+              choices = compare_choices,
+              selected = if (is.finite(secondary_idx())) as.character(secondary_idx()) else NULL,
+              options = list(placeholder = "Choose secondary pitch")
+            )
           )
         )
       } else NULL
@@ -22993,16 +23106,17 @@ server <- function(input, output, session) {
         )
       )
 
+      left_block <- make_spin_card(current_row(), label %||% "Spin Visual", paste0(uid_base, "_primary"))
       left_metrics <- metrics_block(build_metrics_panel(current_row()))
-      spin_main <- tags$div(plotly::plotlyOutput(spin_plot_id, height = height))
-
       if (!isTRUE(compare_mode())) {
         main_layout <- tags$div(
           style = "display:grid;grid-template-columns:4fr 1fr;gap:24px;align-items:start;",
-          spin_main,
+          left_block,
           left_metrics
         )
         tagList(
+          spin_visual_css,
+          spin_visual_script,
           header,
           tags$div(style = "display:flex;justify-content:center;margin-bottom:10px;", compare_btn),
           selector,
@@ -23010,23 +23124,25 @@ server <- function(input, output, session) {
         )
       } else {
         cmp_row <- cmp_current_row()
+        right_block <- make_spin_card(cmp_row, label %||% "Spin Visual", paste0(uid_base, "_secondary"))
         right_metrics <- metrics_block(if (!is.null(cmp_row)) build_metrics_panel(cmp_row) else NULL)
-        right_spin <- tags$div(plotly::plotlyOutput(cmp_spin_plot_id, height = height))
 
         tagList(
+          spin_visual_css,
+          spin_visual_script,
           header,
           tags$div(style = "display:flex;justify-content:center;margin-bottom:10px;", compare_btn),
           selector,
           tags$div(
             style = "display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;",
             tags$div(
-              style = "display:flex;flex-direction:column;gap:10px;",
-              spin_main,
+              style = "display:flex;flex-direction:column;gap:16px;",
+              left_block,
               left_metrics
             ),
             tags$div(
-              style = "display:flex;flex-direction:column;gap:10px;",
-              right_spin,
+              style = "display:flex;flex-direction:column;gap:16px;",
+              right_block,
               right_metrics
             )
           )
