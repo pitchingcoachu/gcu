@@ -22002,6 +22002,16 @@ server <- function(input, output, session) {
     download_single_id <- paste0(uid_base, "_download_single")
     download_all_id    <- paste0(uid_base, "_download_all")
     
+    observeEvent(input[[next_id]], {
+      cur <- idx()
+      if (is.finite(cur) && cur < n_total) idx(cur + 1L)
+    }, ignoreNULL = TRUE)
+
+    observeEvent(input[[prev_id]], {
+      cur <- idx()
+      if (is.finite(cur) && cur > 1L) idx(cur - 1L)
+    }, ignoreNULL = TRUE)
+
     current_row <- reactive({
       i <- idx()
       if (!is.finite(i)) i <- 1L
@@ -22587,27 +22597,87 @@ server <- function(input, output, session) {
       display:flex;
       flex-direction:column;
       align-items:center;
-      gap:8px;
+      gap:10px;
       width:100%;
     }
     .spin-canvas-container {
       width:100%;
-      max-width:480px;
+      max-width:520px;
+    }
+    .spin-stage {
+      width:100%;
+      aspect-ratio:1 / 1;
+      padding:18px;
+      border-radius:32px;
+      background: radial-gradient(circle at 38% 18%, rgba(255,255,255,0.95), #f5f0e2 55%, #d7c7a7 100%);
+      box-shadow: 0 24px 50px rgba(0,0,0,0.35);
+      position:relative;
+      overflow:hidden;
+    }
+    .spin-stage::after {
+      content:'';
+      position:absolute;
+      inset:72% -30% 2% -30%;
+      background: radial-gradient(circle, rgba(255,255,255,0.45), rgba(211,193,161,0));
+      transform: scaleX(1.5);
+      opacity:0.65;
+    }
+    .spin-stage::before {
+      content:'';
+      position:absolute;
+      inset:10% 14% 25% 14%;
+      pointer-events:none;
+      background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.65), rgba(255,255,255,0));
+    }
+    .spin-stage canvas {
+      display:block;
+      width:100%;
+      height:100%;
+      border-radius:50%;
+      background:transparent;
     }
     .spin-canvas {
       width:100%;
-      aspect-ratio:1 / 1;
+      height:100%;
       border-radius:50%;
+      background:transparent;
+      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
     }
     .spin-canvas-card .spin-controls {
       display:flex;
       align-items:center;
       gap:8px;
       width:100%;
+      flex-wrap:wrap;
+      justify-content:center;
     }
     .spin-canvas-card .spin-controls input[type=range] {
       flex:1;
       cursor:pointer;
+    }
+    .spin-speed-control {
+      display:flex;
+      align-items:center;
+      gap:10px;
+      width:100%;
+      flex-wrap:wrap;
+      margin-top:4px;
+    }
+    .spin-speed-control label {
+      font-weight:600;
+      letter-spacing:0.02em;
+      text-transform:uppercase;
+      font-size:0.8rem;
+      text-align:left;
+      margin-right:4px;
+    }
+    .spin-speed-control input[type=range] {
+      flex:1 1 200px;
+    }
+    .spin-speed-control span {
+      min-width:48px;
+      font-weight:600;
+      text-align:right;
     }
     .spin-canvas-card .spin-info {
       font-size:0.85rem;
@@ -22620,28 +22690,47 @@ server <- function(input, output, session) {
       letter-spacing:0.02em;
       color:#0f1115;
     }
+    .spin-caption {
+      font-size:0.9rem;
+      color:#444;
+      text-align:center;
+      letter-spacing:0.03em;
+      margin-top:4px;
+      text-transform:uppercase;
+    }
     .spin-placeholder {
       width:100%;
       min-height:360px;
-      border-radius:12px;
-      background:#111;
-      color:#fff;
+      border-radius:18px;
+      background: radial-gradient(circle at 20% 20%, #1b1b1b, #0c0c0c 65%);
+      color:#f2f2f2;
       display:flex;
       align-items:center;
       justify-content:center;
       font-size:1rem;
       padding:40px;
       text-align:center;
-      box-shadow: inset 0 0 20px rgba(255,255,255,0.04);
-    }
-    .spin-canvas {
-      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
-      background: radial-gradient(circle at 35% 25%, #ffffff, #f3f0ea 45%, #d5ccb5 100%);
+      box-shadow: inset 0 0 30px rgba(255,255,255,0.04);
     }
   ")))
 
   spin_visual_script <- shiny::singleton(tags$script(HTML("
     (function(){
+      function clamp(value, min, max) {
+        if (!isFinite(value)) return min;
+        if (value < min) return min;
+        if (value > max) return max;
+        return value;
+      }
+
+      function mapAxisToView(vec) {
+        var rawHoriz = vec[2] || 0;
+        var rawVert = vec[1] || 0;
+        var len = Math.sqrt(rawHoriz * rawHoriz + rawVert * rawVert);
+        if (len < 0.0001) return null;
+        return { x: rawHoriz / len, y: -rawVert / len };
+      }
+
       function SpinAnimator(cfg) {
         var canvas = document.getElementById(cfg.canvasId);
         if (!canvas) return;
@@ -22651,19 +22740,27 @@ server <- function(input, output, session) {
         if (!isFinite(spinRate) || spinRate <= 0) spinRate = 1800;
         var seamRotation = Number(cfg.seamRotation) || 0;
         var tilt = Number(cfg.tilt) || 0;
+        var speedLabel = cfg.speedLabelId ? document.getElementById(cfg.speedLabelId) : null;
         var slider = cfg.sliderId ? document.getElementById(cfg.sliderId) : null;
+        var speedSlider = cfg.speedSliderId ? document.getElementById(cfg.speedSliderId) : null;
         var playBtn = cfg.playBtnId ? document.getElementById(cfg.playBtnId) : null;
         var pauseBtn = cfg.pauseBtnId ? document.getElementById(cfg.pauseBtnId) : null;
         var running = cfg.autoplay !== false;
         var angle = 0;
-        var speed = (spinRate / 60) * 2 * Math.PI;
+        var baseSpeed = (spinRate / 60) * 2 * Math.PI;
+        var spinSpeedMin = Number(cfg.spinSpeedMin) || 0.1;
+        var spinSpeedMax = Number(cfg.spinSpeedMax) || 1.5;
+        if (spinSpeedMax <= spinSpeedMin) spinSpeedMax = spinSpeedMin + 0.05;
+        var spinSpeedStep = Number(cfg.spinSpeedStep) || 0.05;
+        var multiplier = clamp(Number(cfg.spinSpeedDefault) || 0.35, spinSpeedMin, spinSpeedMax);
+        var speed = baseSpeed * multiplier;
         var lastTs = null;
         var sliderUpdating = false;
 
         function ensureSize() {
           var parent = canvas.parentElement;
           var width = parent ? parent.clientWidth : canvas.clientWidth;
-          var size = Math.max(200, width);
+          var size = Math.max(220, width);
           if (canvas.width !== size) {
             canvas.width = size;
             canvas.height = size;
@@ -22671,95 +22768,155 @@ server <- function(input, output, session) {
           return size;
         }
 
-        function draw() {
-          var size = ensureSize();
-          var cx = size / 2;
-          var cy = size / 2;
-          var radius = size * 0.43;
-          ctx.clearRect(0, 0, size, size);
-          var grad = ctx.createRadialGradient(cx - radius*0.25, cy - radius*0.25, radius * 0.05, cx, cy, radius);
-          grad.addColorStop(0, '#ffffff');
-          grad.addColorStop(0.6, '#f3f0ea');
-          grad.addColorStop(1, '#d5ccb5');
-          ctx.fillStyle = grad;
+        function drawShadow(cx, cy, radius) {
+          ctx.save();
+          ctx.fillStyle = 'rgba(0,0,0,0.24)';
           ctx.beginPath();
-          ctx.arc(cx, cy, radius, 0, Math.PI*2);
+          ctx.ellipse(cx, cy + radius * 0.78, radius * 0.65, radius * 0.3, 0, 0, Math.PI * 2);
           ctx.fill();
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = 'rgba(0,0,0,0.12)';
-          ctx.stroke();
-          drawSeam(ctx, cx, cy, radius, angle);
-          drawAxis(ctx, cx, cy, radius);
+          ctx.restore();
         }
 
-        function drawSeam(ctx, cx, cy, radius, angleVal) {
+        function drawHighlight(cx, cy, radius) {
+          ctx.save();
+          ctx.fillStyle = 'rgba(255,255,255,0.4)';
+          ctx.beginPath();
+          ctx.ellipse(cx - radius * 0.25, cy - radius * 0.25, radius * 0.32, radius * 0.16, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+
+        function drawBall(cx, cy, radius, rotation) {
+          var grad = ctx.createRadialGradient(cx - radius * 0.25, cy - radius * 0.35, radius * 0.08, cx, cy, radius);
+          grad.addColorStop(0, '#ffffff');
+          grad.addColorStop(0.55, '#faf4ea');
+          grad.addColorStop(1, '#d1c0a3');
+          ctx.fillStyle = grad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+          ctx.stroke();
+          drawHighlight(cx, cy, radius);
+          drawSeam(cx, cy, radius, rotation);
+        }
+
+        function drawSeam(cx, cy, radius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          var baseAngle = (seamRotation * Math.PI / 180);
+          var baseAngle = seamRotation * Math.PI / 180;
           var tiltRad = tilt * Math.PI / 180;
           ctx.rotate(baseAngle);
           for (var i = 0; i < 2; i++) {
             ctx.save();
-            ctx.rotate(angleVal + i * Math.PI);
+            ctx.rotate(rotation + i * Math.PI);
             ctx.rotate(tiltRad);
             ctx.beginPath();
             ctx.lineWidth = 5;
-            ctx.strokeStyle = '#cf2f1f';
-            ctx.setLineDash([6, 6]);
-            ctx.ellipse(0, 0, radius * 0.8, radius * 0.26, Math.PI / 2, 0, Math.PI * 2);
+            ctx.strokeStyle = '#b41c22';
+            ctx.setLineDash([12, 8]);
+            ctx.ellipse(0, 0, radius * 0.8, radius * 0.28, Math.PI / 2, 0, Math.PI * 2);
             ctx.stroke();
             ctx.restore();
           }
           ctx.restore();
           ctx.setLineDash([]);
-          drawStitchHighlights(ctx, cx, cy, radius, angleVal);
+          drawStitches(cx, cy, radius, rotation, baseAngle, tiltRad);
+          drawSpinDirection(cx, cy, radius, rotation, baseAngle);
         }
 
-        function drawStitchHighlights(ctx, cx, cy, radius, angleVal) {
+        function drawStitches(cx, cy, radius, rotation, baseAngle, tiltRad) {
           ctx.save();
           ctx.translate(cx, cy);
-          ctx.rotate(angleVal + Math.PI / 2);
-          ctx.rotate((tilt * Math.PI / 180) * 0.5);
-          ctx.lineWidth = 2;
-          ctx.strokeStyle = '#aa1f1f';
-          for (var i = -4; i <= 4; i++) {
-            ctx.beginPath();
-            var offsetY = i * radius * 0.08;
-            var wiggle = (i % 2 === 0) ? 0.035 : -0.035;
-            ctx.moveTo(-radius * 0.08, offsetY);
-            ctx.lineTo(radius * 0.08, offsetY + wiggle * radius);
-            ctx.stroke();
+          ctx.rotate(baseAngle);
+          for (var band = 0; band < 2; band++) {
+            ctx.save();
+            ctx.rotate(rotation + band * Math.PI + tiltRad * 0.6);
+            var count = 16;
+            for (var i = 0; i < count; i++) {
+              var t = -Math.PI / 1.05 + (i / (count - 1)) * (Math.PI / 1.05 * 2);
+              var x = Math.cos(t) * radius * 0.78;
+              var y = Math.sin(t) * radius * 0.28;
+              ctx.save();
+              ctx.translate(x, y);
+              ctx.rotate(t + Math.PI / 2);
+              ctx.beginPath();
+              ctx.strokeStyle = '#801010';
+              ctx.lineWidth = 1.4;
+              ctx.moveTo(0, -radius * 0.03);
+              ctx.lineTo(0, radius * 0.03);
+              ctx.stroke();
+              ctx.restore();
+            }
+            ctx.restore();
           }
           ctx.restore();
         }
 
-        function drawAxis(ctx, cx, cy, radius) {
-          var projX = axisVec[0] || 0;
-          var projY = axisVec[2] || 0;
-          var len = Math.sqrt(projX * projX + projY * projY);
-          if (len < 0.0001) return;
-          var normX = projX / len;
-          var normY = projY / len;
-          var arrowLen = radius * (1 + Math.abs(axisVec[1] || 0) * 0.45);
+        function drawSpinDirection(cx, cy, radius, rotation, baseAngle) {
           ctx.save();
           ctx.translate(cx, cy);
+          ctx.rotate(baseAngle);
+          var arrows = 6;
+          ctx.fillStyle = '#1e88e5';
+          ctx.shadowColor = 'rgba(0,0,0,0.3)';
+          ctx.shadowBlur = radius * 0.04;
+          for (var i = 0; i < arrows; i++) {
+            var t = (i / arrows) * Math.PI + rotation * 0.5;
+            var x = Math.cos(t) * radius * 0.8;
+            var y = Math.sin(t) * radius * 0.25;
+            ctx.save();
+            ctx.translate(x, y);
+            ctx.rotate(t + Math.PI / 2);
+            ctx.beginPath();
+            ctx.moveTo(0, -radius * 0.04);
+            ctx.lineTo(radius * 0.04, radius * 0.02);
+            ctx.lineTo(0, radius * 0.1);
+            ctx.lineTo(-radius * 0.04, radius * 0.02);
+            ctx.closePath();
+            ctx.fill();
+            ctx.restore();
+          }
+          ctx.restore();
+        }
+
+        function drawAxis(cx, cy, radius) {
+          var direction = mapAxisToView(axisVec);
+          if (!direction) return;
+          ctx.save();
+          ctx.translate(cx, cy);
+          var depthFactor = Math.min(Math.abs(axisVec[0] || 0), 1);
+          var arrowLen = radius * (1 + depthFactor * 0.45);
           ctx.strokeStyle = '#d32f2f';
           ctx.fillStyle = '#d32f2f';
-          ctx.lineWidth = 6;
+          ctx.lineWidth = 5;
+          ctx.lineCap = 'round';
           ctx.beginPath();
           ctx.moveTo(0, 0);
-          ctx.lineTo(normX * arrowLen, -normY * arrowLen);
+          ctx.lineTo(direction.x * arrowLen, direction.y * arrowLen);
           ctx.stroke();
+          var headLen = radius * 0.2;
+          var perpX = -direction.y;
+          var perpY = direction.x;
           ctx.beginPath();
-          ctx.moveTo(normX * arrowLen, -normY * arrowLen);
-          ctx.lineTo(normX * arrowLen - normY * 0.15 * radius, -normY * arrowLen - normX * 0.15 * radius);
-          ctx.lineTo(normX * arrowLen + normY * 0.15 * radius, -normY * arrowLen + normX * 0.15 * radius);
+          ctx.moveTo(direction.x * arrowLen, direction.y * arrowLen);
+          ctx.lineTo(direction.x * arrowLen - perpX * headLen - direction.x * headLen * 0.25,
+                     direction.y * arrowLen - perpY * headLen - direction.y * headLen * 0.25);
+          ctx.lineTo(direction.x * arrowLen + perpX * headLen - direction.x * headLen * 0.25,
+                     direction.y * arrowLen + perpY * headLen - direction.y * headLen * 0.25);
           ctx.closePath();
           ctx.fill();
           ctx.restore();
         }
 
-        function updateSliderVal() {
+        function updateSpeedSliderLabel() {
+          if (speedLabel) {
+            speedLabel.textContent = 'Animation speed: ' + multiplier.toFixed(2) + 'x';
+          }
+        }
+
+        function updateSliderValue() {
           if (!slider || sliderUpdating) return;
           sliderUpdating = true;
           var deg = ((angle * 180 / Math.PI) % 360 + 360) % 360;
@@ -22778,7 +22935,6 @@ server <- function(input, output, session) {
             angle = deg * Math.PI / 180;
             running = false;
             sliderUpdating = false;
-            draw();
           });
         }
 
@@ -22789,15 +22945,35 @@ server <- function(input, output, session) {
           pauseBtn.addEventListener('click', function() { running = false; });
         }
 
+        if (speedSlider) {
+          speedSlider.min = spinSpeedMin;
+          speedSlider.max = spinSpeedMax;
+          speedSlider.step = spinSpeedStep;
+          speedSlider.value = multiplier;
+          speedSlider.addEventListener('input', function() {
+            multiplier = clamp(parseFloat(this.value) || spinSpeedMin, spinSpeedMin, spinSpeedMax);
+            speed = baseSpeed * multiplier;
+            updateSpeedSliderLabel();
+          });
+        }
+        updateSpeedSliderLabel();
+
         function step(ts) {
           if (!lastTs) lastTs = ts;
           var delta = (ts - lastTs) / 1000;
           lastTs = ts;
           if (running) {
             angle = (angle + speed * delta) % (Math.PI * 2);
-            updateSliderVal();
+            updateSliderValue();
           }
-          draw();
+          var size = ensureSize();
+          var cx = size / 2;
+          var cy = size / 2;
+          var radius = size * 0.43;
+          ctx.clearRect(0, 0, size, size);
+          drawShadow(cx, cy, radius);
+          drawBall(cx, cy, radius, angle);
+          drawAxis(cx, cy, radius);
           requestAnimationFrame(step);
         }
 
@@ -22844,17 +23020,32 @@ server <- function(input, output, session) {
       sprintf("%.1f%%", eff_pct)
     } else "N/A"
     tilt_text <- if (is.finite(tilt_val)) sprintf("%.1f°", tilt_val) else "N/A"
+    tilt_raw <- row[["SpinAxis3dTilt"]]
+    tilt_raw_str <- if (is.null(tilt_raw) || is.na(tilt_raw)) "" else trimws(as.character(tilt_raw))
+    tilt_label <- if (nzchar(tilt_raw_str)) tilt_raw_str else tilt_text
+    axis_text <- sprintf("%.2f / %.2f / %.2f", axis_vec[1], axis_vec[2], axis_vec[3])
+    seam_rot_text <- if (is.finite(seam_rot)) sprintf("%.1f°", seam_rot) else "N/A"
+    spin_speed_default <- 0.35
+    spin_speed_min <- 0.1
+    spin_speed_max <- 1.5
+    spin_speed_step <- 0.05
 
     config <- list(
       canvasId = paste0(prefix, "_canvas"),
       playBtnId = paste0(prefix, "_play"),
       pauseBtnId = paste0(prefix, "_pause"),
       sliderId = paste0(prefix, "_slider"),
+      speedSliderId = paste0(prefix, "_speed"),
+      speedLabelId = paste0(prefix, "_speed_label"),
       axisVector = axis_vec,
       spinRate = spin_rate_val,
       spinEff = spin_eff_val,
       tilt = tilt_val,
       seamRotation = seam_rot,
+      spinSpeedDefault = spin_speed_default,
+      spinSpeedMin = spin_speed_min,
+      spinSpeedMax = spin_speed_max,
+      spinSpeedStep = spin_speed_step,
       autoplay = TRUE
     )
     config_json <- jsonlite::toJSON(config, auto_unbox = TRUE)
@@ -22864,7 +23055,11 @@ server <- function(input, output, session) {
       tags$div(class = "spin-canvas-label", label_text),
       tags$div(
         class = "spin-canvas-container",
-        tags$canvas(id = config$canvasId, class = "spin-canvas")
+        tags$div(
+          class = "spin-stage",
+          tags$canvas(id = config$canvasId, class = "spin-canvas")
+        ),
+        tags$div(class = "spin-caption", "Pitcher view · behind the mound looking toward home plate.")
       ),
       tags$div(
         class = "spin-controls",
@@ -22890,11 +23085,26 @@ server <- function(input, output, session) {
         )
       ),
       tags$div(
+        class = "spin-speed-control",
+        tags$label(`for` = config$speedSliderId, "Animation speed"),
+        tags$input(
+          id = config$speedSliderId,
+          type = "range",
+          min = as.character(spin_speed_min),
+          max = as.character(spin_speed_max),
+          step = as.character(spin_speed_step),
+          value = sprintf("%.2f", spin_speed_default)
+        ),
+        tags$span(id = config$speedLabelId, sprintf("Animation speed: %.2fx", spin_speed_default))
+      ),
+      tags$div(
         class = "spin-info",
         HTML(paste(
           sprintf("Spin Rate: %s", spin_rate_text),
           sprintf("Spin Eff: %s", spin_eff_text),
-          sprintf("Tilt: %s", tilt_text),
+          sprintf("Tilt: %s", tilt_label),
+          sprintf("Seam rot: %s", seam_rot_text),
+          sprintf("Axis (X/Y/Z): %s", axis_text),
           sep = "<br/>"
         ))
       ),
@@ -22924,16 +23134,10 @@ server <- function(input, output, session) {
       initial_idx <- primary_pool_idx
     }
 
-    compare_available <- n_total > 1L
     idx <- reactiveVal(initial_idx)
-    compare_mode <- reactiveVal(FALSE)
-    secondary_idx <- reactiveVal(NA_integer_)
 
     uid_base <- paste0("pspin_", as.integer((as.numeric(Sys.time()) * 1000) %% 1e9))
     modal_id <- paste0(uid_base, "_spin_modal")
-    compare_toggle_id <- paste0(uid_base, "_compare")
-    primary_select_id <- paste0(uid_base, "_primary_select")
-    compare_select_id <- paste0(uid_base, "_compare_select")
     prev_id <- paste0(uid_base, "_prev")
     next_id <- paste0(uid_base, "_next")
 
@@ -22943,124 +23147,11 @@ server <- function(input, output, session) {
       i <- max(1L, min(n_total, i))
       pool_df[i, , drop = FALSE]
     })
-    cmp_current_row <- reactive({
-      sec <- secondary_idx()
-      if (!is.finite(sec) || sec < 1L || sec > n_total) return(NULL)
-      pool_df[sec, , drop = FALSE]
-    })
-
-    default_secondary_for <- function(primary_idx) {
-      candidates <- seq_len(n_total)
-      if (length(candidates) > 1L && is.finite(primary_idx)) {
-        candidates <- candidates[candidates != primary_idx]
-      }
-      if (!length(candidates)) return(NA_integer_)
-      candidates[[1]]
-    }
-
-    observeEvent(input[[next_id]], {
-      cur <- idx()
-      if (is.finite(cur) && cur < n_total) idx(cur + 1L)
-    }, ignoreNULL = TRUE)
-
-    observeEvent(input[[prev_id]], {
-      cur <- idx()
-      if (is.finite(cur) && cur > 1L) idx(cur - 1L)
-    }, ignoreNULL = TRUE)
-
-    observeEvent(input[[compare_toggle_id]], {
-      if (!compare_available) return()
-      compare_mode(!compare_mode())
-    }, ignoreNULL = TRUE)
-
-    observeEvent(compare_mode(), {
-      if (!compare_available) return()
-      if (isTRUE(compare_mode())) {
-        primary_val <- idx()
-        secondary_idx(default_secondary_for(primary_val))
-        if (is.finite(primary_val)) {
-          updateSelectizeInput(session, primary_select_id, selected = as.character(primary_val))
-        }
-      } else {
-        secondary_idx(NA_integer_)
-      }
-    }, ignoreNULL = TRUE)
-
-    observeEvent(idx(), {
-      if (!compare_available || !isTRUE(compare_mode())) return()
-      cur <- idx()
-      sec <- secondary_idx()
-      if (!is.finite(sec) || sec == cur) {
-        secondary_idx(default_secondary_for(cur))
-      }
-      if (is.finite(cur)) {
-        updateSelectizeInput(session, primary_select_id, selected = as.character(cur))
-      }
-    }, ignoreNULL = TRUE)
-
-    observeEvent(input[[primary_select_id]], {
-      if (!compare_available || !isTRUE(compare_mode())) return()
-      val <- suppressWarnings(as.integer(input[[primary_select_id]]))
-      if (is.finite(val) && val >= 1L && val <= n_total) {
-        idx(val)
-      }
-    }, ignoreNULL = TRUE)
-
-    observeEvent(input[[compare_select_id]], {
-      if (!compare_available) return()
-      val <- suppressWarnings(as.integer(input[[compare_select_id]]))
-      if (is.finite(val) && val >= 1L && val <= n_total) {
-        secondary_idx(val)
-      }
-    }, ignoreNULL = TRUE)
-
-    compare_choices <- stats::setNames(
-      as.character(seq_len(n_total)),
-      vapply(seq_len(n_total), function(i) make_pitch_option_label(pool_df[i, , drop = FALSE], i), character(1))
-    )
-
     output[[modal_id]] <- renderUI({
       cur_idx <- idx()
       if (!is.finite(cur_idx)) cur_idx <- 1L
       cur_idx <- max(1L, min(n_total, cur_idx))
       seq_txt <- sprintf("%d of %d", cur_idx, n_total)
-
-      compare_btn_label <- if (isTRUE(compare_mode())) tagList(icon("eye-slash"), "Single View") else tagList(icon("columns"), "Compare")
-      compare_btn <- actionButton(
-        compare_toggle_id,
-        label = compare_btn_label,
-        class = "btn btn-sm btn-outline-secondary",
-        style = "min-width:128px;font-weight:600;",
-        disabled = if (compare_available) NULL else "disabled"
-      )
-
-      selector <- if (compare_available) {
-        tags$div(
-          style = "display:flex;justify-content:center;gap:16px;margin-bottom:12px;flex-wrap:wrap;",
-          tags$div(
-            style = "display:flex;flex-direction:column;min-width:220px;gap:4px;",
-            tags$label("Primary Pitch", `for` = primary_select_id, style = "margin:0;font-weight:600;"),
-            selectizeInput(
-              primary_select_id,
-              label = NULL,
-              choices = compare_choices,
-              selected = as.character(cur_idx),
-              options = list(placeholder = "Choose primary pitch")
-            )
-          ),
-          tags$div(
-            style = "display:flex;flex-direction:column;min-width:220px;gap:4px;",
-            tags$label("Secondary Pitch", `for` = compare_select_id, style = "margin:0;font-weight:600;"),
-            selectizeInput(
-              compare_select_id,
-              label = NULL,
-              choices = compare_choices,
-              selected = if (is.finite(secondary_idx())) as.character(secondary_idx()) else NULL,
-              options = list(placeholder = "Choose secondary pitch")
-            )
-          )
-        )
-      } else NULL
 
       metrics_block <- function(content) {
         if (is.null(content)) return(NULL)
@@ -23108,46 +23199,17 @@ server <- function(input, output, session) {
 
       left_block <- make_spin_card(current_row(), label %||% "Spin Visual", paste0(uid_base, "_primary"))
       left_metrics <- metrics_block(build_metrics_panel(current_row()))
-      if (!isTRUE(compare_mode())) {
-        main_layout <- tags$div(
-          style = "display:grid;grid-template-columns:4fr 1fr;gap:24px;align-items:start;",
-          left_block,
-          left_metrics
-        )
-        tagList(
-          spin_visual_css,
-          spin_visual_script,
-          header,
-          tags$div(style = "display:flex;justify-content:center;margin-bottom:10px;", compare_btn),
-          selector,
-          main_layout
-        )
-      } else {
-        cmp_row <- cmp_current_row()
-        right_block <- make_spin_card(cmp_row, label %||% "Spin Visual", paste0(uid_base, "_secondary"))
-        right_metrics <- metrics_block(if (!is.null(cmp_row)) build_metrics_panel(cmp_row) else NULL)
-
-        tagList(
-          spin_visual_css,
-          spin_visual_script,
-          header,
-          tags$div(style = "display:flex;justify-content:center;margin-bottom:10px;", compare_btn),
-          selector,
-          tags$div(
-            style = "display:grid;grid-template-columns:1fr 1fr;gap:24px;align-items:start;",
-            tags$div(
-              style = "display:flex;flex-direction:column;gap:16px;",
-              left_block,
-              left_metrics
-            ),
-            tags$div(
-              style = "display:flex;flex-direction:column;gap:16px;",
-              right_block,
-              right_metrics
-            )
-          )
-        )
-      }
+      main_layout <- tags$div(
+        style = "display:grid;grid-template-columns:4fr 1fr;gap:24px;align-items:start;",
+        left_block,
+        left_metrics
+      )
+      tagList(
+        spin_visual_css,
+        spin_visual_script,
+        header,
+        main_layout
+      )
     })
 
     modal_css <- tags$style(HTML(
