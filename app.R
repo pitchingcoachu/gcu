@@ -22748,11 +22748,11 @@ server <- function(input, output, session) {
         var running = cfg.autoplay !== false;
         var angle = 0;
         var baseSpeed = (spinRate / 60) * 2 * Math.PI;
-        var spinSpeedMin = Number(cfg.spinSpeedMin) || 0.1;
+        var spinSpeedMin = Number(cfg.spinSpeedMin) || 0.01;
         var spinSpeedMax = Number(cfg.spinSpeedMax) || 1.5;
         if (spinSpeedMax <= spinSpeedMin) spinSpeedMax = spinSpeedMin + 0.05;
-        var spinSpeedStep = Number(cfg.spinSpeedStep) || 0.05;
-        var multiplier = clamp(Number(cfg.spinSpeedDefault) || 0.35, spinSpeedMin, spinSpeedMax);
+        var spinSpeedStep = Number(cfg.spinSpeedStep) || 0.01;
+        var multiplier = clamp(Number(cfg.spinSpeedDefault) || 0.15, spinSpeedMin, spinSpeedMax);
         var speed = baseSpeed * multiplier;
         var lastTs = null;
         var sliderUpdating = false;
@@ -22770,36 +22770,73 @@ server <- function(input, output, session) {
 
         function drawShadow(cx, cy, radius) {
           ctx.save();
-          ctx.fillStyle = 'rgba(0,0,0,0.24)';
+          // Soft shadow gradient
+          var shadowGrad = ctx.createRadialGradient(cx, cy + radius * 0.75, 0, cx, cy + radius * 0.75, radius * 0.8);
+          shadowGrad.addColorStop(0, 'rgba(0,0,0,0.35)');
+          shadowGrad.addColorStop(0.7, 'rgba(0,0,0,0.15)');
+          shadowGrad.addColorStop(1, 'rgba(0,0,0,0)');
+          ctx.fillStyle = shadowGrad;
           ctx.beginPath();
-          ctx.ellipse(cx, cy + radius * 0.78, radius * 0.65, radius * 0.3, 0, 0, Math.PI * 2);
+          ctx.ellipse(cx, cy + radius * 0.75, radius * 0.7, radius * 0.25, 0, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
         }
 
         function drawHighlight(cx, cy, radius) {
           ctx.save();
-          ctx.fillStyle = 'rgba(255,255,255,0.4)';
+          // Primary highlight
+          var highlightGrad = ctx.createRadialGradient(
+            cx - radius * 0.3, cy - radius * 0.3, 0,
+            cx - radius * 0.3, cy - radius * 0.3, radius * 0.5
+          );
+          highlightGrad.addColorStop(0, 'rgba(255,255,255,0.7)');
+          highlightGrad.addColorStop(0.5, 'rgba(255,255,255,0.3)');
+          highlightGrad.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = highlightGrad;
           ctx.beginPath();
-          ctx.ellipse(cx - radius * 0.25, cy - radius * 0.25, radius * 0.32, radius * 0.16, 0, 0, Math.PI * 2);
+          ctx.arc(cx - radius * 0.3, cy - radius * 0.3, radius * 0.5, 0, Math.PI * 2);
+          ctx.fill();
+          
+          // Secondary smaller highlight for more realism
+          ctx.fillStyle = 'rgba(255,255,255,0.5)';
+          ctx.beginPath();
+          ctx.ellipse(cx - radius * 0.35, cy - radius * 0.35, radius * 0.15, radius * 0.1, -Math.PI / 4, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
         }
 
         function drawBall(cx, cy, radius, rotation) {
-          var grad = ctx.createRadialGradient(cx - radius * 0.25, cy - radius * 0.35, radius * 0.08, cx, cy, radius);
+          // Create more realistic baseball leather gradient
+          var grad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, radius * 0.1, cx, cy, radius * 1.1);
           grad.addColorStop(0, '#ffffff');
-          grad.addColorStop(0.55, '#faf4ea');
-          grad.addColorStop(1, '#d1c0a3');
+          grad.addColorStop(0.25, '#fdfbf7');
+          grad.addColorStop(0.5, '#f5f0e6');
+          grad.addColorStop(0.75, '#e8dcc8');
+          grad.addColorStop(1, '#d4c4a8');
           ctx.fillStyle = grad;
           ctx.beginPath();
           ctx.arc(cx, cy, radius, 0, Math.PI * 2);
           ctx.fill();
-          ctx.lineWidth = 1.5;
-          ctx.strokeStyle = 'rgba(0,0,0,0.18)';
+          
+          // Subtle outer edge
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = 'rgba(150,130,100,0.3)';
           ctx.stroke();
+          
+          // Enhanced highlight for more 3D appearance
           drawHighlight(cx, cy, radius);
+          
+          // Draw seams on top of the ball
           drawSeam(cx, cy, radius, rotation);
+          
+          // Add subtle ambient occlusion around the edges
+          var aoGrad = ctx.createRadialGradient(cx, cy, radius * 0.7, cx, cy, radius);
+          aoGrad.addColorStop(0, 'rgba(0,0,0,0)');
+          aoGrad.addColorStop(1, 'rgba(0,0,0,0.12)');
+          ctx.fillStyle = aoGrad;
+          ctx.beginPath();
+          ctx.arc(cx, cy, radius, 0, Math.PI * 2);
+          ctx.fill();
         }
 
         function drawSeam(cx, cy, radius, rotation) {
@@ -22808,74 +22845,97 @@ server <- function(input, output, session) {
           var baseAngle = seamRotation * Math.PI / 180;
           var tiltRad = tilt * Math.PI / 180;
           ctx.rotate(baseAngle);
-          for (var i = 0; i < 2; i++) {
+          
+          // Draw realistic baseball seams (4-seam pattern)
+          // Each loop creates one of the two curved seam paths
+          for (var loopNum = 0; loopNum < 2; loopNum++) {
             ctx.save();
-            ctx.rotate(rotation + i * Math.PI);
+            ctx.rotate(rotation + loopNum * Math.PI);
             ctx.rotate(tiltRad);
-            ctx.beginPath();
-            ctx.lineWidth = 5;
-            ctx.strokeStyle = '#b41c22';
-            ctx.setLineDash([12, 8]);
-            ctx.ellipse(0, 0, radius * 0.8, radius * 0.28, Math.PI / 2, 0, Math.PI * 2);
-            ctx.stroke();
+            
+            // Draw the curved seam path
+            drawSeamPath(radius, loopNum);
+            
             ctx.restore();
           }
           ctx.restore();
           ctx.setLineDash([]);
-          drawStitches(cx, cy, radius, rotation, baseAngle, tiltRad);
           drawSpinDirection(cx, cy, radius, rotation, baseAngle);
         }
-
-        function drawStitches(cx, cy, radius, rotation, baseAngle, tiltRad) {
-          ctx.save();
-          ctx.translate(cx, cy);
-          ctx.rotate(baseAngle);
-          for (var band = 0; band < 2; band++) {
+        
+        function drawSeamPath(radius, loopNum) {
+          // Baseball seams follow a specific curved path
+          // We'll draw multiple stitches along the curved path
+          var numStitches = 32;
+          var seamWidth = radius * 0.06;
+          
+          for (var i = 0; i < numStitches; i++) {
+            var t = (i / numStitches) * Math.PI * 2;
+            
+            // Create the characteristic baseball seam curve
+            // This follows a figure-8 pattern when viewed from different angles
+            var angle = t - Math.PI / 2;
+            var seamRadius = radius * 0.82;
+            var widthFactor = radius * 0.32;
+            
+            // Calculate position along the seam curve
+            var x = Math.cos(angle) * seamRadius;
+            var y = Math.sin(angle) * widthFactor;
+            
+            // Only draw stitches on the visible part (approximate hemisphere)
+            var visibilityFactor = Math.cos(angle);
+            if (visibilityFactor < -0.15) continue;
+            
             ctx.save();
-            ctx.rotate(rotation + band * Math.PI + tiltRad * 0.6);
-            var count = 16;
-            for (var i = 0; i < count; i++) {
-              var t = -Math.PI / 1.05 + (i / (count - 1)) * (Math.PI / 1.05 * 2);
-              var x = Math.cos(t) * radius * 0.78;
-              var y = Math.sin(t) * radius * 0.28;
-              ctx.save();
-              ctx.translate(x, y);
-              ctx.rotate(t + Math.PI / 2);
-              ctx.beginPath();
-              ctx.strokeStyle = '#801010';
-              ctx.lineWidth = 1.4;
-              ctx.moveTo(0, -radius * 0.03);
-              ctx.lineTo(0, radius * 0.03);
-              ctx.stroke();
-              ctx.restore();
-            }
+            ctx.translate(x, y);
+            ctx.rotate(angle + Math.PI / 2);
+            
+            // Draw individual stitch
+            ctx.strokeStyle = '#c41e1a';
+            ctx.lineWidth = 2.5;
+            ctx.lineCap = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-seamWidth / 2, 0);
+            ctx.lineTo(seamWidth / 2, 0);
+            ctx.stroke();
+            
+            // Add stitch shadow for depth
+            ctx.strokeStyle = 'rgba(100, 0, 0, 0.3)';
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.moveTo(-seamWidth / 2, 1);
+            ctx.lineTo(seamWidth / 2, 1);
+            ctx.stroke();
+            
             ctx.restore();
           }
-          ctx.restore();
         }
-
+        
         function drawSpinDirection(cx, cy, radius, rotation, baseAngle) {
           ctx.save();
           ctx.translate(cx, cy);
           ctx.rotate(baseAngle);
-          var arrows = 6;
-          ctx.fillStyle = '#1e88e5';
-          ctx.shadowColor = 'rgba(0,0,0,0.3)';
-          ctx.shadowBlur = radius * 0.04;
+          var arrows = 8;
+          ctx.strokeStyle = 'rgba(30, 136, 229, 0.4)';
+          ctx.fillStyle = 'rgba(30, 136, 229, 0.5)';
+          ctx.lineWidth = 1.5;
+          ctx.shadowColor = 'rgba(0,0,0,0.2)';
+          ctx.shadowBlur = radius * 0.03;
           for (var i = 0; i < arrows; i++) {
             var t = (i / arrows) * Math.PI + rotation * 0.5;
-            var x = Math.cos(t) * radius * 0.8;
-            var y = Math.sin(t) * radius * 0.25;
+            var x = Math.cos(t) * radius * 0.75;
+            var y = Math.sin(t) * radius * 0.22;
             ctx.save();
             ctx.translate(x, y);
             ctx.rotate(t + Math.PI / 2);
             ctx.beginPath();
-            ctx.moveTo(0, -radius * 0.04);
-            ctx.lineTo(radius * 0.04, radius * 0.02);
-            ctx.lineTo(0, radius * 0.1);
-            ctx.lineTo(-radius * 0.04, radius * 0.02);
+            ctx.moveTo(0, -radius * 0.035);
+            ctx.lineTo(radius * 0.03, radius * 0.015);
+            ctx.lineTo(0, radius * 0.08);
+            ctx.lineTo(-radius * 0.03, radius * 0.015);
             ctx.closePath();
             ctx.fill();
+            ctx.stroke();
             ctx.restore();
           }
           ctx.restore();
@@ -22887,26 +22947,58 @@ server <- function(input, output, session) {
           ctx.save();
           ctx.translate(cx, cy);
           var depthFactor = Math.min(Math.abs(axisVec[0] || 0), 1);
-          var arrowLen = radius * (1 + depthFactor * 0.45);
+          var arrowLen = radius * (1.05 + depthFactor * 0.4);
+          
+          // Draw shadow for the axis line
+          ctx.strokeStyle = 'rgba(0,0,0,0.2)';
+          ctx.lineWidth = 6;
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(2, 2);
+          ctx.lineTo(direction.x * arrowLen + 2, direction.y * arrowLen + 2);
+          ctx.stroke();
+          
+          // Draw main axis line
           ctx.strokeStyle = '#d32f2f';
-          ctx.fillStyle = '#d32f2f';
-          ctx.lineWidth = 5;
+          ctx.lineWidth = 4;
           ctx.lineCap = 'round';
           ctx.beginPath();
           ctx.moveTo(0, 0);
           ctx.lineTo(direction.x * arrowLen, direction.y * arrowLen);
           ctx.stroke();
-          var headLen = radius * 0.2;
+          
+          // Draw arrowhead
+          var headLen = radius * 0.22;
           var perpX = -direction.y;
           var perpY = direction.x;
+          
+          // Shadow for arrowhead
+          ctx.fillStyle = 'rgba(0,0,0,0.2)';
           ctx.beginPath();
-          ctx.moveTo(direction.x * arrowLen, direction.y * arrowLen);
-          ctx.lineTo(direction.x * arrowLen - perpX * headLen - direction.x * headLen * 0.25,
-                     direction.y * arrowLen - perpY * headLen - direction.y * headLen * 0.25);
-          ctx.lineTo(direction.x * arrowLen + perpX * headLen - direction.x * headLen * 0.25,
-                     direction.y * arrowLen + perpY * headLen - direction.y * headLen * 0.25);
+          ctx.moveTo(direction.x * arrowLen + 2, direction.y * arrowLen + 2);
+          ctx.lineTo(direction.x * arrowLen - perpX * headLen - direction.x * headLen * 0.3 + 2,
+                     direction.y * arrowLen - perpY * headLen - direction.y * headLen * 0.3 + 2);
+          ctx.lineTo(direction.x * arrowLen + perpX * headLen - direction.x * headLen * 0.3 + 2,
+                     direction.y * arrowLen + perpY * headLen - direction.y * headLen * 0.3 + 2);
           ctx.closePath();
           ctx.fill();
+          
+          // Main arrowhead
+          ctx.fillStyle = '#d32f2f';
+          ctx.beginPath();
+          ctx.moveTo(direction.x * arrowLen, direction.y * arrowLen);
+          ctx.lineTo(direction.x * arrowLen - perpX * headLen - direction.x * headLen * 0.3,
+                     direction.y * arrowLen - perpY * headLen - direction.y * headLen * 0.3);
+          ctx.lineTo(direction.x * arrowLen + perpX * headLen - direction.x * headLen * 0.3,
+                     direction.y * arrowLen + perpY * headLen - direction.y * headLen * 0.3);
+          ctx.closePath();
+          ctx.fill();
+          
+          // Add highlight to arrowhead
+          ctx.strokeStyle = 'rgba(255,255,255,0.3)';
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          
           ctx.restore();
         }
 
@@ -23025,10 +23117,10 @@ server <- function(input, output, session) {
     tilt_label <- if (nzchar(tilt_raw_str)) tilt_raw_str else tilt_text
     axis_text <- sprintf("%.2f / %.2f / %.2f", axis_vec[1], axis_vec[2], axis_vec[3])
     seam_rot_text <- if (is.finite(seam_rot)) sprintf("%.1f°", seam_rot) else "N/A"
-    spin_speed_default <- 0.35
-    spin_speed_min <- 0.1
+    spin_speed_default <- 0.15
+    spin_speed_min <- 0.01
     spin_speed_max <- 1.5
-    spin_speed_step <- 0.05
+    spin_speed_step <- 0.01
 
     config <- list(
       canvasId = paste0(prefix, "_canvas"),
