@@ -22731,11 +22731,105 @@ server <- function(input, output, session) {
         return { x: rawHoriz / len, y: -rawVert / len };
       }
 
+      function normalizeVector(vec) {
+        var x = Number(vec && vec[0]) || 0;
+        var y = Number(vec && vec[1]) || 0;
+        var z = Number(vec && vec[2]) || 0;
+        var len = Math.sqrt(x * x + y * y + z * z);
+        if (len < 1e-6) return { x: 0, y: 0, z: 1 };
+        return { x: x / len, y: y / len, z: z / len };
+      }
+
+      function rotatePointX(point, angle) {
+        var c = Math.cos(angle);
+        var s = Math.sin(angle);
+        return {
+          x: point.x,
+          y: point.y * c - point.z * s,
+          z: point.y * s + point.z * c
+        };
+      }
+
+      function rotatePointY(point, angle) {
+        var c = Math.cos(angle);
+        var s = Math.sin(angle);
+        return {
+          x: point.x * c + point.z * s,
+          y: point.y,
+          z: -point.x * s + point.z * c
+        };
+      }
+
+      function rotatePointZ(point, angle) {
+        var c = Math.cos(angle);
+        var s = Math.sin(angle);
+        return {
+          x: point.x * c - point.y * s,
+          y: point.x * s + point.y * c,
+          z: point.z
+        };
+      }
+
+      function rotatePointAroundAxis(point, axis, angle) {
+        var cosA = Math.cos(angle);
+        var sinA = Math.sin(angle);
+        var dot = point.x * axis.x + point.y * axis.y + point.z * axis.z;
+        var crossX = axis.y * point.z - axis.z * point.y;
+        var crossY = axis.z * point.x - axis.x * point.z;
+        var crossZ = axis.x * point.y - axis.y * point.x;
+        return {
+          x: point.x * cosA + crossX * sinA + axis.x * dot * (1 - cosA),
+          y: point.y * cosA + crossY * sinA + axis.y * dot * (1 - cosA),
+          z: point.z * cosA + crossZ * sinA + axis.z * dot * (1 - cosA)
+        };
+      }
+
+      function buildSeamPaths(radius) {
+        var paths = [];
+        var stitchCount = 120;
+        for (var seamNum = 0; seamNum < 2; seamNum++) {
+          var seamOffset = seamNum * Math.PI;
+          var path = [];
+          for (var i = 0; i <= stitchCount; i++) {
+            var u = (i / stitchCount) * Math.PI * 2;
+            var theta = u + seamOffset;
+            var latitude = Math.asin(Math.sin(2 * theta) * 0.4);
+            var longitude = theta;
+            var x3d = radius * Math.cos(latitude) * Math.cos(longitude);
+            var y3d = radius * Math.sin(latitude);
+            var z3d = radius * Math.cos(latitude) * Math.sin(longitude);
+            path.push({ x: x3d, y: y3d, z: z3d });
+          }
+          paths.push(path);
+        }
+        return paths;
+      }
+
+      function orientSeamPaths(paths, rotX, rotY, rotZ) {
+        return paths.map(function(path) {
+          return path.map(function(pt) {
+            var oriented = rotatePointX(pt, rotX);
+            oriented = rotatePointY(oriented, rotY);
+            oriented = rotatePointZ(oriented, rotZ);
+            return oriented;
+          });
+        });
+      }
+
+      function ensureSeamCache(radius, cache, rotX, rotY, rotZ) {
+        if (cache.radius === radius && cache.paths) return;
+        var basePaths = buildSeamPaths(radius);
+        cache.paths = orientSeamPaths(basePaths, rotX, rotY, rotZ);
+        cache.radius = radius;
+      }
+
       function SpinAnimator(cfg) {
         var canvas = document.getElementById(cfg.canvasId);
         if (!canvas) return;
         var ctx = canvas.getContext('2d');
-        var axisVec = Array.isArray(cfg.axisVector) ? cfg.axisVector : [0,0,1];
+        var rawAxisVec = Array.isArray(cfg.axisVector) ? cfg.axisVector : [0,0,1];
+        var axisDir = normalizeVector(rawAxisVec);
+        var axisVec = [axisDir.x, axisDir.y, axisDir.z];
         var spinRate = Number(cfg.spinRate);
         if (!isFinite(spinRate) || spinRate <= 0) spinRate = 1800;
         
@@ -22745,6 +22839,7 @@ server <- function(input, output, session) {
         var seamRotZ = Number(cfg.seamRotationZ) || 0;
         
         var tilt = Number(cfg.tilt) || 0;
+        var seamCache = { radius: 0, paths: null };
         var speedLabel = cfg.speedLabelId ? document.getElementById(cfg.speedLabelId) : null;
         var slider = cfg.sliderId ? document.getElementById(cfg.sliderId) : null;
         var speedSlider = cfg.speedSliderId ? document.getElementById(cfg.speedSliderId) : null;
@@ -22847,59 +22942,19 @@ server <- function(input, output, session) {
         function drawSeam(cx, cy, radius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          
-          // Apply seam orientation from TrackMan data
-          // These are Euler angles (in radians) that orient the seam pattern
-          // Order matters: we apply rotations in X, Y, Z order
-          
-          // First apply the time-based rotation (the ball spinning)
-          ctx.rotate(rotation);
-          
-          // Then apply the fixed seam orientation from TrackMan
-          // Note: We only use Z rotation for 2D canvas (the others would need 3D projection)
-          ctx.rotate(seamRotZ);
-          
-          // Draw authentic baseball seams
-          drawBaseballSeams(radius);
-          
+          drawBaseballSeams(radius, rotation);
           ctx.restore();
           drawSpinDirection(cx, cy, radius, rotation);
         }
         
-        function drawBaseballSeams(radius) {
-          // Baseball seams follow a specific 3D curve on a sphere
-          // The classic baseball has two mirror-image curves that form a figure-8 pattern
-          
-          var stitchCount = 120; // Total stitches per curve
-          var seamHeight = radius * 0.08; // Height of the raised seam
-          
-          // Draw both seam curves (they're mirror images)
-          for (var seamNum = 0; seamNum < 2; seamNum++) {
-            var seamOffset = seamNum * Math.PI;
-            
-            // Build the seam path
-            var seamPath = [];
-            for (var i = 0; i <= stitchCount; i++) {
-              var u = (i / stitchCount) * Math.PI * 2;
-              var theta = u + seamOffset;
-              
-              // The classic baseball seam follows this parametric curve:
-              // It creates two interlocking curves that wrap around the sphere
-              // The key is the latitude varies as a sine wave
-              var latitude = Math.asin(Math.sin(2 * theta) * 0.4); // Max latitude ±23.6 degrees
-              var longitude = theta;
-              
-              // Convert spherical coordinates to 3D Cartesian
-              var x3d = radius * Math.cos(latitude) * Math.cos(longitude);
-              var y3d = radius * Math.sin(latitude);
-              var z3d = radius * Math.cos(latitude) * Math.sin(longitude);
-              
-              seamPath.push({ x: x3d, y: y3d, z: z3d, u: u });
-            }
-            
-            // Draw the continuous seam curve with stitching
-            drawSeamCurve(seamPath, radius);
-          }
+        function drawBaseballSeams(radius, rotation) {
+          ensureSeamCache(radius, seamCache, seamRotX, seamRotY, seamRotZ);
+          seamCache.paths.forEach(function(path) {
+            var rotatedPath = path.map(function(point) {
+              return rotatePointAroundAxis(point, axisDir, rotation);
+            });
+            drawSeamCurve(rotatedPath, radius);
+          });
         }
         
         function drawSeamCurve(seamPath, radius) {
