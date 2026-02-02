@@ -23453,6 +23453,10 @@ server <- function(input, output, session) {
     if (!is.finite(spin_rate_val) || spin_rate_val <= 0) spin_rate_val <- 1800
     spin_eff_val <- get_col("SpinAxis3dSpinEfficiency")
     tilt_val <- get_col("SpinAxis3dTilt")
+    rtilt_val <- get_col("ReleaseTilt")
+    if (!is.finite(rtilt_val)) rtilt_val <- get_col("rTilt")
+    btilt_val <- get_col("BreakTilt")
+    if (!is.finite(btilt_val)) btilt_val <- get_col("bTilt")
     
     # Get all three seam orientation rotation angles (in radians from TrackMan)
     seam_rot_x <- get_col("SpinAxis3dSeamOrientationRotationX")
