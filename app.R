@@ -20743,9 +20743,23 @@ server <- function(input, output, session) {
     }
   }
   
-  # 180° = 12:00, 270° = 3:00, 0° = 6:00, 90° = 9:00
-  # If already "H:MM", pass through unchanged.
-  deg_to_clock <- function(x) {
+clock_string_to_degrees <- function(x) {
+  if (is.null(x) || !nzchar(trimws(as.character(x)))) return(NA_real_)
+  parts <- strsplit(trimws(as.character(x)), "[:\\s]+")[[1]]
+  if (length(parts) < 2) return(NA_real_)
+  hrs <- suppressWarnings(as.numeric(parts[1]))
+  mins <- suppressWarnings(as.numeric(parts[2]))
+  if (!is.finite(hrs) || !is.finite(mins)) return(NA_real_)
+  hours_mod <- hrs %% 12
+  total_deg <- (hours_mod * 60 + mins) * 0.5
+  deg <- (total_deg - 180) %% 360
+  if (deg < 0) deg <- deg + 360
+  deg
+}
+
+# 180° = 12:00, 270° = 3:00, 0° = 6:00, 90° = 9:00
+# If already "H:MM", pass through unchanged.
+deg_to_clock <- function(x) {
     if (is.character(x) && length(x) && grepl("^\\s*\\d{1,2}:\\d{2}\\s*$", x[1])) {
       return(trimws(x[1]))
     }
@@ -22771,14 +22785,6 @@ server <- function(input, output, session) {
         return value;
       }
 
-      function mapAxisToView(vec) {
-        var rawHoriz = vec[2] || 0;
-        var rawVert = vec[1] || 0;
-        var len = Math.sqrt(rawHoriz * rawHoriz + rawVert * rawVert);
-        if (len < 0.0001) return null;
-        return { x: rawHoriz / len, y: -rawVert / len };
-      }
-
       function normalizeVector(vec) {
         var x = Number(vec && vec[0]) || 0;
         var y = Number(vec && vec[1]) || 0;
@@ -22786,13 +22792,6 @@ server <- function(input, output, session) {
         var len = Math.sqrt(x * x + y * y + z * z);
         if (len < 1e-6) return { x: 0, y: 0, z: 1 };
         return { x: x / len, y: y / len, z: z / len };
-      }
-
-      function tiltDegreesToCanvasAngle(deg) {
-        if (!isFinite(deg)) return null;
-        var angle = (deg + 90) % 360;
-        if (angle < 0) angle += 360;
-        return angle * Math.PI / 180;
       }
 
       function rotatePointX(point, angle) {
@@ -22949,12 +22948,20 @@ server <- function(input, output, session) {
         var seamRotZ = Number(cfg.seamRotationZ) || 0;
         
         var tilt = Number(cfg.tilt) || 0;
-        var releaseTiltVal = Number(cfg.releaseTilt);
-        if (!isFinite(releaseTiltVal)) releaseTiltVal = null;
-        var breakTiltVal = Number(cfg.breakTilt);
-        if (!isFinite(breakTiltVal)) breakTiltVal = null;
-        var releaseTiltAngle = releaseTiltVal !== null ? tiltDegreesToCanvasAngle(releaseTiltVal) : null;
-        var breakTiltAngle = breakTiltVal !== null ? tiltDegreesToCanvasAngle(breakTiltVal) : null;
+        var releaseTiltVal = cfg.releaseTilt;
+        if (releaseTiltVal === null || releaseTiltVal === undefined) {
+          releaseTiltVal = null;
+        } else {
+          releaseTiltVal = Number(releaseTiltVal);
+          if (!isFinite(releaseTiltVal)) releaseTiltVal = null;
+        }
+        var breakTiltVal = cfg.breakTilt;
+        if (breakTiltVal === null || breakTiltVal === undefined) {
+          breakTiltVal = null;
+        } else {
+          breakTiltVal = Number(breakTiltVal);
+          if (!isFinite(breakTiltVal)) breakTiltVal = null;
+        }
         var baseSeamCache = { radius: 0, paths: null };
         var orientationPathsCache = {};
         var orientationOptions = Array.isArray(cfg.orientationOptions) ? cfg.orientationOptions.slice() : [];
@@ -23118,33 +23125,51 @@ server <- function(input, output, session) {
         }
 
         function drawBall(cx, cy, radius, rotation) {
-          // Create more realistic baseball leather gradient
+          // Create more transparent/glass-like baseball
           var grad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, radius * 0.1, cx, cy, radius * 1.1);
-          grad.addColorStop(0, '#ffffff');
-          grad.addColorStop(0.25, '#fdfbf7');
-          grad.addColorStop(0.5, '#f5f0e6');
-          grad.addColorStop(0.75, '#e8dcc8');
-          grad.addColorStop(1, '#d4c4a8');
+          grad.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
+          grad.addColorStop(0.25, 'rgba(253, 251, 247, 0.35)');
+          grad.addColorStop(0.5, 'rgba(245, 240, 230, 0.3)');
+          grad.addColorStop(0.75, 'rgba(232, 220, 200, 0.25)');
+          grad.addColorStop(1, 'rgba(212, 196, 168, 0.2)');
           ctx.fillStyle = grad;
           ctx.beginPath();
           ctx.arc(cx, cy, radius, 0, Math.PI * 2);
           ctx.fill();
           
-          // Subtle outer edge
-          ctx.lineWidth = 1;
-          ctx.strokeStyle = 'rgba(150,130,100,0.3)';
+          // Subtle outer edge with transparency
+          ctx.lineWidth = 1.5;
+          ctx.strokeStyle = 'rgba(150,130,100,0.4)';
           ctx.stroke();
           
-          // Enhanced highlight for more 3D appearance
-          drawHighlight(cx, cy, radius);
+          // Enhanced highlight for glass-like 3D appearance
+          ctx.save();
+          var highlightGrad = ctx.createRadialGradient(
+            cx - radius * 0.3, cy - radius * 0.3, 0,
+            cx - radius * 0.3, cy - radius * 0.3, radius * 0.5
+          );
+          highlightGrad.addColorStop(0, 'rgba(255,255,255,0.8)');
+          highlightGrad.addColorStop(0.5, 'rgba(255,255,255,0.4)');
+          highlightGrad.addColorStop(1, 'rgba(255,255,255,0)');
+          ctx.fillStyle = highlightGrad;
+          ctx.beginPath();
+          ctx.arc(cx - radius * 0.3, cy - radius * 0.3, radius * 0.5, 0, Math.PI * 2);
+          ctx.fill();
           
-          // Draw seams on top of the ball
+          // Secondary smaller highlight for more glass effect
+          ctx.fillStyle = 'rgba(255,255,255,0.6)';
+          ctx.beginPath();
+          ctx.ellipse(cx - radius * 0.35, cy - radius * 0.35, radius * 0.15, radius * 0.1, -Math.PI / 4, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+          
+          // Draw rotation indicators and tilt info
           drawSeam(cx, cy, radius, rotation);
           
-          // Add subtle ambient occlusion around the edges
+          // Add subtle glass edge effect with more transparency
           var aoGrad = ctx.createRadialGradient(cx, cy, radius * 0.7, cx, cy, radius);
           aoGrad.addColorStop(0, 'rgba(0,0,0,0)');
-          aoGrad.addColorStop(1, 'rgba(0,0,0,0.12)');
+          aoGrad.addColorStop(1, 'rgba(0,0,0,0.08)');
           ctx.fillStyle = aoGrad;
           ctx.beginPath();
           ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -23154,18 +23179,28 @@ server <- function(input, output, session) {
         function drawSeam(cx, cy, radius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          drawBaseballSeams(radius, rotation);
+          // drawBaseballSeams(radius, rotation); // Removed seams
           drawClockNumbers(ctx, radius);
-          drawTiltArrows(ctx, cx, cy, radius, releaseTiltAngle, breakTiltAngle);
-          drawTiltNumbersPointer(ctx, cx, cy, radius);
+          drawTiltArrows(ctx, 0, 0, radius, releaseTiltVal, breakTiltVal);
+          drawRotatingTiltLine(ctx, 0, 0, radius, releaseTiltVal, rotation);
+          // drawTiltNumbersPointer(ctx, 0, 0, radius); // Removed 3:00 pointer
           ctx.restore();
         }
 
-        function drawTiltArrow(ctx, cx, cy, radius, angle, color, dashed) {
-          if (angle === null || !isFinite(angle)) return;
+        function tiltDegreesToVector(deg) {
+          if (deg === null || !isFinite(deg)) return null;
+          var rad = deg * Math.PI / 180;
+          var x = -Math.sin(rad);
+          var y = Math.cos(rad);
+          return { x: x, y: y };
+        }
+
+        function drawTiltArrow(ctx, cx, cy, radius, deg, color, dashed) {
+          var vec = tiltDegreesToVector(deg);
+          if (!vec) return;
           var length = radius * 0.62;
-          var endX = cx + Math.cos(angle) * length;
-          var endY = cy + Math.sin(angle) * length;
+          var endX = cx + vec.x * length;
+          var endY = cy + vec.y * length;
           ctx.save();
           ctx.strokeStyle = color;
           ctx.fillStyle = color;
@@ -23176,12 +23211,17 @@ server <- function(input, output, session) {
           ctx.moveTo(cx, cy);
           ctx.lineTo(endX, endY);
           ctx.stroke();
+          
+          // Calculate arrowhead based on the tilt direction, not ball rotation
           var headLen = radius * 0.08;
-          var perpAngle = angle + Math.PI / 2;
+          var tiltAngle = Math.atan2(vec.y, vec.x);
+          var perpAngle = tiltAngle + Math.PI / 2;
           var perpX = Math.cos(perpAngle);
           var perpY = Math.sin(perpAngle);
-          var baseX = endX - Math.cos(angle) * headLen;
-          var baseY = endY - Math.sin(angle) * headLen;
+          var backAngle = tiltAngle + Math.PI;
+          var baseX = endX + Math.cos(backAngle) * headLen;
+          var baseY = endY + Math.sin(backAngle) * headLen;
+          
           ctx.beginPath();
           ctx.moveTo(endX, endY);
           ctx.lineTo(baseX + perpX * headLen * 0.4, baseY + perpY * headLen * 0.4);
@@ -23198,6 +23238,125 @@ server <- function(input, output, session) {
           if (breakAngle !== null && isFinite(breakAngle)) {
             drawTiltArrow(ctx, cx, cy, radius, breakAngle, '#4caf50', false);
           }
+        }
+
+        function drawRotatingTiltLine(ctx, cx, cy, radius, tiltAngle, rotation) {
+          if (tiltAngle === null || !isFinite(tiltAngle)) return;
+          
+          // Convert tilt angle to radians (this is the 2D tilt direction on screen)
+          var tiltRad = tiltAngle * Math.PI / 180;
+          
+          // Create the spin axis as a 3D vector in the tilt direction
+          // The tilt tells us the direction in the XY plane
+          var tiltDirX = -Math.sin(tiltRad);
+          var tiltDirY = Math.cos(tiltRad);
+          var tiltDirZ = 0; // Initially in the viewing plane
+          
+          // Normalize the spin axis direction
+          var axisDir = normalizeVector([axisVec[0], axisVec[1], axisVec[2]]);
+          
+          // Create points along the spin axis line going through the ball
+          var numArrows = 5; // Number of arrows along the axis
+          var axisLength = radius * 1.4;
+          var arrowSpacing = axisLength * 2 / (numArrows + 1);
+          
+          ctx.save();
+          
+          // Draw multiple arrows along the rotating axis
+          for (var i = 0; i < numArrows; i++) {
+            var t = -axisLength + arrowSpacing * (i + 1);
+            
+            // Position along the axis in 3D
+            var point3d = {
+              x: axisDir.x * t,
+              y: axisDir.y * t,
+              z: axisDir.z * t
+            };
+            
+            // Rotate this point around the spin axis by the rotation angle
+            var rotated = rotatePointAroundAxis(point3d, axisDir, rotation);
+            
+            // Check if this point is visible (front hemisphere has z > -radius*0.2 after perspective)
+            var isVisible = rotated.z > -radius * 0.2;
+            
+            // Calculate opacity based on z-depth for 3D effect
+            var depthFactor = (rotated.z + radius) / (radius * 2);
+            depthFactor = Math.max(0, Math.min(1, depthFactor));
+            var opacity = 0.3 + depthFactor * 0.6; // Range from 0.3 to 0.9
+            
+            // Draw arrow at this position
+            var arrowSize = radius * 0.12;
+            var arrowWidth = radius * 0.08;
+            
+            // Calculate the direction of the arrow (tangent to spin axis)
+            var nextT = t + arrowSpacing * 0.1;
+            var nextPoint = {
+              x: axisDir.x * nextT,
+              y: axisDir.y * nextT,
+              z: axisDir.z * nextT
+            };
+            var nextRotated = rotatePointAroundAxis(nextPoint, axisDir, rotation);
+            
+            var dirX = nextRotated.x - rotated.x;
+            var dirY = nextRotated.y - rotated.y;
+            var dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
+            if (dirLen > 0.001) {
+              dirX /= dirLen;
+              dirY /= dirLen;
+            }
+            
+            var perpX = -dirY;
+            var perpY = dirX;
+            
+            ctx.fillStyle = isVisible 
+              ? 'rgba(255, 179, 0, ' + opacity + ')' 
+              : 'rgba(255, 179, 0, ' + (opacity * 0.3) + ')';
+            ctx.strokeStyle = ctx.fillStyle;
+            ctx.lineWidth = 2;
+            
+            // Draw arrow shape
+            ctx.beginPath();
+            // Arrow head
+            ctx.moveTo(rotated.x + dirX * arrowSize, rotated.y + dirY * arrowSize);
+            ctx.lineTo(rotated.x - dirX * arrowSize * 0.3 + perpX * arrowWidth, 
+                       rotated.y - dirY * arrowSize * 0.3 + perpY * arrowWidth);
+            ctx.lineTo(rotated.x - dirX * arrowSize * 0.3 + perpX * arrowWidth * 0.4, 
+                       rotated.y - dirY * arrowSize * 0.3 + perpY * arrowWidth * 0.4);
+            ctx.lineTo(rotated.x - dirX * arrowSize - perpX * arrowWidth * 0.4, 
+                       rotated.y - dirY * arrowSize - perpY * arrowWidth * 0.4);
+            ctx.lineTo(rotated.x - dirX * arrowSize * 0.3 - perpX * arrowWidth * 0.4, 
+                       rotated.y - dirY * arrowSize * 0.3 - perpY * arrowWidth * 0.4);
+            ctx.lineTo(rotated.x - dirX * arrowSize * 0.3 - perpX * arrowWidth, 
+                       rotated.y - dirY * arrowSize * 0.3 - perpY * arrowWidth);
+            ctx.closePath();
+            ctx.fill();
+          }
+          
+          // Also draw a thin line connecting everything for continuity
+          ctx.strokeStyle = 'rgba(255, 179, 0, 0.4)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([]);
+          
+          var segments = 40;
+          ctx.beginPath();
+          for (var j = 0; j <= segments; j++) {
+            var tLine = -axisLength + (axisLength * 2 * j / segments);
+            var pointLine = {
+              x: axisDir.x * tLine,
+              y: axisDir.y * tLine,
+              z: axisDir.z * tLine
+            };
+            var rotatedLine = rotatePointAroundAxis(pointLine, axisDir, rotation);
+            
+            if (j === 0) {
+              ctx.moveTo(rotatedLine.x, rotatedLine.y);
+            } else {
+              ctx.lineTo(rotatedLine.x, rotatedLine.y);
+            }
+          }
+          ctx.stroke();
+          
+          ctx.restore();
         }
 
         function drawBaseballSeams(radius, rotation) {
@@ -23291,56 +23450,6 @@ server <- function(input, output, session) {
           }
         }
         
-        function drawAxis(cx, cy, radius) {
-          var direction = mapAxisToView(axisVec);
-          if (!direction) return;
-          var depthFactor = Math.min(Math.abs(axisVec[0] || 0), 1);
-          var arrowLen = radius * (1.05 + depthFactor * 0.4);
-          var headLen = radius * 0.26;
-          var shaftWidth = radius * 0.22;
-          drawSpinAxisArrow3D(ctx, cx, cy, direction, arrowLen, headLen, shaftWidth, radius);
-        }
-
-        function drawSpinAxisArrow3D(ctx, cx, cy, direction, arrowLen, headLen, shaftWidth, radius) {
-          ctx.save();
-          ctx.translate(cx, cy);
-          var angle = Math.atan2(direction.y, direction.x);
-          ctx.rotate(angle);
-          ctx.shadowColor = 'rgba(0,0,0,0.25)';
-          ctx.shadowBlur = radius * 0.08;
-          ctx.shadowOffsetX = 2;
-          ctx.shadowOffsetY = 2;
-          var shaftLen = arrowLen - headLen;
-          var grad = ctx.createLinearGradient(0, 0, shaftLen, 0);
-          grad.addColorStop(0, '#8a0000');
-          grad.addColorStop(1, '#f44336');
-          ctx.fillStyle = grad;
-          ctx.beginPath();
-          ctx.moveTo(0, -shaftWidth / 2);
-          ctx.lineTo(shaftLen, -shaftWidth / 2);
-          ctx.lineTo(shaftLen, shaftWidth / 2);
-          ctx.lineTo(0, shaftWidth / 2);
-          ctx.closePath();
-          ctx.fill();
-          ctx.shadowBlur = 0;
-          ctx.shadowOffsetX = 0;
-          ctx.shadowOffsetY = 0;
-          ctx.fillStyle = '#d32f2f';
-          ctx.beginPath();
-          ctx.moveTo(shaftLen, -shaftWidth / 2 * 1.1);
-          ctx.lineTo(shaftLen + headLen, 0);
-          ctx.lineTo(shaftLen, shaftWidth / 2 * 1.1);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = 'rgba(255,255,255,0.65)';
-          ctx.lineWidth = 2;
-          ctx.beginPath();
-          ctx.moveTo(shaftLen * 0.1, -shaftWidth * 0.25);
-          ctx.lineTo(shaftLen, -shaftWidth * 0.25);
-          ctx.stroke();
-          ctx.restore();
-        }
-
         function drawTiltNumbersPointer(ctx, cx, cy, radius) {
           var length = radius * 1.15;
           var headSize = radius * 0.06;
@@ -23431,7 +23540,6 @@ server <- function(input, output, session) {
           ctx.clearRect(0, 0, size, size);
           drawShadow(cx, cy, radius);
           drawBall(cx, cy, radius, angle);
-          drawAxis(cx, cy, radius);
           requestAnimationFrame(step);
         }
 
@@ -23474,6 +23582,22 @@ server <- function(input, output, session) {
     if (!is.finite(rtilt_val)) rtilt_val <- get_col("rTilt")
     btilt_val <- get_col("BreakTilt")
     if (!is.finite(btilt_val)) btilt_val <- get_col("bTilt")
+
+    release_tilt_deg <- get_col("ReleaseTilt")
+    if (!is.finite(release_tilt_deg)) {
+      release_tilt_deg <- clock_string_to_degrees(row[["ReleaseTilt"]])
+    }
+    if (!is.finite(release_tilt_deg)) {
+      release_tilt_deg <- get_col("rTilt")
+    }
+
+    break_tilt_deg <- get_col("BreakTilt")
+    if (!is.finite(break_tilt_deg)) {
+      break_tilt_deg <- clock_string_to_degrees(row[["BreakTilt"]])
+    }
+    if (!is.finite(break_tilt_deg)) {
+      break_tilt_deg <- get_col("bTilt")
+    }
     
     # Get all three seam orientation rotation angles (in radians from TrackMan)
     seam_rot_x <- get_col("SpinAxis3dSeamOrientationRotationX")
@@ -23546,8 +23670,8 @@ server <- function(input, output, session) {
       seamRotationX = ifelse(is.finite(seam_rot_x), seam_rot_x, 0),
       seamRotationY = ifelse(is.finite(seam_rot_y), seam_rot_y, 0),
       seamRotationZ = ifelse(is.finite(seam_rot_z), seam_rot_z, 0),
-      releaseTilt = ifelse(is.finite(rtilt_val), rtilt_val, NA_real_),
-      breakTilt = ifelse(is.finite(btilt_val), btilt_val, NA_real_),
+      releaseTilt = ifelse(is.finite(release_tilt_deg), release_tilt_deg, NA_real_),
+      breakTilt = ifelse(is.finite(break_tilt_deg), break_tilt_deg, NA_real_),
       spinSpeedDefault = spin_speed_default,
       spinSpeedMin = spin_speed_min,
       spinSpeedMax = spin_speed_max,
@@ -23618,8 +23742,9 @@ server <- function(input, output, session) {
         class = "spin-legend",
         style = "margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 8px; font-size: 0.85rem;",
         HTML(paste(
-          "<strong style='color: #d32f2f;'>● Red Arrow:</strong> Spin Axis (the axis the ball rotates around)",
-          "<strong style='color: #CC0000;'>● Red Seams:</strong> Baseball stitching (changes based on grip/release)",
+          "<span style='color: #ffb300; font-weight:700;'>↗ Dashed gold arrow:</span> Release tilt direction (rTilt)",
+          "<span style='color: #4caf50; font-weight:700;'>↘ Solid green arrow:</span> Break tilt direction (bTilt)",
+          "<span style='color: #ffb300; font-weight:700;'>⟷ Gold rotating line:</span> Spin axis rotating through rTilt direction",
           sep = "<br/>"
         ))
       ),
