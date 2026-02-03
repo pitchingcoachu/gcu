@@ -22838,6 +22838,16 @@ deg_to_clock <- function(x) {
         };
       }
 
+      function rotateAroundY(point, angle) {
+        var cosA = Math.cos(angle);
+        var sinA = Math.sin(angle);
+        return {
+          x: point.x * cosA + point.z * sinA,
+          y: point.y,
+          z: -point.x * sinA + point.z * cosA
+        };
+      }
+
       function buildSeamPaths(radius) {
         var paths = [];
         var stitchCount = 120;
@@ -22918,11 +22928,12 @@ deg_to_clock <- function(x) {
 
       function drawClockNumbers(ctx, radius) {
         ctx.save();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
-        ctx.font = Math.max(11, radius * 0.16) + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
+        var fontSize = Math.max(11, radius * 0.13);
+        ctx.font = fontSize + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        var clockRadius = radius * 1.25; // Outside the ball
+        var clockRadius = radius * 0.9; // Keep the clock numerals close to the ball to avoid the circular mask clipping cardinals
         
         // Draw all 12 numbers - 12 is at top (90 degrees), going clockwise
         for (var hour = 1; hour <= 12; hour++) {
@@ -23156,132 +23167,90 @@ deg_to_clock <- function(x) {
 
         function drawRotatingTiltLine(ctx, cx, cy, radius, tiltAngle, rotation) {
           if (tiltAngle === null || !isFinite(tiltAngle)) return;
+          var tiltDir = tiltDegreesToVector(tiltAngle);
+          if (!tiltDir) return;
           
-          // Convert tilt angle to radians
-          var tiltRad = tiltAngle * Math.PI / 180;
+          var circleRadius = radius * 0.82;
+          var depthRadius = radius * 0.72;
+          var segments = 18;
+          var ringSamples = [];
           
-          // Create the tilt direction vector in 3D
-          // The tilt angle represents a clock position, where 12:00 is straight up
-          var tiltDirX = Math.sin(tiltRad);
-          var tiltDirY = -Math.cos(tiltRad);
-          var tiltDirZ = 0;
-          
-          // Normalize
-          var len = Math.sqrt(tiltDirX * tiltDirX + tiltDirY * tiltDirY + tiltDirZ * tiltDirZ);
-          if (len > 0) {
-            tiltDirX /= len;
-            tiltDirY /= len;
-            tiltDirZ /= len;
+          for (var i = 0; i < segments; i++) {
+            var phi = (i / segments) * Math.PI * 2;
+            var cosPhi = Math.cos(phi);
+            var sinPhi = Math.sin(phi);
+            ringSamples.push({
+              position: {
+                x: tiltDir.x * cosPhi * circleRadius,
+                y: tiltDir.y * cosPhi * circleRadius,
+                z: sinPhi * depthRadius
+              },
+              tangent: {
+                x: -tiltDir.x * sinPhi * circleRadius,
+                y: -tiltDir.y * sinPhi * circleRadius,
+                z: cosPhi * depthRadius
+              }
+            });
           }
           
-          // Create arrows along the tilt line
-          var numArrows = 6;
-          var lineLength = radius * 1.1;
+          var rotatedSamples = ringSamples.map(function(sample) {
+            return {
+              position: rotateAroundY(sample.position, rotation),
+              tangent: rotateAroundY(sample.tangent, rotation)
+            };
+          });
           
           ctx.save();
+          ctx.strokeStyle = 'rgba(255, 210, 145, 0.35)';
+          ctx.lineWidth = Math.max(2, radius * 0.018);
+          ctx.setLineDash([6, 4]);
+          ctx.beginPath();
+          rotatedSamples.forEach(function(sample, index) {
+            var point = sample.position;
+            if (index === 0) {
+              ctx.moveTo(point.x, point.y);
+            } else {
+              ctx.lineTo(point.x, point.y);
+            }
+          });
+          ctx.closePath();
+          ctx.stroke();
+          ctx.setLineDash([]);
           
-          for (var i = 0; i < numArrows; i++) {
-            // Position along the tilt line
-            var t = -lineLength + (lineLength * 2 * i / (numArrows - 1));
-            
-            // Start position on the tilt axis
-            var point = {
-              x: tiltDirX * t,
-              y: tiltDirY * t,
-              z: tiltDirZ * t
-            };
-            
-            // Rotate around Y-axis (vertical axis) by the rotation amount
-            var cosRot = Math.cos(rotation);
-            var sinRot = Math.sin(rotation);
-            
-            var rotated = {
-              x: point.x * cosRot + point.z * sinRot,
-              y: point.y,
-              z: -point.x * sinRot + point.z * cosRot
-            };
-            
-            // Calculate opacity based on z-depth
-            var depthFactor = (rotated.z + radius) / (radius * 2);
-            depthFactor = Math.max(0.1, Math.min(1, depthFactor));
-            var opacity = 0.25 + depthFactor * 0.65;
-            
-            // Skip if too far back
-            if (opacity < 0.3) continue;
-            
-            // Arrow direction also rotates
-            var arrowDir = {
-              x: tiltDirX * cosRot + tiltDirZ * sinRot,
-              y: tiltDirY,
-              z: -tiltDirX * sinRot + tiltDirZ * cosRot
-            };
-            
-            var dirX = arrowDir.x;
-            var dirY = arrowDir.y;
-            
-            var arrowSize = radius * 0.14;
-            var arrowWidth = radius * 0.08;
-            
-            // Scale arrow based on depth
-            var scale = 0.6 + depthFactor * 0.4;
-            arrowSize *= scale;
-            arrowWidth *= scale;
-            
+          rotatedSamples.forEach(function(sample, index) {
+            if (index % 2 !== 0) return;
+            var pos = sample.position;
+            var tan = sample.tangent;
+            var len = Math.sqrt(tan.x * tan.x + tan.y * tan.y);
+            if (len < 1e-6) return;
+            var dirX = tan.x / len;
+            var dirY = tan.y / len;
             var perpX = -dirY;
             var perpY = dirX;
-            
-            ctx.fillStyle = 'rgba(255, 179, 0, ' + opacity + ')';
-            
-            // Draw arrow
+            var depthFactor = (pos.z + depthRadius) / (depthRadius * 2);
+            depthFactor = Math.max(0.18, Math.min(1, depthFactor));
+            var scale = 0.6 + depthFactor * 0.4;
+            var arrowLength = radius * 0.11 * scale;
+            var arrowWidth = radius * 0.045 * scale;
+            var arrowOpacity = 0.35 + depthFactor * 0.6;
+            ctx.fillStyle = 'rgba(190, 140, 60,' + arrowOpacity + ')';
             ctx.beginPath();
-            ctx.moveTo(rotated.x + dirX * arrowSize, rotated.y + dirY * arrowSize);
-            ctx.lineTo(rotated.x + dirX * arrowSize * 0.3 + perpX * arrowWidth, 
-                       rotated.y + dirY * arrowSize * 0.3 + perpY * arrowWidth);
-            ctx.lineTo(rotated.x + dirX * arrowSize * 0.3 + perpX * arrowWidth * 0.4, 
-                       rotated.y + dirY * arrowSize * 0.3 + perpY * arrowWidth * 0.4);
-            ctx.lineTo(rotated.x - dirX * arrowSize * 0.7 + perpX * arrowWidth * 0.4, 
-                       rotated.y - dirY * arrowSize * 0.7 + perpY * arrowWidth * 0.4);
-            ctx.lineTo(rotated.x - dirX * arrowSize * 0.7 - perpX * arrowWidth * 0.4, 
-                       rotated.y - dirY * arrowSize * 0.7 - perpY * arrowWidth * 0.4);
-            ctx.lineTo(rotated.x + dirX * arrowSize * 0.3 - perpX * arrowWidth * 0.4, 
-                       rotated.y + dirY * arrowSize * 0.3 - perpY * arrowWidth * 0.4);
-            ctx.lineTo(rotated.x + dirX * arrowSize * 0.3 - perpX * arrowWidth, 
-                       rotated.y + dirY * arrowSize * 0.3 - perpY * arrowWidth);
+            ctx.moveTo(pos.x + dirX * arrowLength, pos.y + dirY * arrowLength);
+            ctx.lineTo(
+              pos.x + dirX * arrowLength * 0.3 + perpX * arrowWidth,
+              pos.y + dirY * arrowLength * 0.3 + perpY * arrowWidth
+            );
+            ctx.lineTo(
+              pos.x - dirX * arrowLength * 0.6 + perpX * arrowWidth * 0.35,
+              pos.y - dirY * arrowLength * 0.6 + perpY * arrowWidth * 0.35
+            );
+            ctx.lineTo(
+              pos.x - dirX * arrowLength * 0.6 - perpX * arrowWidth * 0.35,
+              pos.y - dirY * arrowLength * 0.6 - perpY * arrowWidth * 0.35
+            );
             ctx.closePath();
             ctx.fill();
-          }
-          
-          // Draw the connecting line
-          ctx.strokeStyle = 'rgba(255, 179, 0, 0.3)';
-          ctx.lineWidth = 2;
-          ctx.setLineDash([5, 5]);
-          
-          ctx.beginPath();
-          var segments = 40;
-          for (var j = 0; j <= segments; j++) {
-            var t = -lineLength + (lineLength * 2 * j / segments);
-            var point = {
-              x: tiltDirX * t,
-              y: tiltDirY * t,
-              z: tiltDirZ * t
-            };
-            
-            var cosRot = Math.cos(rotation);
-            var sinRot = Math.sin(rotation);
-            
-            var rotated = {
-              x: point.x * cosRot + point.z * sinRot,
-              y: point.y,
-              z: -point.x * sinRot + point.z * cosRot
-            };
-            
-            if (j === 0) {
-              ctx.moveTo(rotated.x, rotated.y);
-            } else {
-              ctx.lineTo(rotated.x, rotated.y);
-            }
-          }
-          ctx.stroke();
+          });
           
           ctx.restore();
         }
