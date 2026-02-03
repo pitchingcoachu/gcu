@@ -23176,14 +23176,14 @@ deg_to_clock <- function(x) {
           ctx.save();
           ctx.lineWidth = Math.max(4, radius * 0.15);
           ctx.lineCap = 'round';
-          ctx.strokeStyle = 'rgba(230, 190, 120, 0.55)';
+          ctx.strokeStyle = 'rgba(30, 30, 30, 0.55)';
           ctx.beginPath();
           ctx.moveTo(cx + axisStart.x, cy + axisStart.y);
           ctx.lineTo(cx + axisEnd.x, cy + axisEnd.y);
           ctx.stroke();
           ctx.lineWidth = Math.max(2, radius * 0.08);
           ctx.setLineDash([6, 6]);
-          ctx.strokeStyle = 'rgba(230, 190, 120, 0.2)';
+          ctx.strokeStyle = 'rgba(30, 30, 30, 0.25)';
           ctx.beginPath();
           ctx.moveTo(cx + axisEnd.x, cy + axisEnd.y);
           ctx.lineTo(cx + axisStart.x, cy + axisStart.y);
@@ -23205,8 +23205,8 @@ deg_to_clock <- function(x) {
             if (arrowLength <= 0) continue;
             var arrowWidth = radius * 0.05 * (0.5 + 0.5 * fade);
             var fadeAlpha = fade * 0.9;
-            var fillColor = 'rgba(236, 204, 148, ' + ((0.4 + depthOsc * 0.2) * fadeAlpha) + ')';
-            var strokeColor = 'rgba(95, 60, 30, ' + ((0.35 + depthOsc * 0.25) * fadeAlpha) + ')';
+            var fillColor = 'rgba(255, 210, 80, ' + ((0.65 + depthOsc * 0.25) * fadeAlpha) + ')';
+            var strokeColor = 'rgba(40, 25, 10, ' + ((0.5 + depthOsc * 0.3) * fadeAlpha) + ')';
 
             var tipX = centerX + arrowDir.x * arrowLength;
             var tipY = centerY + arrowDir.y * arrowLength;
