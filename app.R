@@ -23103,6 +23103,23 @@ deg_to_clock <- function(x) {
           return { x: x, y: y };
         }
 
+        function normalizeVec2D(vec) {
+          if (!vec) return null;
+          var x = Number(vec.x) || 0;
+          var y = Number(vec.y) || 0;
+          var len = Math.sqrt(x * x + y * y);
+          if (len < 1e-6) return null;
+          return { x: x / len, y: y / len };
+        }
+
+        function clampSpinEfficiency(val) {
+          if (!isFinite(val)) return 1;
+          var eff = Number(val);
+          if (eff > 1) eff = eff / 100;
+          eff = Math.max(0, Math.min(1, eff));
+          return eff;
+        }
+
         function drawTiltArrow(ctx, cx, cy, radius, deg, color, dashed) {
           var vec = tiltDegreesToVector(deg);
           if (!vec) return;
@@ -23160,17 +23177,25 @@ deg_to_clock <- function(x) {
           if (tiltAngle === null || !isFinite(tiltAngle)) return;
           var tiltDir = tiltDegreesToVector(tiltAngle);
           if (!tiltDir) return;
+          var efficiency = clampSpinEfficiency(cfg.spinEff);
+          var releaseTiltAngle = Number(cfg.releaseTilt);
+          if (!isFinite(releaseTiltAngle)) releaseTiltAngle = tiltAngle;
+          var releaseDir = tiltDegreesToVector(releaseTiltAngle) || tiltDir;
+          var blended = normalizeVec2D({
+            x: tiltDir.x * (1 - efficiency) + releaseDir.x * efficiency,
+            y: tiltDir.y * (1 - efficiency) + releaseDir.y * efficiency
+          }) || tiltDir;
 
           var axisLength = radius * 0.95;
-          var scrollSpeed = 0.65;
+          var scrollSpeed = 0.85;
           var arrowCount = 8;
           var progress = ((rotation / (Math.PI * 2)) * scrollSpeed) % 1;
           if (progress < 0) progress += 1;
           progress = 1 - progress;
 
-          var axisStart = { x: -tiltDir.x * axisLength, y: -tiltDir.y * axisLength };
-          var axisEnd = { x: tiltDir.x * axisLength, y: tiltDir.y * axisLength };
-          var arrowDir = { x: -tiltDir.x, y: -tiltDir.y };
+          var axisStart = { x: -blended.x * axisLength, y: -blended.y * axisLength };
+          var axisEnd = { x: blended.x * axisLength, y: blended.y * axisLength };
+          var arrowDir = { x: -blended.x, y: -blended.y };
           var arrowPerp = { x: -arrowDir.y, y: arrowDir.x };
 
           ctx.save();
