@@ -23163,10 +23163,16 @@ deg_to_clock <- function(x) {
           
           var lineLength = radius * 1.12;
           var depthRadius = radius * 0.45;
-          var sampleCount = 12;
-          var scrollSpeed = 0.14;
+          var sampleCount = 14;
+          var scrollSpeed = 0.32;
           var progress = ((rotation / (Math.PI * 2)) * scrollSpeed) % 1;
           if (progress < 0) progress += 1;
+          progress = 1 - progress;
+
+          var axisDir = tiltDir;
+          var motionDir = { x: -axisDir.x, y: -axisDir.y };
+          var perpX = -motionDir.y;
+          var perpY = motionDir.x;
 
           var samples = [];
           for (var i = 0; i <= sampleCount; i++) {
@@ -23174,26 +23180,21 @@ deg_to_clock <- function(x) {
             var t = -lineLength + 2 * lineLength * phase;
             var depthOsc = Math.sin(phase * Math.PI * 2);
             samples.push({
-              x: tiltDir.x * t,
-              y: tiltDir.y * t,
+              x: axisDir.x * t,
+              y: axisDir.y * t,
               z: depthOsc * depthRadius
             });
           }
 
           ctx.save();
-          ctx.lineWidth = Math.max(2, radius * 0.014);
-          var arrowDirX = tiltDir.x;
-          var arrowDirY = tiltDir.y;
-          var perpX = -arrowDirY;
-          var perpY = arrowDirX;
-
+          ctx.lineWidth = Math.max(2, radius * 0.015);
           for (var segment = 1; segment < samples.length; segment++) {
             var prev = samples[segment - 1];
             var curr = samples[segment];
             var depthAvg = (prev.z + curr.z) / 2;
             var depthFactor = (depthAvg + depthRadius) / (depthRadius * 2);
             depthFactor = Math.max(0.05, Math.min(1, depthFactor));
-            var strokeAlpha = 0.2 + depthFactor * 0.35;
+            var strokeAlpha = 0.25 + depthFactor * 0.35;
             ctx.strokeStyle = 'rgba(230, 190, 120, ' + strokeAlpha + ')';
             if (depthAvg < 0) ctx.setLineDash([4, 4]);
             else ctx.setLineDash([]);
@@ -23212,23 +23213,23 @@ deg_to_clock <- function(x) {
             var length = radius * (0.11 + depthFactor * 0.04);
             var width = radius * 0.05;
             var fillColor = 'rgba(236, 204, 148, ' + opacity + ')';
-            var strokeColor = 'rgba(103, 64, 33, ' + (0.3 + depthFactor * 0.4) + ')';
+            var strokeColor = 'rgba(95, 60, 30, ' + (0.35 + depthFactor * 0.4) + ')';
             var centerX = cx + sample.x;
             var centerY = cy + sample.y;
 
             ctx.fillStyle = fillColor;
             ctx.strokeStyle = strokeColor;
-            ctx.lineWidth = 1.5;
+            ctx.lineWidth = 1.8;
             ctx.beginPath();
-            ctx.moveTo(centerX + arrowDirX * length, centerY + arrowDirY * length);
+            ctx.moveTo(centerX + motionDir.x * length, centerY + motionDir.y * length);
             ctx.lineTo(centerX + perpX * width * 0.7, centerY + perpY * width * 0.7);
             ctx.lineTo(
-              centerX - arrowDirX * (length * 0.4) + perpX * width * 0.4,
-              centerY - arrowDirY * (length * 0.4) + perpY * width * 0.4
+              centerX - motionDir.x * (length * 0.35) + perpX * width * 0.4,
+              centerY - motionDir.y * (length * 0.35) + perpY * width * 0.4
             );
             ctx.lineTo(
-              centerX - arrowDirX * (length * 0.4) - perpX * width * 0.4,
-              centerY - arrowDirY * (length * 0.4) - perpY * width * 0.4
+              centerX - motionDir.x * (length * 0.35) - perpX * width * 0.4,
+              centerY - motionDir.y * (length * 0.35) - perpY * width * 0.4
             );
             ctx.closePath();
             ctx.fill();
@@ -23402,7 +23403,7 @@ deg_to_clock <- function(x) {
           var size = ensureSize();
           var cx = size / 2;
           var cy = size / 2;
-          var radius = size * 0.43;
+          var radius = size * 0.38;
           ctx.clearRect(0, 0, size, size);
           drawShadow(cx, cy, radius);
           drawBall(cx, cy, radius, angle);
