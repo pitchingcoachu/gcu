@@ -22928,12 +22928,13 @@ deg_to_clock <- function(x) {
 
       function drawClockNumbers(ctx, radius) {
         ctx.save();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.75)';
-        var fontSize = Math.max(11, radius * 0.13);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+        var fontSize = Math.max(11, radius * 0.16);
         ctx.font = fontSize + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        var clockRadius = radius * 0.9; // Keep the clock numerals close to the ball to avoid the circular mask clipping cardinals
+        var offset = Math.min(radius * 0.28, 48);
+        var clockRadius = radius + offset; // Place numbers just outside the ball and inside the gray ring
         
         // Draw all 12 numbers - 12 is at top (90 degrees), going clockwise
         for (var hour = 1; hour <= 12; hour++) {
@@ -22988,7 +22989,7 @@ deg_to_clock <- function(x) {
         var baseSpeed = (spinRate / 60) * 2 * Math.PI;
         
         // Fixed slow speed
-        var multiplier = Number(cfg.spinSpeedMultiplier) || 0.03;
+        var multiplier = Number(cfg.spinSpeedMultiplier) || 0.008;
         var speed = baseSpeed * multiplier;
         var lastTs = null;
         var sliderUpdating = false;
@@ -23170,89 +23171,69 @@ deg_to_clock <- function(x) {
           var tiltDir = tiltDegreesToVector(tiltAngle);
           if (!tiltDir) return;
           
-          var circleRadius = radius * 0.82;
-          var depthRadius = radius * 0.72;
-          var segments = 18;
-          var ringSamples = [];
-          
-          for (var i = 0; i < segments; i++) {
-            var phi = (i / segments) * Math.PI * 2;
-            var cosPhi = Math.cos(phi);
-            var sinPhi = Math.sin(phi);
-            ringSamples.push({
-              position: {
-                x: tiltDir.x * cosPhi * circleRadius,
-                y: tiltDir.y * cosPhi * circleRadius,
-                z: sinPhi * depthRadius
-              },
-              tangent: {
-                x: -tiltDir.x * sinPhi * circleRadius,
-                y: -tiltDir.y * sinPhi * circleRadius,
-                z: cosPhi * depthRadius
-              }
-            });
+          var lineLength = radius * 1.15;
+          var sampleCount = 7;
+          var samples = [];
+          for (var i = 0; i <= sampleCount; i++) {
+            var t = -lineLength + (2 * lineLength) * (i / sampleCount);
+            var point = {
+              x: tiltDir.x * t,
+              y: tiltDir.y * t,
+              z: 0
+            };
+            samples.push(rotateAroundY(point, rotation));
           }
           
-          var rotatedSamples = ringSamples.map(function(sample) {
-            return {
-              position: rotateAroundY(sample.position, rotation),
-              tangent: rotateAroundY(sample.tangent, rotation)
-            };
-          });
+          var arrowDir = rotateAroundY({ x: tiltDir.x, y: tiltDir.y, z: 0 }, rotation);
+          var arrowLen = Math.sqrt(arrowDir.x * arrowDir.x + arrowDir.y * arrowDir.y);
+          if (arrowLen < 1e-6) return;
+          arrowDir.x /= arrowLen;
+          arrowDir.y /= arrowLen;
+          var perpX = -arrowDir.y;
+          var perpY = arrowDir.x;
           
           ctx.save();
-          ctx.strokeStyle = 'rgba(255, 210, 145, 0.35)';
-          ctx.lineWidth = Math.max(2, radius * 0.018);
-          ctx.setLineDash([6, 4]);
-          ctx.beginPath();
-          rotatedSamples.forEach(function(sample, index) {
-            var point = sample.position;
-            if (index === 0) {
-              ctx.moveTo(point.x, point.y);
-            } else {
-              ctx.lineTo(point.x, point.y);
-            }
-          });
-          ctx.closePath();
-          ctx.stroke();
-          ctx.setLineDash([]);
-          
-          rotatedSamples.forEach(function(sample, index) {
-            if (index % 2 !== 0) return;
-            var pos = sample.position;
-            var tan = sample.tangent;
-            var len = Math.sqrt(tan.x * tan.x + tan.y * tan.y);
-            if (len < 1e-6) return;
-            var dirX = tan.x / len;
-            var dirY = tan.y / len;
-            var perpX = -dirY;
-            var perpY = dirX;
-            var depthFactor = (pos.z + depthRadius) / (depthRadius * 2);
-            depthFactor = Math.max(0.18, Math.min(1, depthFactor));
-            var scale = 0.6 + depthFactor * 0.4;
-            var arrowLength = radius * 0.11 * scale;
-            var arrowWidth = radius * 0.045 * scale;
-            var arrowOpacity = 0.35 + depthFactor * 0.6;
-            ctx.fillStyle = 'rgba(190, 140, 60,' + arrowOpacity + ')';
+          ctx.lineWidth = Math.max(2, radius * 0.015);
+          ctx.lineCap = 'round';
+          for (var segment = 1; segment < samples.length; segment++) {
+            var prev = samples[segment - 1];
+            var curr = samples[segment];
+            var depthFactor = ((prev.z + curr.z) / 2 + radius) / (radius * 2);
+            depthFactor = Math.max(0.1, Math.min(1, depthFactor));
+            var behind = prev.z < 0 && curr.z < 0;
+            ctx.strokeStyle = 'rgba(230, 185, 120, ' + (0.25 + depthFactor * 0.45) + ')';
+            ctx.setLineDash(behind ? [4, 4] : []);
             ctx.beginPath();
-            ctx.moveTo(pos.x + dirX * arrowLength, pos.y + dirY * arrowLength);
+            ctx.moveTo(prev.x, prev.y);
+            ctx.lineTo(curr.x, curr.y);
+            ctx.stroke();
+          }
+          ctx.restore();
+          
+          samples.forEach(function(pos, index) {
+            var depthFactor = (pos.z + radius) / (radius * 2);
+            depthFactor = Math.max(0.12, Math.min(1, depthFactor));
+            var opacity = 0.35 + depthFactor * 0.55;
+            var length = radius * (0.12 + depthFactor * 0.04);
+            var width = radius * 0.05;
+            ctx.fillStyle = 'rgba(190, 140, 60,' + opacity + ')';
+            ctx.beginPath();
+            ctx.moveTo(pos.x + arrowDir.x * length, pos.y + arrowDir.y * length);
             ctx.lineTo(
-              pos.x + dirX * arrowLength * 0.3 + perpX * arrowWidth,
-              pos.y + dirY * arrowLength * 0.3 + perpY * arrowWidth
+              pos.x + perpX * width * 0.65,
+              pos.y + perpY * width * 0.65
             );
             ctx.lineTo(
-              pos.x - dirX * arrowLength * 0.6 + perpX * arrowWidth * 0.35,
-              pos.y - dirY * arrowLength * 0.6 + perpY * arrowWidth * 0.35
+              pos.x - arrowDir.x * (length * 0.4) + perpX * width * 0.4,
+              pos.y - arrowDir.y * (length * 0.4) + perpY * width * 0.4
             );
             ctx.lineTo(
-              pos.x - dirX * arrowLength * 0.6 - perpX * arrowWidth * 0.35,
-              pos.y - dirY * arrowLength * 0.6 - perpY * arrowWidth * 0.35
+              pos.x - arrowDir.x * (length * 0.4) - perpX * width * 0.4,
+              pos.y - arrowDir.y * (length * 0.4) - perpY * width * 0.4
             );
             ctx.closePath();
             ctx.fill();
           });
-          
-          ctx.restore();
         }
 
         function drawBaseballSeams(radius, rotation) {
@@ -23505,7 +23486,7 @@ deg_to_clock <- function(x) {
                             ifelse(is.finite(seam_rot_z), seam_rot_z * 180/pi, 0))
     
     # Fixed slow speed - no user control needed
-    spin_speed_multiplier <- 0.03  # Very slow rotation
+    spin_speed_multiplier <- 0.008  # Very slow rotation
 
     config <- list(
       canvasId = paste0(prefix, "_canvas"),
