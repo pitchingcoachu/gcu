@@ -23160,8 +23160,8 @@ deg_to_clock <- function(x) {
           if (tiltAngle === null || !isFinite(tiltAngle)) return;
           var tiltDir = tiltDegreesToVector(tiltAngle);
           if (!tiltDir) return;
-          
-          var lineLength = radius * 1.12;
+
+          var lineLength = radius * 0.95;
           var depthRadius = radius * 0.45;
           var sampleCount = 14;
           var scrollSpeed = 0.32;
@@ -23178,24 +23178,25 @@ deg_to_clock <- function(x) {
           for (var i = 0; i <= sampleCount; i++) {
             var phase = ((i / sampleCount) + progress) % 1;
             var t = -lineLength + 2 * lineLength * phase;
+            var clamped = Math.max(-lineLength, Math.min(lineLength, t));
             var depthOsc = Math.sin(phase * Math.PI * 2);
             samples.push({
-              x: axisDir.x * t,
-              y: axisDir.y * t,
+              x: axisDir.x * clamped,
+              y: axisDir.y * clamped,
               z: depthOsc * depthRadius
             });
           }
 
           ctx.save();
-          ctx.lineWidth = Math.max(2, radius * 0.015);
+          ctx.lineWidth = Math.max(2, radius * 0.14);
+          ctx.lineCap = 'round';
+          ctx.strokeStyle = 'rgba(230, 190, 120, 0.45)';
           for (var segment = 1; segment < samples.length; segment++) {
             var prev = samples[segment - 1];
             var curr = samples[segment];
             var depthAvg = (prev.z + curr.z) / 2;
             var depthFactor = (depthAvg + depthRadius) / (depthRadius * 2);
             depthFactor = Math.max(0.05, Math.min(1, depthFactor));
-            var strokeAlpha = 0.25 + depthFactor * 0.35;
-            ctx.strokeStyle = 'rgba(230, 190, 120, ' + strokeAlpha + ')';
             if (depthAvg < 0) ctx.setLineDash([4, 4]);
             else ctx.setLineDash([]);
             ctx.beginPath();
@@ -23204,39 +23205,40 @@ deg_to_clock <- function(x) {
             ctx.stroke();
           }
           ctx.setLineDash([]);
+          ctx.restore();
 
           samples.forEach(function(sample, index) {
             if (index % 2) return;
             var depthFactor = (sample.z + depthRadius) / (depthRadius * 2);
             depthFactor = Math.max(0.12, Math.min(1, depthFactor));
             var opacity = 0.45 + depthFactor * 0.45;
-            var length = radius * (0.11 + depthFactor * 0.04);
-            var width = radius * 0.05;
+            var length = radius * (0.12 + depthFactor * 0.03);
+            var width = radius * 0.04;
             var fillColor = 'rgba(236, 204, 148, ' + opacity + ')';
             var strokeColor = 'rgba(95, 60, 30, ' + (0.35 + depthFactor * 0.4) + ')';
             var centerX = cx + sample.x;
             var centerY = cy + sample.y;
 
+            var tipX = centerX + motionDir.x * length;
+            var tipY = centerY + motionDir.y * length;
+            var baseX = centerX - motionDir.x * (length * 0.35);
+            var baseY = centerY - motionDir.y * (length * 0.35);
+            var leftX = baseX + perpX * width;
+            var leftY = baseY + perpY * width;
+            var rightX = baseX - perpX * width;
+            var rightY = baseY - perpY * width;
+
             ctx.fillStyle = fillColor;
             ctx.strokeStyle = strokeColor;
             ctx.lineWidth = 1.8;
             ctx.beginPath();
-            ctx.moveTo(centerX + motionDir.x * length, centerY + motionDir.y * length);
-            ctx.lineTo(centerX + perpX * width * 0.7, centerY + perpY * width * 0.7);
-            ctx.lineTo(
-              centerX - motionDir.x * (length * 0.35) + perpX * width * 0.4,
-              centerY - motionDir.y * (length * 0.35) + perpY * width * 0.4
-            );
-            ctx.lineTo(
-              centerX - motionDir.x * (length * 0.35) - perpX * width * 0.4,
-              centerY - motionDir.y * (length * 0.35) - perpY * width * 0.4
-            );
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(leftX, leftY);
+            ctx.lineTo(rightX, rightY);
             ctx.closePath();
             ctx.fill();
             ctx.stroke();
           });
-
-          ctx.restore();
         }
 
         function drawBaseballSeams(radius, rotation) {
