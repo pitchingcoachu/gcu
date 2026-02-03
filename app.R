@@ -22924,11 +22924,11 @@ deg_to_clock <- function(x) {
         ctx.textBaseline = 'middle';
         var clockRadius = radius * 1.25; // Outside the ball
         
-        // Draw all 12 numbers
+        // Draw all 12 numbers - 12 is at top (90 degrees), going clockwise
         for (var hour = 1; hour <= 12; hour++) {
-          var angle = ((hour - 3) / 12) * Math.PI * 2; // 3 is at 0 degrees (right), then go counterclockwise
+          var angle = (Math.PI / 2) - ((hour / 12) * Math.PI * 2); // Start at 12 (top), go clockwise
           var x = Math.cos(angle) * clockRadius;
-          var y = Math.sin(angle) * clockRadius;
+          var y = -Math.sin(angle) * clockRadius; // Negative to flip Y axis
           ctx.fillText(hour.toString(), x, y);
         }
         ctx.restore();
@@ -23161,9 +23161,10 @@ deg_to_clock <- function(x) {
           var tiltRad = tiltAngle * Math.PI / 180;
           
           // Create the tilt direction vector in 3D
-          var tiltDirX = -Math.sin(tiltRad);
-          var tiltDirY = Math.cos(tiltRad);
-          var tiltDirZ = 0; // Initially perpendicular to view
+          // The tilt angle represents a clock position, where 12:00 is straight up
+          var tiltDirX = Math.sin(tiltRad);
+          var tiltDirY = -Math.cos(tiltRad);
+          var tiltDirZ = 0;
           
           // Normalize
           var len = Math.sqrt(tiltDirX * tiltDirX + tiltDirY * tiltDirY + tiltDirZ * tiltDirZ);
@@ -23172,8 +23173,6 @@ deg_to_clock <- function(x) {
             tiltDirY /= len;
             tiltDirZ /= len;
           }
-          
-          var tiltAxis = { x: tiltDirX, y: tiltDirY, z: tiltDirZ };
           
           // Create arrows along the tilt line
           var numArrows = 6;
@@ -23192,12 +23191,14 @@ deg_to_clock <- function(x) {
               z: tiltDirZ * t
             };
             
-            // Rotate this point around the spin axis (which goes through origin perpendicular to screen)
-            // The ball rotates around the Z-axis in our view
+            // Rotate around Y-axis (vertical axis) by the rotation amount
+            var cosRot = Math.cos(rotation);
+            var sinRot = Math.sin(rotation);
+            
             var rotated = {
-              x: point.x * Math.cos(rotation) - point.z * Math.sin(rotation),
+              x: point.x * cosRot + point.z * sinRot,
               y: point.y,
-              z: point.x * Math.sin(rotation) + point.z * Math.cos(rotation)
+              z: -point.x * sinRot + point.z * cosRot
             };
             
             // Calculate opacity based on z-depth
@@ -23208,11 +23209,11 @@ deg_to_clock <- function(x) {
             // Skip if too far back
             if (opacity < 0.3) continue;
             
-            // Arrow points in the tilt direction (rotated)
+            // Arrow direction also rotates
             var arrowDir = {
-              x: tiltDirX * Math.cos(rotation) - tiltDirZ * Math.sin(rotation),
+              x: tiltDirX * cosRot + tiltDirZ * sinRot,
               y: tiltDirY,
-              z: tiltDirX * Math.sin(rotation) + tiltDirZ * Math.cos(rotation)
+              z: -tiltDirX * sinRot + tiltDirZ * cosRot
             };
             
             var dirX = arrowDir.x;
@@ -23233,9 +23234,7 @@ deg_to_clock <- function(x) {
             
             // Draw arrow
             ctx.beginPath();
-            // Arrow tip
             ctx.moveTo(rotated.x + dirX * arrowSize, rotated.y + dirY * arrowSize);
-            // Arrow body
             ctx.lineTo(rotated.x + dirX * arrowSize * 0.3 + perpX * arrowWidth, 
                        rotated.y + dirY * arrowSize * 0.3 + perpY * arrowWidth);
             ctx.lineTo(rotated.x + dirX * arrowSize * 0.3 + perpX * arrowWidth * 0.4, 
@@ -23266,10 +23265,14 @@ deg_to_clock <- function(x) {
               y: tiltDirY * t,
               z: tiltDirZ * t
             };
+            
+            var cosRot = Math.cos(rotation);
+            var sinRot = Math.sin(rotation);
+            
             var rotated = {
-              x: point.x * Math.cos(rotation) - point.z * Math.sin(rotation),
+              x: point.x * cosRot + point.z * sinRot,
               y: point.y,
-              z: point.x * Math.sin(rotation) + point.z * Math.cos(rotation)
+              z: -point.x * sinRot + point.z * cosRot
             };
             
             if (j === 0) {
@@ -23595,17 +23598,6 @@ deg_to_clock <- function(x) {
           "<span style='color: #ffb300; font-weight:700;'>↗ Dashed gold arrow:</span> Release tilt direction (rTilt)",
           "<span style='color: #4caf50; font-weight:700;'>↘ Solid green arrow:</span> Break tilt direction (bTilt)",
           "<span style='color: #ffb300; font-weight:700;'>⟷ Gold rotating line:</span> Spin axis rotating through rTilt direction",
-          sep = "<br/>"
-        ))
-      ),
-      tags$div(
-        class = "spin-info",
-        HTML(paste(
-          sprintf("<strong>Spin Rate:</strong> %s", spin_rate_text),
-          sprintf("<strong>Spin Eff:</strong> %s", spin_eff_text),
-          sprintf("<strong>Tilt:</strong> %s", tilt_label),
-          sprintf("<strong>Seam Orient:</strong> %s", seam_rot_text),
-          sprintf("<strong>Axis (X/Y/Z):</strong> %s", axis_text),
           sep = "<br/>"
         ))
       ),
