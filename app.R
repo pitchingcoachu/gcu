@@ -23163,16 +23163,23 @@ deg_to_clock <- function(x) {
 
           var lineLength = radius * 0.95;
           var depthRadius = radius * 0.45;
-          var sampleCount = 14;
-          var scrollSpeed = 0.32;
+          var sampleCount = 18;
+          var scrollSpeed = 0.52;
           var progress = ((rotation / (Math.PI * 2)) * scrollSpeed) % 1;
           if (progress < 0) progress += 1;
           progress = 1 - progress;
 
           var axisDir = tiltDir;
           var motionDir = { x: -axisDir.x, y: -axisDir.y };
-          var perpX = -motionDir.y;
-          var perpY = motionDir.x;
+          var axis3d = normalizeVecObject({ x: axisDir.x, y: axisDir.y, z: 0 }) || { x: 0, y: 1, z: 0 };
+          var orbitAngle = rotation * 0.7;
+          var motion3d = { x: motionDir.x, y: motionDir.y, z: 0 };
+          var rotatedMotion = rotatePointAroundAxis(motion3d, axis3d, orbitAngle);
+          var motionLen = Math.sqrt(rotatedMotion.x * rotatedMotion.x + rotatedMotion.y * rotatedMotion.y);
+          if (motionLen < 1e-6) motionLen = 1;
+          var normalizedMotion = { x: rotatedMotion.x / motionLen, y: rotatedMotion.y / motionLen };
+          var arrowPerpX = -normalizedMotion.y;
+          var arrowPerpY = normalizedMotion.x;
 
           var samples = [];
           for (var i = 0; i <= sampleCount; i++) {
@@ -23180,15 +23187,17 @@ deg_to_clock <- function(x) {
             var t = -lineLength + 2 * lineLength * phase;
             var clamped = Math.max(-lineLength, Math.min(lineLength, t));
             var depthOsc = Math.sin(phase * Math.PI * 2);
-            samples.push({
+            var basePoint = {
               x: axisDir.x * clamped,
               y: axisDir.y * clamped,
               z: depthOsc * depthRadius
-            });
+            };
+            var rotatedPoint = rotatePointAroundAxis(basePoint, axis3d, orbitAngle);
+            samples.push(rotatedPoint);
           }
 
           ctx.save();
-          ctx.lineWidth = Math.max(2, radius * 0.14);
+          ctx.lineWidth = Math.max(3, radius * 0.17);
           ctx.lineCap = 'round';
           ctx.strokeStyle = 'rgba(230, 190, 120, 0.45)';
           for (var segment = 1; segment < samples.length; segment++) {
@@ -23219,14 +23228,14 @@ deg_to_clock <- function(x) {
             var centerX = cx + sample.x;
             var centerY = cy + sample.y;
 
-            var tipX = centerX + motionDir.x * length;
-            var tipY = centerY + motionDir.y * length;
-            var baseX = centerX - motionDir.x * (length * 0.35);
-            var baseY = centerY - motionDir.y * (length * 0.35);
-            var leftX = baseX + perpX * width;
-            var leftY = baseY + perpY * width;
-            var rightX = baseX - perpX * width;
-            var rightY = baseY - perpY * width;
+            var tipX = centerX + normalizedMotion.x * length;
+            var tipY = centerY + normalizedMotion.y * length;
+            var baseX = centerX - normalizedMotion.x * (length * 0.35);
+            var baseY = centerY - normalizedMotion.y * (length * 0.35);
+            var leftX = baseX + arrowPerpX * width;
+            var leftY = baseY + arrowPerpY * width;
+            var rightX = baseX - arrowPerpX * width;
+            var rightY = baseY - arrowPerpY * width;
 
             ctx.fillStyle = fillColor;
             ctx.strokeStyle = strokeColor;
