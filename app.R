@@ -23191,16 +23191,22 @@ deg_to_clock <- function(x) {
           ctx.setLineDash([]);
           ctx.restore();
 
+          var edgeMargin = radius * 0.03;
           for (var i = 0; i < arrowCount; i++) {
             var phase = (i / arrowCount + progress) % 1;
             var t = -axisLength + 2 * axisLength * phase;
             var centerX = cx + tiltDir.x * t;
             var centerY = cy + tiltDir.y * t;
             var depthOsc = Math.sin(phase * Math.PI * 2);
-            var arrowLength = radius * (0.16 + depthOsc * 0.02);
-            var arrowWidth = radius * 0.05;
-            var fillColor = 'rgba(236, 204, 148, ' + (0.45 + depthOsc * 0.2) + ')';
-            var strokeColor = 'rgba(95, 60, 30, ' + (0.4 + depthOsc * 0.3) + ')';
+            var baseLength = radius * (0.16 + depthOsc * 0.02);
+            var fade = Math.max(0, 1 - Math.abs(t) / axisLength);
+            var maxArrow = Math.max(0, axisLength - Math.abs(t) - edgeMargin);
+            var arrowLength = Math.min(baseLength * fade, maxArrow);
+            if (arrowLength <= 0) continue;
+            var arrowWidth = radius * 0.05 * (0.5 + 0.5 * fade);
+            var fadeAlpha = fade * 0.9;
+            var fillColor = 'rgba(236, 204, 148, ' + ((0.4 + depthOsc * 0.2) * fadeAlpha) + ')';
+            var strokeColor = 'rgba(95, 60, 30, ' + ((0.35 + depthOsc * 0.25) * fadeAlpha) + ')';
 
             var tipX = centerX + arrowDir.x * arrowLength;
             var tipY = centerY + arrowDir.y * arrowLength;
@@ -23223,6 +23229,7 @@ deg_to_clock <- function(x) {
             ctx.stroke();
           }
         }
+
 
         function drawBaseballSeams(radius, rotation) {
           var orientationPaths = getOrientationPaths(radius);
@@ -23497,14 +23504,12 @@ deg_to_clock <- function(x) {
 
     tags$div(
       class = "spin-canvas-card",
-      tags$div(class = "spin-canvas-label", label_text),
       tags$div(
         class = "spin-canvas-container",
         tags$div(
           class = "spin-stage",
           tags$canvas(id = config$canvasId, class = "spin-canvas")
-        ),
-        tags$div(class = "spin-caption", "Pitcher view · behind the mound looking toward home plate.")
+        )
       ),
       tags$div(
         class = "spin-controls",
