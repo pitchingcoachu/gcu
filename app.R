@@ -22838,16 +22838,6 @@ deg_to_clock <- function(x) {
         };
       }
 
-      function rotateAroundY(point, angle) {
-        var cosA = Math.cos(angle);
-        var sinA = Math.sin(angle);
-        return {
-          x: point.x * cosA + point.z * sinA,
-          y: point.y,
-          z: -point.x * sinA + point.z * cosA
-        };
-      }
-
       function buildSeamPaths(radius) {
         var paths = [];
         var stitchCount = 120;
@@ -22929,11 +22919,11 @@ deg_to_clock <- function(x) {
       function drawClockNumbers(ctx, radius) {
         ctx.save();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        var fontSize = Math.max(11, radius * 0.16);
+        var fontSize = Math.max(9, radius * 0.12);
         ctx.font = fontSize + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        var offset = Math.min(radius * 0.28, 48);
+        var offset = Math.min(radius * 0.26, 46);
         var clockRadius = radius + offset; // Place numbers just outside the ball and inside the gray ring
         
         // Draw all 12 numbers - 12 is at top (90 degrees), going clockwise
@@ -23171,69 +23161,81 @@ deg_to_clock <- function(x) {
           var tiltDir = tiltDegreesToVector(tiltAngle);
           if (!tiltDir) return;
           
-          var lineLength = radius * 1.15;
-          var sampleCount = 7;
+          var lineLength = radius * 1.12;
+          var depthRadius = radius * 0.45;
+          var sampleCount = 12;
+          var scrollSpeed = 0.14;
+          var progress = ((rotation / (Math.PI * 2)) * scrollSpeed) % 1;
+          if (progress < 0) progress += 1;
+
           var samples = [];
           for (var i = 0; i <= sampleCount; i++) {
-            var t = -lineLength + (2 * lineLength) * (i / sampleCount);
-            var point = {
+            var phase = ((i / sampleCount) + progress) % 1;
+            var t = -lineLength + 2 * lineLength * phase;
+            var depthOsc = Math.sin(phase * Math.PI * 2);
+            samples.push({
               x: tiltDir.x * t,
               y: tiltDir.y * t,
-              z: 0
-            };
-            samples.push(rotateAroundY(point, rotation));
+              z: depthOsc * depthRadius
+            });
           }
-          
-          var arrowDir = rotateAroundY({ x: tiltDir.x, y: tiltDir.y, z: 0 }, rotation);
-          var arrowLen = Math.sqrt(arrowDir.x * arrowDir.x + arrowDir.y * arrowDir.y);
-          if (arrowLen < 1e-6) return;
-          arrowDir.x /= arrowLen;
-          arrowDir.y /= arrowLen;
-          var perpX = -arrowDir.y;
-          var perpY = arrowDir.x;
-          
+
           ctx.save();
-          ctx.lineWidth = Math.max(2, radius * 0.015);
-          ctx.lineCap = 'round';
+          ctx.lineWidth = Math.max(2, radius * 0.014);
+          var arrowDirX = tiltDir.x;
+          var arrowDirY = tiltDir.y;
+          var perpX = -arrowDirY;
+          var perpY = arrowDirX;
+
           for (var segment = 1; segment < samples.length; segment++) {
             var prev = samples[segment - 1];
             var curr = samples[segment];
-            var depthFactor = ((prev.z + curr.z) / 2 + radius) / (radius * 2);
-            depthFactor = Math.max(0.1, Math.min(1, depthFactor));
-            var behind = prev.z < 0 && curr.z < 0;
-            ctx.strokeStyle = 'rgba(230, 185, 120, ' + (0.25 + depthFactor * 0.45) + ')';
-            ctx.setLineDash(behind ? [4, 4] : []);
+            var depthAvg = (prev.z + curr.z) / 2;
+            var depthFactor = (depthAvg + depthRadius) / (depthRadius * 2);
+            depthFactor = Math.max(0.05, Math.min(1, depthFactor));
+            var strokeAlpha = 0.2 + depthFactor * 0.35;
+            ctx.strokeStyle = 'rgba(230, 190, 120, ' + strokeAlpha + ')';
+            if (depthAvg < 0) ctx.setLineDash([4, 4]);
+            else ctx.setLineDash([]);
             ctx.beginPath();
-            ctx.moveTo(prev.x, prev.y);
-            ctx.lineTo(curr.x, curr.y);
+            ctx.moveTo(cx + prev.x, cy + prev.y);
+            ctx.lineTo(cx + curr.x, cy + curr.y);
             ctx.stroke();
           }
-          ctx.restore();
-          
-          samples.forEach(function(pos, index) {
-            var depthFactor = (pos.z + radius) / (radius * 2);
+          ctx.setLineDash([]);
+
+          samples.forEach(function(sample, index) {
+            if (index % 2) return;
+            var depthFactor = (sample.z + depthRadius) / (depthRadius * 2);
             depthFactor = Math.max(0.12, Math.min(1, depthFactor));
-            var opacity = 0.35 + depthFactor * 0.55;
-            var length = radius * (0.12 + depthFactor * 0.04);
+            var opacity = 0.45 + depthFactor * 0.45;
+            var length = radius * (0.11 + depthFactor * 0.04);
             var width = radius * 0.05;
-            ctx.fillStyle = 'rgba(190, 140, 60,' + opacity + ')';
+            var fillColor = 'rgba(236, 204, 148, ' + opacity + ')';
+            var strokeColor = 'rgba(103, 64, 33, ' + (0.3 + depthFactor * 0.4) + ')';
+            var centerX = cx + sample.x;
+            var centerY = cy + sample.y;
+
+            ctx.fillStyle = fillColor;
+            ctx.strokeStyle = strokeColor;
+            ctx.lineWidth = 1.5;
             ctx.beginPath();
-            ctx.moveTo(pos.x + arrowDir.x * length, pos.y + arrowDir.y * length);
+            ctx.moveTo(centerX + arrowDirX * length, centerY + arrowDirY * length);
+            ctx.lineTo(centerX + perpX * width * 0.7, centerY + perpY * width * 0.7);
             ctx.lineTo(
-              pos.x + perpX * width * 0.65,
-              pos.y + perpY * width * 0.65
+              centerX - arrowDirX * (length * 0.4) + perpX * width * 0.4,
+              centerY - arrowDirY * (length * 0.4) + perpY * width * 0.4
             );
             ctx.lineTo(
-              pos.x - arrowDir.x * (length * 0.4) + perpX * width * 0.4,
-              pos.y - arrowDir.y * (length * 0.4) + perpY * width * 0.4
-            );
-            ctx.lineTo(
-              pos.x - arrowDir.x * (length * 0.4) - perpX * width * 0.4,
-              pos.y - arrowDir.y * (length * 0.4) - perpY * width * 0.4
+              centerX - arrowDirX * (length * 0.4) - perpX * width * 0.4,
+              centerY - arrowDirY * (length * 0.4) - perpY * width * 0.4
             );
             ctx.closePath();
             ctx.fill();
+            ctx.stroke();
           });
+
+          ctx.restore();
         }
 
         function drawBaseballSeams(radius, rotation) {
