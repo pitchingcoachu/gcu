@@ -22918,11 +22918,11 @@ deg_to_clock <- function(x) {
 
       function drawClockNumbers(ctx, radius) {
         ctx.save();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.35)';
-        ctx.font = Math.max(10, radius * 0.14) + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.6)';
+        ctx.font = Math.max(11, radius * 0.16) + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        var clockRadius = radius * 0.92;
+        var clockRadius = radius * 1.25; // Outside the ball
         for (var hour = 1; hour <= 12; hour++) {
           var angle = ((hour - 3) / 12) * Math.PI * 2;
           var x = Math.cos(angle) * clockRadius;
@@ -23198,22 +23198,29 @@ deg_to_clock <- function(x) {
         function drawTiltArrow(ctx, cx, cy, radius, deg, color, dashed) {
           var vec = tiltDegreesToVector(deg);
           if (!vec) return;
-          var length = radius * 0.62;
-          var endX = cx + vec.x * length;
-          var endY = cy + vec.y * length;
+          
+          // Position arrow between ball edge and clock numbers
+          var startRadius = radius * 1.02; // Just outside ball
+          var endRadius = radius * 1.18; // Just inside clock numbers
+          
+          var startX = cx + vec.x * startRadius;
+          var startY = cy + vec.y * startRadius;
+          var endX = cx + vec.x * endRadius;
+          var endY = cy + vec.y * endRadius;
+          
           ctx.save();
           ctx.strokeStyle = color;
           ctx.fillStyle = color;
-          ctx.lineWidth = 2.5;
+          ctx.lineWidth = 5; // Thicker
           ctx.lineCap = 'round';
           ctx.setLineDash(dashed ? [6, 5] : []);
           ctx.beginPath();
-          ctx.moveTo(cx, cy);
+          ctx.moveTo(startX, startY);
           ctx.lineTo(endX, endY);
           ctx.stroke();
           
-          // Calculate arrowhead based on the tilt direction, not ball rotation
-          var headLen = radius * 0.08;
+          // Calculate arrowhead based on the tilt direction
+          var headLen = radius * 0.12;
           var tiltAngle = Math.atan2(vec.y, vec.x);
           var perpAngle = tiltAngle + Math.PI / 2;
           var perpX = Math.cos(perpAngle);
@@ -23222,10 +23229,11 @@ deg_to_clock <- function(x) {
           var baseX = endX + Math.cos(backAngle) * headLen;
           var baseY = endY + Math.sin(backAngle) * headLen;
           
+          ctx.setLineDash([]); // Solid arrowhead
           ctx.beginPath();
           ctx.moveTo(endX, endY);
-          ctx.lineTo(baseX + perpX * headLen * 0.4, baseY + perpY * headLen * 0.4);
-          ctx.lineTo(baseX - perpX * headLen * 0.4, baseY - perpY * headLen * 0.4);
+          ctx.lineTo(baseX + perpX * headLen * 0.5, baseY + perpY * headLen * 0.5);
+          ctx.lineTo(baseX - perpX * headLen * 0.5, baseY - perpY * headLen * 0.5);
           ctx.closePath();
           ctx.fill();
           ctx.restore();
@@ -23243,190 +23251,102 @@ deg_to_clock <- function(x) {
         function drawRotatingTiltLine(ctx, cx, cy, radius, tiltAngle, rotation) {
           if (tiltAngle === null || !isFinite(tiltAngle)) return;
           
-          // Convert tilt angle to radians - this defines the axis direction
+          // Convert tilt angle to radians - this is the direction through the ball
           var tiltRad = tiltAngle * Math.PI / 180;
           
-          // Create the tilt axis as a 3D vector 
-          // Tilt is measured as clock position, so convert to 3D direction
-          var tiltAxisX = -Math.sin(tiltRad);
-          var tiltAxisY = Math.cos(tiltRad);
-          var tiltAxisZ = 0; // Perpendicular to viewing direction
+          // The tilt direction in 2D screen space
+          var tiltDirX = -Math.sin(tiltRad);
+          var tiltDirY = Math.cos(tiltRad);
           
-          // Normalize
-          var axisLen = Math.sqrt(tiltAxisX * tiltAxisX + tiltAxisY * tiltAxisY + tiltAxisZ * tiltAxisZ);
-          if (axisLen > 0) {
-            tiltAxisX /= axisLen;
-            tiltAxisY /= axisLen;
-            tiltAxisZ /= axisLen;
-          }
-          
-          var tiltAxis = { x: tiltAxisX, y: tiltAxisY, z: tiltAxisZ };
-          
-          // Create points around a circle perpendicular to the tilt axis
-          var numArrows = 6; // Number of arrows around the circle
-          var circleRadius = radius * 0.8; // Radius of the circle on which arrows sit
+          // Create a line of arrows going THROUGH the ball at the tilt angle
+          // The arrows rotate around this line as the ball spins
+          var numArrows = 6; // Number of arrows around the rotation
           
           ctx.save();
           
-          // Draw arrows positioned around a circle, rotating with the ball
+          // Draw arrows rotating around the tilt direction line
           for (var i = 0; i < numArrows; i++) {
-            // Angle around the circle for this arrow
-            var circleAngle = (i / numArrows) * Math.PI * 2 + rotation;
+            // Angle around the rotation for this arrow
+            var rotAngle = (i / numArrows) * Math.PI * 2 + rotation;
             
-            // Create a point on a circle perpendicular to tilt axis
-            // First, create two perpendicular vectors to the tilt axis
-            var perpVec1, perpVec2;
+            // Create a 3D point that rotates around the tilt axis
+            // Start with a point perpendicular to the tilt direction
+            var perpX = tiltDirY; // Perpendicular in 2D
+            var perpY = -tiltDirX;
             
-            // Find a vector not parallel to tilt axis
-            if (Math.abs(tiltAxis.z) < 0.9) {
-              perpVec1 = { x: 0, y: 0, z: 1 };
-            } else {
-              perpVec1 = { x: 1, y: 0, z: 0 };
-            }
-            
-            // Cross product to get first perpendicular
-            var cross1 = {
-              x: tiltAxis.y * perpVec1.z - tiltAxis.z * perpVec1.y,
-              y: tiltAxis.z * perpVec1.x - tiltAxis.x * perpVec1.z,
-              z: tiltAxis.x * perpVec1.y - tiltAxis.y * perpVec1.x
-            };
-            var len1 = Math.sqrt(cross1.x * cross1.x + cross1.y * cross1.y + cross1.z * cross1.z);
-            if (len1 > 0) {
-              cross1.x /= len1;
-              cross1.y /= len1;
-              cross1.z /= len1;
-            }
-            
-            // Cross product to get second perpendicular
-            var cross2 = {
-              x: tiltAxis.y * cross1.z - tiltAxis.z * cross1.y,
-              y: tiltAxis.z * cross1.x - tiltAxis.x * cross1.z,
-              z: tiltAxis.x * cross1.y - tiltAxis.y * cross1.x
-            };
-            
-            // Position on circle
+            // Position at radius distance from center, rotated around tilt axis
+            // The Z component creates the 3D rotation effect
             var point3d = {
-              x: circleRadius * (Math.cos(circleAngle) * cross1.x + Math.sin(circleAngle) * cross2.x),
-              y: circleRadius * (Math.cos(circleAngle) * cross1.y + Math.sin(circleAngle) * cross2.y),
-              z: circleRadius * (Math.cos(circleAngle) * cross1.z + Math.sin(circleAngle) * cross2.z)
+              x: perpX * Math.cos(rotAngle) * radius * 0.7,
+              y: perpY * Math.cos(rotAngle) * radius * 0.7,
+              z: Math.sin(rotAngle) * radius * 0.7
             };
+            
+            // Add tilt direction offset to spread arrows along the line
+            var linePos = (i - numArrows / 2) * 0.15 * radius;
+            point3d.x += tiltDirX * linePos;
+            point3d.y += tiltDirY * linePos;
             
             // Check visibility based on z-depth
-            var isVisible = point3d.z > -radius * 0.1;
+            var isVisible = point3d.z > -radius * 0.15;
             
             // Calculate opacity based on z-depth for 3D effect
             var depthFactor = (point3d.z + radius) / (radius * 2);
-            depthFactor = Math.max(0.2, Math.min(1, depthFactor));
-            var opacity = 0.4 + depthFactor * 0.5;
+            depthFactor = Math.max(0.1, Math.min(1, depthFactor));
+            var opacity = 0.3 + depthFactor * 0.6;
             
-            // Calculate tangent direction (direction of motion around circle)
-            var tangent = {
-              x: -Math.sin(circleAngle) * cross1.x + Math.cos(circleAngle) * cross2.x,
-              y: -Math.sin(circleAngle) * cross1.y + Math.cos(circleAngle) * cross2.y,
-              z: -Math.sin(circleAngle) * cross1.z + Math.cos(circleAngle) * cross2.z
-            };
+            // Skip if too far back
+            if (opacity < 0.2) continue;
             
-            // Project tangent to 2D for arrow direction
-            var dirX = tangent.x;
-            var dirY = tangent.y;
-            var dirLen = Math.sqrt(dirX * dirX + dirY * dirY);
-            if (dirLen > 0.001) {
-              dirX /= dirLen;
-              dirY /= dirLen;
-            }
+            // Arrow points in the tilt direction
+            var arrowSize = radius * 0.14;
+            var arrowWidth = radius * 0.08;
             
-            var perpX = -dirY;
-            var perpY = dirX;
+            var dirX = tiltDirX;
+            var dirY = tiltDirY;
             
-            var arrowSize = radius * 0.15;
-            var arrowWidth = radius * 0.09;
+            var perpArrowX = -dirY;
+            var perpArrowY = dirX;
+            
+            // Scale arrow size based on depth
+            var scale = 0.7 + depthFactor * 0.3;
+            arrowSize *= scale;
+            arrowWidth *= scale;
             
             ctx.fillStyle = 'rgba(255, 179, 0, ' + opacity + ')';
+            ctx.strokeStyle = 'rgba(255, 179, 0, ' + opacity + ')';
+            ctx.lineWidth = 2;
             
-            // Draw arrow shape
+            // Draw arrow shape pointing in tilt direction
             ctx.beginPath();
             // Arrow tip
             ctx.moveTo(point3d.x + dirX * arrowSize, point3d.y + dirY * arrowSize);
             // Arrow body
-            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 + perpX * arrowWidth, 
-                       point3d.y + dirY * arrowSize * 0.3 + perpY * arrowWidth);
-            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 + perpX * arrowWidth * 0.5, 
-                       point3d.y + dirY * arrowSize * 0.3 + perpY * arrowWidth * 0.5);
-            ctx.lineTo(point3d.x - dirX * arrowSize * 0.7 + perpX * arrowWidth * 0.5, 
-                       point3d.y - dirY * arrowSize * 0.7 + perpY * arrowWidth * 0.5);
-            ctx.lineTo(point3d.x - dirX * arrowSize * 0.7 - perpX * arrowWidth * 0.5, 
-                       point3d.y - dirY * arrowSize * 0.7 - perpY * arrowWidth * 0.5);
-            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 - perpX * arrowWidth * 0.5, 
-                       point3d.y + dirY * arrowSize * 0.3 - perpY * arrowWidth * 0.5);
-            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 - perpX * arrowWidth, 
-                       point3d.y + dirY * arrowSize * 0.3 - perpY * arrowWidth);
+            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 + perpArrowX * arrowWidth, 
+                       point3d.y + dirY * arrowSize * 0.3 + perpArrowY * arrowWidth);
+            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 + perpArrowX * arrowWidth * 0.4, 
+                       point3d.y + dirY * arrowSize * 0.3 + perpArrowY * arrowWidth * 0.4);
+            ctx.lineTo(point3d.x - dirX * arrowSize * 0.7 + perpArrowX * arrowWidth * 0.4, 
+                       point3d.y - dirY * arrowSize * 0.7 + perpArrowY * arrowWidth * 0.4);
+            ctx.lineTo(point3d.x - dirX * arrowSize * 0.7 - perpArrowX * arrowWidth * 0.4, 
+                       point3d.y - dirY * arrowSize * 0.7 - perpArrowY * arrowWidth * 0.4);
+            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 - perpArrowX * arrowWidth * 0.4, 
+                       point3d.y + dirY * arrowSize * 0.3 - perpArrowY * arrowWidth * 0.4);
+            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 - perpArrowX * arrowWidth, 
+                       point3d.y + dirY * arrowSize * 0.3 - perpArrowY * arrowWidth);
             ctx.closePath();
             ctx.fill();
           }
           
-          // Draw a circle path to show the rotation path
-          ctx.strokeStyle = 'rgba(255, 179, 0, 0.3)';
+          // Draw the tilt axis line going through the ball
+          ctx.strokeStyle = 'rgba(255, 179, 0, 0.4)';
           ctx.lineWidth = 2;
-          ctx.setLineDash([4, 4]);
+          ctx.setLineDash([5, 5]);
           
-          var segments = 60;
+          var lineLength = radius * 1.3;
           ctx.beginPath();
-          for (var j = 0; j <= segments; j++) {
-            var angle = (j / segments) * Math.PI * 2;
-            
-            var perpVec1;
-            if (Math.abs(tiltAxis.z) < 0.9) {
-              perpVec1 = { x: 0, y: 0, z: 1 };
-            } else {
-              perpVec1 = { x: 1, y: 0, z: 0 };
-            }
-            
-            var cross1 = {
-              x: tiltAxis.y * perpVec1.z - tiltAxis.z * perpVec1.y,
-              y: tiltAxis.z * perpVec1.x - tiltAxis.x * perpVec1.z,
-              z: tiltAxis.x * perpVec1.y - tiltAxis.y * perpVec1.x
-            };
-            var len1 = Math.sqrt(cross1.x * cross1.x + cross1.y * cross1.y + cross1.z * cross1.z);
-            if (len1 > 0) {
-              cross1.x /= len1;
-              cross1.y /= len1;
-              cross1.z /= len1;
-            }
-            
-            var cross2 = {
-              x: tiltAxis.y * cross1.z - tiltAxis.z * cross1.y,
-              y: tiltAxis.z * cross1.x - tiltAxis.x * cross1.z,
-              z: tiltAxis.x * cross1.y - tiltAxis.y * cross1.x
-            };
-            
-            var circlePoint = {
-              x: circleRadius * (Math.cos(angle) * cross1.x + Math.sin(angle) * cross2.x),
-              y: circleRadius * (Math.cos(angle) * cross1.y + Math.sin(angle) * cross2.y),
-              z: circleRadius * (Math.cos(angle) * cross1.z + Math.sin(angle) * cross2.z)
-            };
-            
-            // Only draw visible parts
-            if (circlePoint.z > -radius * 0.1) {
-              if (j === 0) {
-                ctx.moveTo(circlePoint.x, circlePoint.y);
-              } else {
-                ctx.lineTo(circlePoint.x, circlePoint.y);
-              }
-            } else {
-              if (j < segments) {
-                // Start new path when we go behind
-                var nextAngle = ((j + 1) / segments) * Math.PI * 2;
-                var nextPoint = {
-                  x: circleRadius * (Math.cos(nextAngle) * cross1.x + Math.sin(nextAngle) * cross2.x),
-                  y: circleRadius * (Math.cos(nextAngle) * cross1.y + Math.sin(nextAngle) * cross2.y),
-                  z: circleRadius * (Math.cos(nextAngle) * cross1.z + Math.sin(nextAngle) * cross2.z)
-                };
-                if (nextPoint.z > -radius * 0.1) {
-                  ctx.moveTo(nextPoint.x, nextPoint.y);
-                }
-              }
-            }
-          }
+          ctx.moveTo(-tiltDirX * lineLength, -tiltDirY * lineLength);
+          ctx.lineTo(tiltDirX * lineLength, tiltDirY * lineLength);
           ctx.stroke();
           
           ctx.restore();
