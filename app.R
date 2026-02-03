@@ -22923,8 +22923,10 @@ deg_to_clock <- function(x) {
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         var clockRadius = radius * 1.25; // Outside the ball
+        
+        // Draw all 12 numbers
         for (var hour = 1; hour <= 12; hour++) {
-          var angle = ((hour - 3) / 12) * Math.PI * 2;
+          var angle = ((hour - 3) / 12) * Math.PI * 2; // 3 is at 0 degrees (right), then go counterclockwise
           var x = Math.cos(angle) * clockRadius;
           var y = Math.sin(angle) * clockRadius;
           ctx.fillText(hour.toString(), x, y);
@@ -22964,114 +22966,18 @@ deg_to_clock <- function(x) {
         }
         var baseSeamCache = { radius: 0, paths: null };
         var orientationPathsCache = {};
-        var orientationOptions = Array.isArray(cfg.orientationOptions) ? cfg.orientationOptions.slice() : [];
-        if (!orientationOptions.length) {
-          orientationOptions.push({
-            id: 'primary',
-            label: 'Primary',
-            type: 'rotation',
-            rotation: {
-              x: seamRotX,
-              y: seamRotY,
-              z: seamRotZ
-            }
-          });
-        }
-        var orientationMap = {};
-        orientationOptions.forEach(function(opt, idx) {
-          if (!opt.id) opt.id = 'orientation_' + idx;
-          if (!opt.label) opt.label = opt.id;
-          if (opt.type === 'vector' && opt.vector) {
-            opt.matrix = buildOrientationMatrixFromVector(opt.vector);
-          }
-          orientationMap[opt.id] = opt;
-        });
-        var defaultOrientationId = cfg.defaultOrientationId && orientationMap[cfg.defaultOrientationId]
-          ? cfg.defaultOrientationId
-          : orientationOptions[0].id;
-        var activeOrientationId = defaultOrientationId;
-        var orientationContainer = cfg.orientationContainerId ? document.getElementById(cfg.orientationContainerId) : null;
-        var orientationButtons = {};
-        function refreshOrientationButtons() {
-          Object.keys(orientationButtons).forEach(function(key) {
-            var btn = orientationButtons[key];
-            if (!btn) return;
-            btn.classList.toggle('active', key === activeOrientationId);
-          });
-        }
-        function setActiveOrientation(id) {
-          if (!id || !orientationMap[id]) return;
-          if (activeOrientationId === id) return;
-          activeOrientationId = id;
-          orientationPathsCache = {};
-          refreshOrientationButtons();
-        }
-        if (orientationContainer) {
-          orientationContainer.innerHTML = '';
-          orientationButtons = {};
-          orientationOptions.forEach(function(opt) {
-            var btn = document.createElement('button');
-            btn.type = 'button';
-            btn.className = 'spin-orientation-button';
-            btn.textContent = opt.label;
-            var tooltipParts = [];
-            if (isFinite(Number(opt.horizontal))) tooltipParts.push('H: ' + Number(opt.horizontal).toFixed(1) + '°');
-            if (isFinite(Number(opt.vertical))) tooltipParts.push('V: ' + Number(opt.vertical).toFixed(1) + '°');
-            if (tooltipParts.length) btn.title = tooltipParts.join(' · ');
-            btn.addEventListener('click', function() {
-              setActiveOrientation(opt.id);
-            });
-            orientationContainer.appendChild(btn);
-            orientationButtons[opt.id] = btn;
-          });
-          refreshOrientationButtons();
-        }
-        function getBaseSeamPaths(radius) {
-          if (baseSeamCache.radius === radius && baseSeamCache.paths) return baseSeamCache.paths;
-          baseSeamCache.paths = buildSeamPaths(radius);
-          baseSeamCache.radius = radius;
-          return baseSeamCache.paths;
-        }
-
-        function getOrientationPaths(radius) {
-          var orientationId = orientationMap[activeOrientationId] ? activeOrientationId : defaultOrientationId;
-          var cacheKey = orientationId + ':' + radius;
-          if (orientationPathsCache[cacheKey]) return orientationPathsCache[cacheKey];
-          var basePaths = getBaseSeamPaths(radius);
-          var orientation = orientationMap[orientationId];
-          var paths;
-          if (orientation && orientation.type === 'rotation' && orientation.rotation) {
-            paths = orientSeamPaths(
-              basePaths,
-              Number(orientation.rotation.x) || 0,
-              Number(orientation.rotation.y) || 0,
-              Number(orientation.rotation.z) || 0
-            );
-          } else if (orientation && orientation.matrix) {
-            paths = applyMatrixToPaths(basePaths, orientation.matrix);
-          } else {
-            paths = basePaths.map(function(path) {
-              return path.map(function(pt) {
-                return { x: pt.x, y: pt.y, z: pt.z };
-              });
-            });
-          }
-          orientationPathsCache[cacheKey] = paths;
-          return paths;
-        }
-        var speedLabel = cfg.speedLabelId ? document.getElementById(cfg.speedLabelId) : null;
+        
+        // Removed orientation options logic - no longer needed
+        
         var slider = cfg.sliderId ? document.getElementById(cfg.sliderId) : null;
-        var speedSlider = cfg.speedSliderId ? document.getElementById(cfg.speedSliderId) : null;
         var playBtn = cfg.playBtnId ? document.getElementById(cfg.playBtnId) : null;
         var pauseBtn = cfg.pauseBtnId ? document.getElementById(cfg.pauseBtnId) : null;
         var running = cfg.autoplay !== false;
         var angle = 0;
         var baseSpeed = (spinRate / 60) * 2 * Math.PI;
-        var spinSpeedMin = Number(cfg.spinSpeedMin) || 0.01;
-        var spinSpeedMax = Number(cfg.spinSpeedMax) || 1.5;
-        if (spinSpeedMax <= spinSpeedMin) spinSpeedMax = spinSpeedMin + 0.05;
-        var spinSpeedStep = Number(cfg.spinSpeedStep) || 0.01;
-        var multiplier = clamp(Number(cfg.spinSpeedDefault) || 0.15, spinSpeedMin, spinSpeedMax);
+        
+        // Fixed slow speed
+        var multiplier = Number(cfg.spinSpeedMultiplier) || 0.03;
         var speed = baseSpeed * multiplier;
         var lastTs = null;
         var sliderUpdating = false;
@@ -23251,102 +23157,127 @@ deg_to_clock <- function(x) {
         function drawRotatingTiltLine(ctx, cx, cy, radius, tiltAngle, rotation) {
           if (tiltAngle === null || !isFinite(tiltAngle)) return;
           
-          // Convert tilt angle to radians - this is the direction through the ball
+          // Convert tilt angle to radians
           var tiltRad = tiltAngle * Math.PI / 180;
           
-          // The tilt direction in 2D screen space
+          // Create the tilt direction vector in 3D
           var tiltDirX = -Math.sin(tiltRad);
           var tiltDirY = Math.cos(tiltRad);
+          var tiltDirZ = 0; // Initially perpendicular to view
           
-          // Create a line of arrows going THROUGH the ball at the tilt angle
-          // The arrows rotate around this line as the ball spins
-          var numArrows = 6; // Number of arrows around the rotation
+          // Normalize
+          var len = Math.sqrt(tiltDirX * tiltDirX + tiltDirY * tiltDirY + tiltDirZ * tiltDirZ);
+          if (len > 0) {
+            tiltDirX /= len;
+            tiltDirY /= len;
+            tiltDirZ /= len;
+          }
+          
+          var tiltAxis = { x: tiltDirX, y: tiltDirY, z: tiltDirZ };
+          
+          // Create arrows along the tilt line
+          var numArrows = 6;
+          var lineLength = radius * 1.1;
           
           ctx.save();
           
-          // Draw arrows rotating around the tilt direction line
           for (var i = 0; i < numArrows; i++) {
-            // Angle around the rotation for this arrow
-            var rotAngle = (i / numArrows) * Math.PI * 2 + rotation;
+            // Position along the tilt line
+            var t = -lineLength + (lineLength * 2 * i / (numArrows - 1));
             
-            // Create a 3D point that rotates around the tilt axis
-            // Start with a point perpendicular to the tilt direction
-            var perpX = tiltDirY; // Perpendicular in 2D
-            var perpY = -tiltDirX;
-            
-            // Position at radius distance from center, rotated around tilt axis
-            // The Z component creates the 3D rotation effect
-            var point3d = {
-              x: perpX * Math.cos(rotAngle) * radius * 0.7,
-              y: perpY * Math.cos(rotAngle) * radius * 0.7,
-              z: Math.sin(rotAngle) * radius * 0.7
+            // Start position on the tilt axis
+            var point = {
+              x: tiltDirX * t,
+              y: tiltDirY * t,
+              z: tiltDirZ * t
             };
             
-            // Add tilt direction offset to spread arrows along the line
-            var linePos = (i - numArrows / 2) * 0.15 * radius;
-            point3d.x += tiltDirX * linePos;
-            point3d.y += tiltDirY * linePos;
+            // Rotate this point around the spin axis (which goes through origin perpendicular to screen)
+            // The ball rotates around the Z-axis in our view
+            var rotated = {
+              x: point.x * Math.cos(rotation) - point.z * Math.sin(rotation),
+              y: point.y,
+              z: point.x * Math.sin(rotation) + point.z * Math.cos(rotation)
+            };
             
-            // Check visibility based on z-depth
-            var isVisible = point3d.z > -radius * 0.15;
-            
-            // Calculate opacity based on z-depth for 3D effect
-            var depthFactor = (point3d.z + radius) / (radius * 2);
+            // Calculate opacity based on z-depth
+            var depthFactor = (rotated.z + radius) / (radius * 2);
             depthFactor = Math.max(0.1, Math.min(1, depthFactor));
-            var opacity = 0.3 + depthFactor * 0.6;
+            var opacity = 0.25 + depthFactor * 0.65;
             
             // Skip if too far back
-            if (opacity < 0.2) continue;
+            if (opacity < 0.3) continue;
             
-            // Arrow points in the tilt direction
+            // Arrow points in the tilt direction (rotated)
+            var arrowDir = {
+              x: tiltDirX * Math.cos(rotation) - tiltDirZ * Math.sin(rotation),
+              y: tiltDirY,
+              z: tiltDirX * Math.sin(rotation) + tiltDirZ * Math.cos(rotation)
+            };
+            
+            var dirX = arrowDir.x;
+            var dirY = arrowDir.y;
+            
             var arrowSize = radius * 0.14;
             var arrowWidth = radius * 0.08;
             
-            var dirX = tiltDirX;
-            var dirY = tiltDirY;
-            
-            var perpArrowX = -dirY;
-            var perpArrowY = dirX;
-            
-            // Scale arrow size based on depth
-            var scale = 0.7 + depthFactor * 0.3;
+            // Scale arrow based on depth
+            var scale = 0.6 + depthFactor * 0.4;
             arrowSize *= scale;
             arrowWidth *= scale;
             
-            ctx.fillStyle = 'rgba(255, 179, 0, ' + opacity + ')';
-            ctx.strokeStyle = 'rgba(255, 179, 0, ' + opacity + ')';
-            ctx.lineWidth = 2;
+            var perpX = -dirY;
+            var perpY = dirX;
             
-            // Draw arrow shape pointing in tilt direction
+            ctx.fillStyle = 'rgba(255, 179, 0, ' + opacity + ')';
+            
+            // Draw arrow
             ctx.beginPath();
             // Arrow tip
-            ctx.moveTo(point3d.x + dirX * arrowSize, point3d.y + dirY * arrowSize);
+            ctx.moveTo(rotated.x + dirX * arrowSize, rotated.y + dirY * arrowSize);
             // Arrow body
-            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 + perpArrowX * arrowWidth, 
-                       point3d.y + dirY * arrowSize * 0.3 + perpArrowY * arrowWidth);
-            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 + perpArrowX * arrowWidth * 0.4, 
-                       point3d.y + dirY * arrowSize * 0.3 + perpArrowY * arrowWidth * 0.4);
-            ctx.lineTo(point3d.x - dirX * arrowSize * 0.7 + perpArrowX * arrowWidth * 0.4, 
-                       point3d.y - dirY * arrowSize * 0.7 + perpArrowY * arrowWidth * 0.4);
-            ctx.lineTo(point3d.x - dirX * arrowSize * 0.7 - perpArrowX * arrowWidth * 0.4, 
-                       point3d.y - dirY * arrowSize * 0.7 - perpArrowY * arrowWidth * 0.4);
-            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 - perpArrowX * arrowWidth * 0.4, 
-                       point3d.y + dirY * arrowSize * 0.3 - perpArrowY * arrowWidth * 0.4);
-            ctx.lineTo(point3d.x + dirX * arrowSize * 0.3 - perpArrowX * arrowWidth, 
-                       point3d.y + dirY * arrowSize * 0.3 - perpArrowY * arrowWidth);
+            ctx.lineTo(rotated.x + dirX * arrowSize * 0.3 + perpX * arrowWidth, 
+                       rotated.y + dirY * arrowSize * 0.3 + perpY * arrowWidth);
+            ctx.lineTo(rotated.x + dirX * arrowSize * 0.3 + perpX * arrowWidth * 0.4, 
+                       rotated.y + dirY * arrowSize * 0.3 + perpY * arrowWidth * 0.4);
+            ctx.lineTo(rotated.x - dirX * arrowSize * 0.7 + perpX * arrowWidth * 0.4, 
+                       rotated.y - dirY * arrowSize * 0.7 + perpY * arrowWidth * 0.4);
+            ctx.lineTo(rotated.x - dirX * arrowSize * 0.7 - perpX * arrowWidth * 0.4, 
+                       rotated.y - dirY * arrowSize * 0.7 - perpY * arrowWidth * 0.4);
+            ctx.lineTo(rotated.x + dirX * arrowSize * 0.3 - perpX * arrowWidth * 0.4, 
+                       rotated.y + dirY * arrowSize * 0.3 - perpY * arrowWidth * 0.4);
+            ctx.lineTo(rotated.x + dirX * arrowSize * 0.3 - perpX * arrowWidth, 
+                       rotated.y + dirY * arrowSize * 0.3 - perpY * arrowWidth);
             ctx.closePath();
             ctx.fill();
           }
           
-          // Draw the tilt axis line going through the ball
-          ctx.strokeStyle = 'rgba(255, 179, 0, 0.4)';
+          // Draw the connecting line
+          ctx.strokeStyle = 'rgba(255, 179, 0, 0.3)';
           ctx.lineWidth = 2;
           ctx.setLineDash([5, 5]);
           
-          var lineLength = radius * 1.3;
           ctx.beginPath();
-          ctx.moveTo(-tiltDirX * lineLength, -tiltDirY * lineLength);
-          ctx.lineTo(tiltDirX * lineLength, tiltDirY * lineLength);
+          var segments = 40;
+          for (var j = 0; j <= segments; j++) {
+            var t = -lineLength + (lineLength * 2 * j / segments);
+            var point = {
+              x: tiltDirX * t,
+              y: tiltDirY * t,
+              z: tiltDirZ * t
+            };
+            var rotated = {
+              x: point.x * Math.cos(rotation) - point.z * Math.sin(rotation),
+              y: point.y,
+              z: point.x * Math.sin(rotation) + point.z * Math.cos(rotation)
+            };
+            
+            if (j === 0) {
+              ctx.moveTo(rotated.x, rotated.y);
+            } else {
+              ctx.lineTo(rotated.x, rotated.y);
+            }
+          }
           ctx.stroke();
           
           ctx.restore();
@@ -23471,9 +23402,7 @@ deg_to_clock <- function(x) {
         }
 
         function updateSpeedSliderLabel() {
-          if (speedLabel) {
-            speedLabel.textContent = 'Animation speed: ' + multiplier.toFixed(2) + 'x';
-          }
+          // No longer needed - removed
         }
 
         function updateSliderValue() {
@@ -23505,18 +23434,7 @@ deg_to_clock <- function(x) {
           pauseBtn.addEventListener('click', function() { running = false; });
         }
 
-        if (speedSlider) {
-          speedSlider.min = spinSpeedMin;
-          speedSlider.max = spinSpeedMax;
-          speedSlider.step = spinSpeedStep;
-          speedSlider.value = multiplier;
-          speedSlider.addEventListener('input', function() {
-            multiplier = clamp(parseFloat(this.value) || spinSpeedMin, spinSpeedMin, spinSpeedMax);
-            speed = baseSpeed * multiplier;
-            updateSpeedSliderLabel();
-          });
-        }
-        updateSpeedSliderLabel();
+        // Removed speed slider event handler
 
         function step(ts) {
           if (!lastTs) lastTs = ts;
@@ -23597,38 +23515,7 @@ deg_to_clock <- function(x) {
     seam_rot_y <- get_col("SpinAxis3dSeamOrientationRotationY")
     seam_rot_z <- get_col("SpinAxis3dSeamOrientationRotationZ")
 
-    orientation_options <- list(
-      list(
-        id = "primary",
-        label = "Primary",
-        type = "rotation",
-        rotation = list(
-          x = ifelse(is.finite(seam_rot_x), seam_rot_x, 0),
-          y = ifelse(is.finite(seam_rot_y), seam_rot_y, 0),
-          z = ifelse(is.finite(seam_rot_z), seam_rot_z, 0)
-        )
-      )
-    )
-    for (amb_idx in seq_len(4)) {
-      ball_x <- get_col(sprintf("SpinAxis3dSeamOrientationBallXAmb%d", amb_idx))
-      ball_y <- get_col(sprintf("SpinAxis3dSeamOrientationBallYAmb%d", amb_idx))
-      ball_z <- get_col(sprintf("SpinAxis3dSeamOrientationBallZAmb%d", amb_idx))
-      if (!all(is.finite(c(ball_x, ball_y, ball_z)))) next
-      horiz <- get_col(sprintf("SpinAxis3dSeamOrientationBallAngleHorizontalAmb%d", amb_idx))
-      vert <- get_col(sprintf("SpinAxis3dSeamOrientationBallAngleVerticalAmb%d", amb_idx))
-      orientation_options[[length(orientation_options) + 1]] <- list(
-        id = paste0("amb", amb_idx),
-        label = paste0("Amb ", amb_idx),
-        type = "vector",
-        vector = list(
-          x = ball_x,
-          y = ball_y,
-          z = ball_z
-        ),
-        horizontal = ifelse(is.finite(horiz), horiz, NA_real_),
-        vertical = ifelse(is.finite(vert), vert, NA_real_)
-      )
-    }
+    # Removed orientation options - no longer needed
 
     spin_rate_text <- if (is.finite(spin_rate_val)) sprintf("%.0f rpm", spin_rate_val) else "N/A"
     spin_eff_text <- if (is.finite(spin_eff_val)) {
@@ -23644,18 +23531,15 @@ deg_to_clock <- function(x) {
                             ifelse(is.finite(seam_rot_x), seam_rot_x * 180/pi, 0),
                             ifelse(is.finite(seam_rot_y), seam_rot_y * 180/pi, 0),
                             ifelse(is.finite(seam_rot_z), seam_rot_z * 180/pi, 0))
-    spin_speed_default <- 0.08
-    spin_speed_min <- 0.01
-    spin_speed_max <- 1.5
-    spin_speed_step <- 0.01
+    
+    # Fixed slow speed - no user control needed
+    spin_speed_multiplier <- 0.03  # Very slow rotation
 
     config <- list(
       canvasId = paste0(prefix, "_canvas"),
       playBtnId = paste0(prefix, "_play"),
       pauseBtnId = paste0(prefix, "_pause"),
       sliderId = paste0(prefix, "_slider"),
-      speedSliderId = paste0(prefix, "_speed"),
-      speedLabelId = paste0(prefix, "_speed_label"),
       axisVector = axis_vec,
       spinRate = spin_rate_val,
       spinEff = spin_eff_val,
@@ -23665,13 +23549,7 @@ deg_to_clock <- function(x) {
       seamRotationZ = ifelse(is.finite(seam_rot_z), seam_rot_z, 0),
       releaseTilt = ifelse(is.finite(release_tilt_deg), release_tilt_deg, NA_real_),
       breakTilt = ifelse(is.finite(break_tilt_deg), break_tilt_deg, NA_real_),
-      spinSpeedDefault = spin_speed_default,
-      spinSpeedMin = spin_speed_min,
-      spinSpeedMax = spin_speed_max,
-      spinSpeedStep = spin_speed_step,
-      orientationOptions = orientation_options,
-      defaultOrientationId = orientation_options[[1]]$id,
-      orientationContainerId = paste0(prefix, "_orientation"),
+      spinSpeedMultiplier = spin_speed_multiplier,
       autoplay = TRUE
     )
     config_json <- jsonlite::toJSON(config, auto_unbox = TRUE)
@@ -23708,27 +23586,6 @@ deg_to_clock <- function(x) {
           max = "360",
           step = "1",
           value = "0"
-        )
-      ),
-      tags$div(
-        class = "spin-speed-control",
-        tags$label(`for` = config$speedSliderId, "Animation speed"),
-        tags$input(
-          id = config$speedSliderId,
-          type = "range",
-          min = as.character(spin_speed_min),
-          max = as.character(spin_speed_max),
-          step = as.character(spin_speed_step),
-          value = sprintf("%.2f", spin_speed_default)
-        ),
-        tags$span(id = config$speedLabelId, sprintf("Animation speed: %.2fx", spin_speed_default))
-      ),
-      tags$div(
-        class = "spin-orientation-control",
-        tags$div(class = "spin-orientation-title", "Seam orientation"),
-        tags$div(
-          class = "spin-orientation-controls",
-          id = config$orientationContainerId
         )
       ),
       tags$div(
