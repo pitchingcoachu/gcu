@@ -22625,10 +22625,10 @@ deg_to_clock <- function(x) {
       .spin-stage {
         width:100%;
         aspect-ratio:1 / 1;
-        padding:14px;
+        padding:12px;
         border-radius:50%;
-        background: radial-gradient(circle at 35% 35%, #ffffff, #f6f1e6 60%, #e6dcc7);
-        box-shadow: 0 25px 45px rgba(0,0,0,0.18);
+        background: transparent;
+        box-shadow: 0 28px 55px rgba(15,15,15,0.12);
         position:relative;
         overflow:hidden;
         border:1px solid rgba(0,0,0,0.08);
@@ -22910,13 +22910,16 @@ deg_to_clock <- function(x) {
 
       function drawClockNumbers(ctx, radius) {
         ctx.save();
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
-        var fontSize = Math.max(9, radius * 0.12);
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
+        var fontSize = Math.max(8, radius * 0.095);
         ctx.font = fontSize + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        var offset = Math.min(radius * 0.26, 46);
-        var clockRadius = radius + offset; // Place numbers just outside the ball and inside the gray ring
+        var offset = Math.min(radius * 0.16, 34);
+        var clockRadius = radius + offset - 6;
+        if (clockRadius < radius * 0.95) {
+          clockRadius = radius * 0.95;
+        }
         
         // Draw all 12 numbers - 12 is at top (90 degrees), going clockwise
         for (var hour = 1; hour <= 12; hour++) {
