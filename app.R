@@ -23183,7 +23183,7 @@ deg_to_clock <- function(x) {
 
           var axisLength = radius * 0.95;
           var scrollSpeed = 0.85;
-          var arrowCount = 12;
+          var arrowCount = 14;
           var progress = ((rotation / (Math.PI * 2)) * scrollSpeed) % 1;
           if (progress < 0) progress += 1;
           progress = 1 - progress;
@@ -23194,57 +23194,48 @@ deg_to_clock <- function(x) {
           var arrowPerp = { x: -arrowDir.y, y: arrowDir.x };
 
           ctx.save();
-          ctx.lineWidth = Math.max(4, radius * 0.15);
+          ctx.lineWidth = Math.max(4, radius * 0.135);
           ctx.lineCap = 'round';
-          ctx.strokeStyle = 'rgba(255, 238, 170, 0.45)';
+          ctx.strokeStyle = 'rgba(190, 190, 190, 0.7)';
           ctx.beginPath();
           ctx.moveTo(cx + axisStart.x, cy + axisStart.y);
           ctx.lineTo(cx + axisEnd.x, cy + axisEnd.y);
           ctx.stroke();
           ctx.lineWidth = Math.max(2, radius * 0.08);
           ctx.setLineDash([6, 6]);
-          ctx.strokeStyle = 'rgba(255, 238, 170, 0.25)';
+          ctx.strokeStyle = 'rgba(190, 190, 190, 0.35)';
           ctx.beginPath();
-          ctx.moveTo(cx + axisEnd.x, cy + axisEnd.y);
-          ctx.lineTo(cx + axisStart.x, cy + axisStart.y);
+          ctx.moveTo(cx + axisStart.x, cy + axisStart.y);
+          ctx.lineTo(cx + axisEnd.x, cy + axisEnd.y);
           ctx.stroke();
           ctx.setLineDash([]);
           ctx.restore();
 
-          var edgeMargin = radius * 0.03;
           for (var i = 0; i < arrowCount; i++) {
             var phase = (i / arrowCount + progress) % 1;
             var t = -axisLength + 2 * axisLength * phase;
             var centerX = cx + tiltDir.x * t;
             var centerY = cy + tiltDir.y * t;
             var depthOsc = Math.sin(phase * Math.PI * 2);
-            var baseLength = radius * (0.18 + depthOsc * 0.02);
-            var maxArrow = Math.max(0, axisLength - Math.abs(t) - edgeMargin);
-            var arrowLength = Math.min(baseLength, maxArrow);
-            if (arrowLength <= 0) continue;
-            var arrowWidth = radius * 0.06;
-            var visibility = Math.max(0.5, 0.95 - Math.abs(t) / axisLength);
-            var fillColor = 'rgba(255, 233, 159, ' + ((0.8 + depthOsc * 0.15) * visibility) + ')';
-            var strokeColor = 'rgba(90, 60, 30, ' + ((0.75 + depthOsc * 0.2) * visibility) + ')';
-
+            var arrowLength = radius * 0.22;
+            var arrowWidth = radius * 0.04;
+            var visibility = Math.max(0.6, 1 - Math.abs(t) / axisLength);
             var tipX = centerX + arrowDir.x * arrowLength;
             var tipY = centerY + arrowDir.y * arrowLength;
-            var baseX = centerX - arrowDir.x * (arrowLength * 0.35);
-            var baseY = centerY - arrowDir.y * (arrowLength * 0.35);
-            var leftX = baseX + arrowPerp.x * arrowWidth * 0.75;
-            var leftY = baseY + arrowPerp.y * arrowWidth * 0.75;
-            var rightX = baseX - arrowPerp.x * arrowWidth * 0.75;
-            var rightY = baseY - arrowPerp.y * arrowWidth * 0.75;
+            var baseX = centerX - arrowDir.x * arrowLength * 0.35;
+            var baseY = centerY - arrowDir.y * arrowLength * 0.35;
+            var leftX = baseX + arrowPerp.x * arrowWidth;
+            var leftY = baseY + arrowPerp.y * arrowWidth;
+            var rightX = baseX - arrowPerp.x * arrowWidth;
+            var rightY = baseY - arrowPerp.y * arrowWidth;
 
-            ctx.fillStyle = fillColor;
-            ctx.strokeStyle = strokeColor;
-            ctx.lineWidth = 1.8;
+            ctx.strokeStyle = 'rgba(0,0,0,' + (0.8 + depthOsc * 0.15) * visibility + ')';
+            ctx.lineWidth = Math.max(1.5, radius * 0.035);
             ctx.beginPath();
             ctx.moveTo(tipX, tipY);
             ctx.lineTo(leftX, leftY);
+            ctx.moveTo(tipX, tipY);
             ctx.lineTo(rightX, rightY);
-            ctx.closePath();
-            ctx.fill();
             ctx.stroke();
           }
         }
