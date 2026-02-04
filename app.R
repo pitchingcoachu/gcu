@@ -23182,7 +23182,7 @@ deg_to_clock <- function(x) {
           }) || tiltDir;
 
           var axisLength = radius * 0.95;
-          var bandWidth = radius * 0.05;
+          var bandWidth = radius * 0.04;
           var scrollSpeed = 0.85;
           var arrowCount = 5;
           var progress = ((rotation / (Math.PI * 2)) * scrollSpeed) % 1;
@@ -23229,30 +23229,36 @@ deg_to_clock <- function(x) {
             var centerX = cx + tiltDir.x * t;
             var centerY = cy + tiltDir.y * t;
             var depthOsc = Math.sin(phase * Math.PI * 2);
-            var arrowLength = radius * 0.2;
+            var arrowLength = radius * 0.24;
             var arrowWidth = radius * 0.03;
             var frac = Math.max(0, 1 - (Math.abs(t) / axisLength));
-            var visibility = Math.pow(frac, 2);
+            var easing = Math.sin((frac * Math.PI) / 2);
+            var visibility = Math.pow(easing, 3);
             var tipX = centerX + arrowDir.x * arrowLength;
             var tipY = centerY + arrowDir.y * arrowLength;
-            var baseX = centerX - arrowDir.x * arrowLength * 0.33;
-            var baseY = centerY - arrowDir.y * arrowLength * 0.33;
+            var shaftBack = arrowLength * 0.4;
+            var baseX = centerX - arrowDir.x * shaftBack;
+            var baseY = centerY - arrowDir.y * shaftBack;
             var leftX = baseX + arrowPerp.x * arrowWidth;
             var leftY = baseY + arrowPerp.y * arrowWidth;
             var rightX = baseX - arrowPerp.x * arrowWidth;
             var rightY = baseY - arrowPerp.y * arrowWidth;
+            var tipLeftX = tipX + arrowPerp.x * arrowWidth * 0.6;
+            var tipLeftY = tipY + arrowPerp.y * arrowWidth * 0.6;
+            var tipRightX = tipX - arrowPerp.x * arrowWidth * 0.6;
+            var tipRightY = tipY - arrowPerp.y * arrowWidth * 0.6;
 
-            var alpha = Math.min(1, 0.7 + depthOsc * 0.1) * Math.max(0.35, visibility);
+            var alpha = Math.min(1, 0.75 + depthOsc * 0.1) * Math.max(0.3, visibility);
             ctx.strokeStyle = 'rgba(0,0,0,' + alpha + ')';
-            ctx.lineWidth = Math.max(1.6, radius * 0.035);
+            ctx.lineWidth = Math.max(1.5, radius * 0.035);
             ctx.beginPath();
             ctx.moveTo(leftX, leftY);
             ctx.lineTo(tipX, tipY);
             ctx.lineTo(rightX, rightY);
             ctx.stroke();
             ctx.beginPath();
-            ctx.moveTo(leftX, leftY);
-            ctx.lineTo(rightX, rightY);
+            ctx.moveTo(tipLeftX, tipLeftY);
+            ctx.lineTo(tipRightX, tipRightY);
             ctx.stroke();
           }
         }
