@@ -20515,6 +20515,7 @@ ui <- tagList(
                  class = "btn btn-note", title = "Add Note"),
     top = 60, right = 12, width = 50, fixed = TRUE, draggable = FALSE
   ),
+  uiOutput("spin_visual_assets"),
   navbarPage(
     title = tagList(
       tags$img(src = school_logo, class = "brand-logo", alt = school_display_name),
@@ -23440,6 +23441,10 @@ deg_to_clock <- function(x) {
       window.initSpinVisual = window.initSpinVisual || initSpinVisual;
     })();
   ")))
+
+  output$spin_visual_assets <- renderUI({
+    tagList(spin_visual_css, spin_visual_script)
+  })
 
   make_spin_card <- function(row, label_text, prefix) {
     if (is.null(row) || !nrow(row)) {
