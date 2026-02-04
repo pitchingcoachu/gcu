@@ -23182,9 +23182,9 @@ deg_to_clock <- function(x) {
           }) || tiltDir;
 
           var axisLength = radius * 0.95;
-          var bandWidth = radius * 0.34;
+          var bandWidth = radius * 0.16;
           var scrollSpeed = 0.85;
-          var arrowCount = 14;
+          var arrowCount = 8;
           var progress = ((rotation / (Math.PI * 2)) * scrollSpeed) % 1;
           if (progress < 0) progress += 1;
           progress = 1 - progress;
