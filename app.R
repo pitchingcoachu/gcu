@@ -22622,38 +22622,29 @@ deg_to_clock <- function(x) {
       width:100%;
       max-width:520px;
     }
-    .spin-stage {
-      width:100%;
-      aspect-ratio:1 / 1;
-      padding:18px;
-      border-radius:32px;
-      background: radial-gradient(circle at 38% 18%, rgba(255,255,255,0.95), #f5f0e2 55%, #d7c7a7 100%);
-      box-shadow: 0 24px 50px rgba(0,0,0,0.35);
-      position:relative;
-      overflow:hidden;
-    }
-    .spin-stage::after {
-      content:'';
-      position:absolute;
-      inset:72% -30% 2% -30%;
-      background: radial-gradient(circle, rgba(255,255,255,0.45), rgba(211,193,161,0));
-      transform: scaleX(1.5);
-      opacity:0.65;
-    }
-    .spin-stage::before {
-      content:'';
-      position:absolute;
-      inset:10% 14% 25% 14%;
-      pointer-events:none;
-      background: radial-gradient(circle at 30% 20%, rgba(255,255,255,0.65), rgba(255,255,255,0));
-    }
-    .spin-stage canvas {
-      display:block;
-      width:100%;
-      height:100%;
-      border-radius:50%;
-      background:transparent;
-    }
+      .spin-stage {
+        width:100%;
+        aspect-ratio:1 / 1;
+        padding:14px;
+        border-radius:50%;
+        background: radial-gradient(circle at 35% 35%, #ffffff, #f6f1e6 60%, #e6dcc7);
+        box-shadow: 0 25px 45px rgba(0,0,0,0.18);
+        position:relative;
+        overflow:hidden;
+        border:1px solid rgba(0,0,0,0.08);
+      }
+      .spin-stage::after,
+      .spin-stage::before {
+        content:'';
+        display:none;
+      }
+      .spin-stage canvas {
+        display:block;
+        width:100%;
+        height:100%;
+        border-radius:50%;
+        background:transparent;
+      }
     .spin-canvas {
       width:100%;
       height:100%;
@@ -23671,8 +23662,6 @@ deg_to_clock <- function(x) {
         left_metrics
       )
       tagList(
-        spin_visual_css,
-        spin_visual_script,
         header,
         main_layout
       )
