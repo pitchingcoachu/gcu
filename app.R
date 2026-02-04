@@ -23182,6 +23182,7 @@ deg_to_clock <- function(x) {
           }) || tiltDir;
 
           var axisLength = radius * 0.95;
+          var bandWidth = radius * 0.34;
           var scrollSpeed = 0.85;
           var arrowCount = 14;
           var progress = ((rotation / (Math.PI * 2)) * scrollSpeed) % 1;
@@ -23192,6 +23193,17 @@ deg_to_clock <- function(x) {
           var axisEnd = { x: blended.x * axisLength, y: blended.y * axisLength };
           var arrowDir = { x: -blended.x, y: -blended.y };
           var arrowPerp = { x: -arrowDir.y, y: arrowDir.x };
+
+          ctx.save();
+          ctx.fillStyle = 'rgba(220, 220, 220, 0.55)';
+          ctx.beginPath();
+          ctx.moveTo(cx + axisStart.x + arrowPerp.x * bandWidth, cy + axisStart.y + arrowPerp.y * bandWidth);
+          ctx.lineTo(cx + axisStart.x - arrowPerp.x * bandWidth, cy + axisStart.y - arrowPerp.y * bandWidth);
+          ctx.lineTo(cx + axisEnd.x - arrowPerp.x * bandWidth, cy + axisEnd.y - arrowPerp.y * bandWidth);
+          ctx.lineTo(cx + axisEnd.x + arrowPerp.x * bandWidth, cy + axisEnd.y + arrowPerp.y * bandWidth);
+          ctx.closePath();
+          ctx.fill();
+          ctx.restore();
 
           ctx.save();
           ctx.lineWidth = Math.max(4, radius * 0.135);
@@ -23219,7 +23231,7 @@ deg_to_clock <- function(x) {
             var depthOsc = Math.sin(phase * Math.PI * 2);
             var arrowLength = radius * 0.22;
             var arrowWidth = radius * 0.04;
-            var visibility = Math.max(0.6, 1 - Math.abs(t) / axisLength);
+            var visibility = Math.max(0.7, 1 - Math.abs(t) / axisLength);
             var tipX = centerX + arrowDir.x * arrowLength;
             var tipY = centerY + arrowDir.y * arrowLength;
             var baseX = centerX - arrowDir.x * arrowLength * 0.35;
@@ -23229,13 +23241,16 @@ deg_to_clock <- function(x) {
             var rightX = baseX - arrowPerp.x * arrowWidth;
             var rightY = baseY - arrowPerp.y * arrowWidth;
 
-            ctx.strokeStyle = 'rgba(0,0,0,' + (0.8 + depthOsc * 0.15) * visibility + ')';
-            ctx.lineWidth = Math.max(1.5, radius * 0.035);
+            var alpha = Math.min(1, (0.85 + depthOsc * 0.15) * visibility);
+            ctx.fillStyle = 'rgba(0,0,0,' + alpha + ')';
+            ctx.strokeStyle = 'rgba(0,0,0,' + alpha + ')';
+            ctx.lineWidth = Math.max(1.8, radius * 0.04);
             ctx.beginPath();
             ctx.moveTo(tipX, tipY);
             ctx.lineTo(leftX, leftY);
-            ctx.moveTo(tipX, tipY);
             ctx.lineTo(rightX, rightY);
+            ctx.closePath();
+            ctx.fill();
             ctx.stroke();
           }
         }
