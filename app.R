@@ -23294,42 +23294,29 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
         function drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency) {
           if (!axisDir) return;
           ctx.save();
-          var arrowCount = 10;
-          var majorAxis = radius * (0.65 + efficiency * 0.2);
-          var minorAxis = Math.max(radius * 0.25, radius * (0.15 + (1 - efficiency) * 0.25));
+          var arrowCount = 8;
+          var axisLen = radius * (0.7 + efficiency * 0.2);
           var arrowLen = radius * 0.18;
-          var arrowWidth = radius * 0.04;
-          var offset = rotation * 0.35;
+          var arrowWidth = radius * 0.045;
+          var travel = (rotation / (Math.PI * 2)) * 1.2;
           for (var i = 0; i < arrowCount; i++) {
-            var phase = (i / arrowCount) * Math.PI * 2;
-            var angle = phase + offset;
-            var cosA = Math.cos(angle);
-            var sinA = Math.sin(angle);
-            var centerX = cx + axisDir.x * cosA * majorAxis + axisPerp.x * sinA * minorAxis;
-            var centerY = cy + axisDir.y * cosA * majorAxis + axisPerp.y * sinA * minorAxis;
+            var phase = (i / arrowCount + travel) % 1;
+            var scaled = phase * 2 - 1;
+            var centerX = cx + axisDir.x * scaled * axisLen + axisPerp.x * radius * 0.08;
+            var centerY = cy + axisDir.y * scaled * axisLen + axisPerp.y * radius * 0.08;
+            var tipX = centerX + axisDir.x * arrowLen * 0.55;
+            var tipY = centerY + axisDir.y * arrowLen * 0.55;
+            var baseX = centerX - axisDir.x * arrowLen * 0.35;
+            var baseY = centerY - axisDir.y * arrowLen * 0.35;
+            var headInnerX = tipX - axisDir.x * arrowLen * 0.2;
+            var headInnerY = tipY - axisDir.y * arrowLen * 0.2;
+            var normal = { x: -axisDir.y, y: axisDir.x };
 
-            var tangent = {
-              x: -axisDir.x * sinA * majorAxis + axisPerp.x * cosA * minorAxis,
-              y: -axisDir.y * sinA * majorAxis + axisPerp.y * cosA * minorAxis
-            };
-            var tangentLen = Math.sqrt(tangent.x * tangent.x + tangent.y * tangent.y);
-            if (tangentLen < 1e-6) continue;
-            tangent.x /= tangentLen;
-            tangent.y /= tangentLen;
-
-            var tipX = centerX + tangent.x * arrowLen * 0.55;
-            var tipY = centerY + tangent.y * arrowLen * 0.55;
-            var baseX = centerX - tangent.x * arrowLen * 0.35;
-            var baseY = centerY - tangent.y * arrowLen * 0.35;
-            var headInnerX = tipX - tangent.x * arrowLen * 0.2;
-            var headInnerY = tipY - tangent.y * arrowLen * 0.2;
-            var normal = { x: -tangent.y, y: tangent.x };
-
-            var depthFade = 0.35 + 0.6 * Math.cos(angle * 2 + rotation * 0.3);
+            var depthFade = 0.5 + 0.5 * Math.cos(phase * Math.PI * 2);
             var arrowGrad = ctx.createLinearGradient(baseX, baseY, tipX, tipY);
-            arrowGrad.addColorStop(0, 'rgba(170, 125, 48,' + (0.25 + depthFade * 0.45) + ')');
-            arrowGrad.addColorStop(0.6, 'rgba(215, 185, 120,' + (0.45 + depthFade * 0.35) + ')');
-            arrowGrad.addColorStop(1, 'rgba(255, 255, 255,' + (0.3 + depthFade * 0.35) + ')');
+            arrowGrad.addColorStop(0, 'rgba(170, 125, 48,' + (0.25 + depthFade * 0.4) + ')');
+            arrowGrad.addColorStop(0.6, 'rgba(215, 185, 120,' + (0.55 + depthFade * 0.35) + ')');
+            arrowGrad.addColorStop(1, 'rgba(255, 255, 255,' + (0.3 + depthFade * 0.3) + ')');
 
             ctx.fillStyle = arrowGrad;
             ctx.beginPath();
@@ -23340,7 +23327,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
             ctx.lineTo(headInnerX - normal.x * arrowWidth, headInnerY - normal.y * arrowWidth);
             ctx.closePath();
             ctx.fill();
-            ctx.strokeStyle = 'rgba(112, 72, 34,' + (0.25 + depthFade * 0.4) + ')';
+            ctx.strokeStyle = 'rgba(112, 72, 34,' + (0.25 + depthFade * 0.3) + ')';
             ctx.lineWidth = Math.max(1, radius * 0.02);
             ctx.stroke();
           }
