@@ -23167,6 +23167,8 @@ deg_to_clock <- function(x) {
 
           var axisDir = normalizeVec2D(blended) || tiltDir;
           var axisPerp = { x: -axisDir.y, y: axisDir.x };
+          var rodDir = normalizeVec2D({ x: -tiltDir.y, y: tiltDir.x }) || axisDir;
+          var rodPerp = { x: -rodDir.y, y: rodDir.x };
           var axisLength = radius * 1.1;
           var bandWidth = radius * 0.045;
           var axisLineStart = { x: -axisDir.x * axisLength, y: -axisDir.y * axisLength };
@@ -23201,33 +23203,33 @@ deg_to_clock <- function(x) {
           ctx.setLineDash([]);
           ctx.restore();
 
-          drawSpinRod(ctx, cx, cy, axisDir, axisPerp, radius, efficiency);
+          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency);
           drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency);
         }
 
-        function drawSpinRod(ctx, cx, cy, axisDir, axisPerp, radius, efficiency) {
+function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
           var baseOffset = radius * (0.25 + efficiency * 0.45);
           var rodLength = radius * (0.6 + efficiency * 0.25);
           var positiveBase = {
-            x: axisDir.x * baseOffset,
-            y: axisDir.y * baseOffset
+            x: rodDir.x * baseOffset,
+            y: rodDir.y * baseOffset
           };
           var negativeBase = {
-            x: -axisDir.x * baseOffset,
-            y: -axisDir.y * baseOffset
+            x: -rodDir.x * baseOffset,
+            y: -rodDir.y * baseOffset
           };
           var positiveTip = {
-            x: positiveBase.x + axisDir.x * rodLength,
-            y: positiveBase.y + axisDir.y * rodLength
+            x: positiveBase.x + rodDir.x * rodLength,
+            y: positiveBase.y + rodDir.y * rodLength
           };
           var negativeTip = {
-            x: negativeBase.x - axisDir.x * rodLength,
-            y: negativeBase.y - axisDir.y * rodLength
+            x: negativeBase.x - rodDir.x * rodLength,
+            y: negativeBase.y - rodDir.y * rodLength
           };
-          drawRodSegment(ctx, cx, cy, positiveBase, positiveTip, axisPerp, radius);
-          drawRodSegment(ctx, cx, cy, negativeBase, negativeTip, axisPerp, radius);
-          drawRodCap(ctx, cx, cy, positiveTip, axisDir, axisPerp, radius, false);
-          drawRodCap(ctx, cx, cy, negativeTip, axisDir, axisPerp, radius, true);
+          drawRodSegment(ctx, cx, cy, positiveBase, positiveTip, rodPerp, radius);
+          drawRodSegment(ctx, cx, cy, negativeBase, negativeTip, rodPerp, radius);
+          drawRodCap(ctx, cx, cy, positiveTip, rodDir, rodPerp, radius, false);
+          drawRodCap(ctx, cx, cy, negativeTip, rodDir, rodPerp, radius, true);
         }
 
         function drawRodSegment(ctx, cx, cy, start, end, axisPerp, radius) {
@@ -23509,7 +23511,7 @@ deg_to_clock <- function(x) {
           var size = ensureSize();
           var cx = size / 2;
           var cy = size / 2;
-          var radius = size * 0.35;
+          var radius = size * 0.32;
           ctx.clearRect(0, 0, size, size);
           drawBall(cx, cy, radius, angle);
           requestAnimationFrame(step);
