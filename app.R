@@ -23172,7 +23172,7 @@ deg_to_clock <- function(x) {
           var axisLength = radius * 0.9;
           var bandWidth = radius * 0.045;
           var scrollSpeed = 0.85;
-          var arrowCount = 5;
+          var arrowCount = 7;
           var progress = ((rotation / (Math.PI * 2)) * scrollSpeed) % 1;
           if (progress < 0) progress += 1;
           progress = 1 - progress;
@@ -23209,7 +23209,7 @@ deg_to_clock <- function(x) {
           ctx.setLineDash([]);
           ctx.restore();
 
-          drawSpinHalo(ctx, cx, cy, radius, axisDir, rotation);
+          drawSpinRod(ctx, cx, cy, axisStart, axisEnd, axisPerp, radius);
 
           var arrowHeadLength = radius * 0.18;
           var arrowShaftLength = Math.max(radius * 0.23, arrowHeadLength * 1.1);
@@ -23232,18 +23232,16 @@ deg_to_clock <- function(x) {
 
             var tipX = cx + axisDir.x * tipScalar;
             var tipY = cy + axisDir.y * tipScalar;
-            var arrowBackward = { x: -axisDir.x, y: -axisDir.y };
-            var headBaseX = tipX + arrowBackward.x * arrowHeadLength;
-            var headBaseY = tipY + arrowBackward.y * arrowHeadLength;
-            var tailX = headBaseX + arrowBackward.x * arrowShaftLength;
-            var tailY = headBaseY + arrowBackward.y * arrowShaftLength;
+            var headBaseX = tipX + axisDir.x * arrowHeadLength;
+            var headBaseY = tipY + axisDir.y * arrowHeadLength;
+            var tailX = headBaseX + axisDir.x * arrowShaftLength;
+            var tailY = headBaseY + axisDir.y * arrowShaftLength;
 
             var normalizedPhase = tipRange > 0 ? (tipScalar - tipMin) / tipRange : 0.5;
             normalizedPhase = Math.max(0, Math.min(1, normalizedPhase));
-            var edgeFade = Math.max(0, 1 - Math.abs(normalizedPhase - 0.5) * 2);
-            edgeFade = Math.pow(edgeFade, 1.3);
+            var edgeFade = Math.max(0.4, 1 - Math.abs(normalizedPhase - 0.5) * 1.6);
             var motionPulse = 0.12 * (Math.sin(phase * Math.PI * 2) + 1);
-            var arrowAlpha = Math.min(1, Math.max(0.08, edgeFade * 0.78 + motionPulse * 0.05));
+            var arrowAlpha = Math.min(1, Math.max(0.2, edgeFade * 0.85 + motionPulse * 0.05));
             var dynamicWidth = arrowWidth * (0.6 + 0.4 * edgeFade);
             var headWidth = Math.max(radius * 0.035, dynamicWidth * 1.4);
             var shaftWidth = Math.max(1.2, dynamicWidth * 0.9);
@@ -23284,25 +23282,31 @@ deg_to_clock <- function(x) {
           }
         }
 
-        function drawSpinHalo(ctx, cx, cy, radius, axisDir, rotation) {
-          if (!axisDir) return;
+        function drawSpinRod(ctx, cx, cy, axisStart, axisEnd, axisPerp, radius) {
           ctx.save();
-          ctx.translate(cx, cy);
-          var axisAngle = Math.atan2(axisDir.y, axisDir.x);
-          ctx.rotate(axisAngle);
-          var haloRadius = radius * 0.62;
-          var startAngle = (rotation * 0.5) % (Math.PI * 2);
-          var endAngle = startAngle + Math.PI * 1.4;
-          ctx.strokeStyle = 'rgba(68, 134, 220, 0.25)';
-          ctx.lineWidth = Math.max(1.2, radius * 0.018);
-          ctx.setLineDash([radius * 0.03, radius * 0.06]);
+          var rodWidth = Math.max(radius * 0.045, 3);
+          var grad = ctx.createLinearGradient(
+            cx + axisStart.x, cy + axisStart.y,
+            cx + axisEnd.x, cy + axisEnd.y
+          );
+          grad.addColorStop(0, 'rgba(255, 255, 255, 0.75)');
+          grad.addColorStop(0.25, 'rgba(210, 220, 235, 0.85)');
+          grad.addColorStop(0.5, 'rgba(190, 200, 230, 0.95)');
+          grad.addColorStop(0.75, 'rgba(210, 220, 235, 0.85)');
+          grad.addColorStop(1, 'rgba(255, 255, 255, 0.75)');
+          ctx.fillStyle = grad;
           ctx.beginPath();
-          ctx.arc(0, 0, haloRadius, startAngle, endAngle, false);
+          ctx.moveTo(cx + axisStart.x + axisPerp.x * rodWidth, cy + axisStart.y + axisPerp.y * rodWidth);
+          ctx.lineTo(cx + axisStart.x - axisPerp.x * rodWidth, cy + axisStart.y - axisPerp.y * rodWidth);
+          ctx.lineTo(cx + axisEnd.x - axisPerp.x * rodWidth, cy + axisEnd.y - axisPerp.y * rodWidth);
+          ctx.lineTo(cx + axisEnd.x + axisPerp.x * rodWidth, cy + axisEnd.y + axisPerp.y * rodWidth);
+          ctx.closePath();
+          ctx.fill();
+          ctx.strokeStyle = 'rgba(15, 40, 90, 0.35)';
+          ctx.lineWidth = Math.max(1, radius * 0.01);
           ctx.stroke();
           ctx.restore();
-          ctx.setLineDash([]);
         }
-
 
         function drawBaseballSeams(radius, rotation) {
           var orientationPaths = getOrientationPaths(radius);
@@ -23468,7 +23472,7 @@ deg_to_clock <- function(x) {
           var size = ensureSize();
           var cx = size / 2;
           var cy = size / 2;
-          var radius = size * 0.38;
+          var radius = size * 0.35;
           ctx.clearRect(0, 0, size, size);
           drawBall(cx, cy, radius, angle);
           requestAnimationFrame(step);
