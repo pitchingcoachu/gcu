@@ -23181,8 +23181,8 @@ deg_to_clock <- function(x) {
             y: tiltDir.y * (1 - efficiency) + releaseDir.y * efficiency
           }) || tiltDir;
 
-          var axisLength = radius * 0.95;
-          var bandWidth = radius * 0.04;
+          var axisLength = radius * 0.9;
+          var bandWidth = radius * 0.045;
           var scrollSpeed = 0.85;
           var arrowCount = 5;
           var progress = ((rotation / (Math.PI * 2)) * scrollSpeed) % 1;
@@ -23191,11 +23191,11 @@ deg_to_clock <- function(x) {
 
           var axisStart = { x: -blended.x * axisLength, y: -blended.y * axisLength };
           var axisEnd = { x: blended.x * axisLength, y: blended.y * axisLength };
-          var arrowDir = { x: -blended.x, y: -blended.y };
+          var arrowDir = normalizeVec2D({ x: -blended.x, y: -blended.y }) || { x: 0, y: -1 };
           var arrowPerp = { x: -arrowDir.y, y: arrowDir.x };
 
           ctx.save();
-          ctx.fillStyle = 'rgba(220, 220, 220, 0.55)';
+          ctx.fillStyle = 'rgba(235, 235, 240, 0.4)';
           ctx.beginPath();
           ctx.moveTo(cx + axisStart.x + arrowPerp.x * bandWidth, cy + axisStart.y + arrowPerp.y * bandWidth);
           ctx.lineTo(cx + axisStart.x - arrowPerp.x * bandWidth, cy + axisStart.y - arrowPerp.y * bandWidth);
@@ -23206,16 +23206,16 @@ deg_to_clock <- function(x) {
           ctx.restore();
 
           ctx.save();
-          ctx.lineWidth = Math.max(4, radius * 0.135);
+          ctx.lineWidth = Math.max(4, radius * 0.125);
           ctx.lineCap = 'round';
-          ctx.strokeStyle = 'rgba(190, 190, 190, 0.7)';
+          ctx.strokeStyle = 'rgba(185, 185, 195, 0.75)';
           ctx.beginPath();
           ctx.moveTo(cx + axisStart.x, cy + axisStart.y);
           ctx.lineTo(cx + axisEnd.x, cy + axisEnd.y);
           ctx.stroke();
           ctx.lineWidth = Math.max(2, radius * 0.08);
           ctx.setLineDash([6, 6]);
-          ctx.strokeStyle = 'rgba(190, 190, 190, 0.35)';
+          ctx.strokeStyle = 'rgba(185, 185, 195, 0.35)';
           ctx.beginPath();
           ctx.moveTo(cx + axisStart.x, cy + axisStart.y);
           ctx.lineTo(cx + axisEnd.x, cy + axisEnd.y);
@@ -23223,43 +23223,73 @@ deg_to_clock <- function(x) {
           ctx.setLineDash([]);
           ctx.restore();
 
+          var arrowHeadLength = radius * 0.18;
+          var arrowShaftLength = Math.max(radius * 0.23, arrowHeadLength * 1.1);
+          var arrowLen = arrowHeadLength + arrowShaftLength;
+          var arrowWidth = radius * 0.05;
+          var tipMargin = radius * 0.05;
+          var tipMin = -axisLength + arrowLen + tipMargin;
+          var tipMax = axisLength - tipMargin;
+          var tipRange = tipMax - tipMin;
+          if (tipRange <= 0) {
+            tipMin = -axisLength + tipMargin;
+            tipMax = axisLength - tipMargin;
+            tipRange = tipMax - tipMin;
+          }
+
           for (var i = 0; i < arrowCount; i++) {
             var phase = (i / arrowCount + progress) % 1;
-            var t = -axisLength + 2 * axisLength * phase;
-            var centerX = cx + tiltDir.x * t;
-            var centerY = cy + tiltDir.y * t;
-            var depthOsc = Math.sin(phase * Math.PI * 2);
-            var arrowLength = radius * 0.24;
-            var arrowWidth = radius * 0.03;
-            var frac = Math.max(0, 1 - (Math.abs(t) / axisLength));
-            var easing = Math.sin((frac * Math.PI) / 2);
-            var visibility = Math.pow(easing, 3);
-            var tipX = centerX + arrowDir.x * arrowLength;
-            var tipY = centerY + arrowDir.y * arrowLength;
-            var shaftBack = arrowLength * 0.4;
-            var baseX = centerX - arrowDir.x * shaftBack;
-            var baseY = centerY - arrowDir.y * shaftBack;
-            var leftX = baseX + arrowPerp.x * arrowWidth;
-            var leftY = baseY + arrowPerp.y * arrowWidth;
-            var rightX = baseX - arrowPerp.x * arrowWidth;
-            var rightY = baseY - arrowPerp.y * arrowWidth;
-            var tipLeftX = tipX + arrowPerp.x * arrowWidth * 0.6;
-            var tipLeftY = tipY + arrowPerp.y * arrowWidth * 0.6;
-            var tipRightX = tipX - arrowPerp.x * arrowWidth * 0.6;
-            var tipRightY = tipY - arrowPerp.y * arrowWidth * 0.6;
+            if (phase < 0) phase += 1;
+            var tipScalar = tipMin + tipRange * phase;
 
-            var alpha = Math.min(1, 0.75 + depthOsc * 0.1) * Math.max(0.3, visibility);
-            ctx.strokeStyle = 'rgba(0,0,0,' + alpha + ')';
-            ctx.lineWidth = Math.max(1.5, radius * 0.035);
+            var tipX = cx + tiltDir.x * tipScalar;
+            var tipY = cy + tiltDir.y * tipScalar;
+            var headBaseX = tipX + arrowDir.x * arrowHeadLength;
+            var headBaseY = tipY + arrowDir.y * arrowHeadLength;
+            var tailX = headBaseX + arrowDir.x * arrowShaftLength;
+            var tailY = headBaseY + arrowDir.y * arrowShaftLength;
+
+            var normalizedPhase = tipRange > 0 ? (tipScalar - tipMin) / tipRange : 0.5;
+            normalizedPhase = Math.max(0, Math.min(1, normalizedPhase));
+            var edgeFade = Math.max(0, 1 - Math.abs(normalizedPhase - 0.5) * 2);
+            edgeFade = Math.pow(edgeFade, 1.3);
+            var motionPulse = 0.12 * (Math.sin(phase * Math.PI * 2) + 1);
+            var arrowAlpha = edgeFade * 0.8 + motionPulse * 0.04;
+            arrowAlpha = Math.min(1, Math.max(0.04, arrowAlpha));
+            var dynamicWidth = arrowWidth * (0.55 + 0.45 * edgeFade);
+            var headOffset = dynamicWidth * 0.7;
+
+            var headLeftX = headBaseX + arrowPerp.x * headOffset;
+            var headLeftY = headBaseY + arrowPerp.y * headOffset;
+            var headRightX = headBaseX - arrowPerp.x * headOffset;
+            var headRightY = headBaseY - arrowPerp.y * headOffset;
+            var tailLeftX = tailX + arrowPerp.x * dynamicWidth;
+            var tailLeftY = tailY + arrowPerp.y * dynamicWidth;
+            var tailRightX = tailX - arrowPerp.x * dynamicWidth;
+            var tailRightY = tailY - arrowPerp.y * dynamicWidth;
+            var tailCenterX = (tailLeftX + tailRightX) / 2;
+            var tailCenterY = (tailLeftY + tailRightY) / 2;
+
+            ctx.save();
+            ctx.globalAlpha = arrowAlpha;
+            var arrowGrad = ctx.createLinearGradient(tailCenterX, tailCenterY, tipX, tipY);
+            arrowGrad.addColorStop(0, 'rgba(24, 92, 174,' + (0.32 * edgeFade + 0.08) + ')');
+            arrowGrad.addColorStop(0.45, 'rgba(92, 160, 255,' + (0.9 * edgeFade + 0.1) + ')');
+            arrowGrad.addColorStop(1, 'rgba(255, 255, 255,' + (0.95 * edgeFade + 0.05) + ')');
+            ctx.fillStyle = arrowGrad;
+            ctx.lineJoin = 'round';
             ctx.beginPath();
-            ctx.moveTo(leftX, leftY);
-            ctx.lineTo(tipX, tipY);
-            ctx.lineTo(rightX, rightY);
+            ctx.moveTo(tipX, tipY);
+            ctx.lineTo(headLeftX, headLeftY);
+            ctx.lineTo(tailLeftX, tailLeftY);
+            ctx.lineTo(tailRightX, tailRightY);
+            ctx.lineTo(headRightX, headRightY);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(12, 26, 42,' + (0.65 * edgeFade) + ')';
+            ctx.lineWidth = Math.max(1, radius * 0.03);
             ctx.stroke();
-            ctx.beginPath();
-            ctx.moveTo(tipLeftX, tipLeftY);
-            ctx.lineTo(tipRightX, tipRightY);
-            ctx.stroke();
+            ctx.restore();
           }
         }
 
