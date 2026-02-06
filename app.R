@@ -22645,9 +22645,9 @@ deg_to_clock <- function(x) {
       }
       .spin-stage::before {
         z-index:0;
-        background: radial-gradient(circle, transparent 0 55%, #dcdcdc 55% 73%, transparent 73% 100%);
-        border:4px solid rgba(0, 0, 0, 0.35);
+        border:12px solid rgba(200, 200, 200, 0.85);
         box-sizing:border-box;
+        background: radial-gradient(circle, rgba(255,255,255,0) 0 68%, rgba(135,135,135,0.6) 68% 83%, rgba(200,200,200,0.8) 83% 100%);
       }
       .spin-stage::after {
         z-index:1;
@@ -23031,7 +23031,7 @@ deg_to_clock <- function(x) {
           ctx.restore();
         }
 
-        function drawBall(cx, cy, radius, rotation) {
+        function drawBall(cx, cy, radius, stageRadius, rotation) {
           // Create more transparent/glass-like baseball
           var grad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, radius * 0.1, cx, cy, radius * 1.1);
           grad.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
@@ -23071,7 +23071,7 @@ deg_to_clock <- function(x) {
           ctx.restore();
           
           // Draw rotation indicators and tilt info
-          drawSeam(cx, cy, radius, rotation);
+          drawSeam(cx, cy, radius, stageRadius, rotation);
           
           // Add subtle glass edge effect with more transparency
           var aoGrad = ctx.createRadialGradient(cx, cy, radius * 0.7, cx, cy, radius);
@@ -23083,12 +23083,13 @@ deg_to_clock <- function(x) {
           ctx.fill();
         }
 
-        function drawSeam(cx, cy, radius, rotation) {
+        function drawSeam(cx, cy, radius, stageRadius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          drawClockNumbers(ctx, radius);
+          var numbersRadius = Math.max(radius + 20, Math.min(stageRadius - 18, radius * 1.05));
+          drawClockNumbers(ctx, numbersRadius);
           drawTiltArrows(ctx, 0, 0, radius, releaseTiltVal, breakTiltVal);
-          drawRotatingTiltLine(ctx, 0, 0, radius, releaseTiltVal, rotation);
+          drawRotatingTiltLine(ctx, 0, 0, radius, stageRadius, releaseTiltVal, rotation);
           ctx.restore();
         }
 
@@ -23170,7 +23171,7 @@ deg_to_clock <- function(x) {
           }
         }
 
-        function drawRotatingTiltLine(ctx, cx, cy, radius, tiltAngle, rotation) {
+        function drawRotatingTiltLine(ctx, cx, cy, radius, stageRadius, tiltAngle, rotation) {
           if (tiltAngle === null || !isFinite(tiltAngle)) return;
           var tiltDir = tiltDegreesToVector(tiltAngle);
           if (!tiltDir) return;
@@ -23187,8 +23188,8 @@ deg_to_clock <- function(x) {
           var axisPerp = { x: -axisDir.y, y: axisDir.x };
           var rodDir = normalizeVec2D({ x: -tiltDir.y, y: tiltDir.x }) || axisDir;
           var rodPerp = { x: -rodDir.y, y: rodDir.x };
-          var stageRadius = radius / 0.64;
-          var axisLength = Math.min(stageRadius - 14, radius * 1.05);
+          var safeStageRadius = Math.max(stageRadius || radius * 2, radius + 20);
+          var axisLength = Math.min(safeStageRadius - 14, radius * 1.05);
           axisLength = Math.max(radius * 0.65, axisLength);
           var bandWidth = radius * 0.045;
           var axisLineStart = { x: -axisDir.x * axisLength, y: -axisDir.y * axisLength };
@@ -23493,8 +23494,9 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
           var cx = size / 2;
           var cy = size / 2;
           var radius = size * 0.3;
+          var stageRadius = Math.max(size / 2 - 16, radius + 20);
           ctx.clearRect(0, 0, size, size);
-          drawBall(cx, cy, radius, angle);
+          drawBall(cx, cy, radius, stageRadius, angle);
           requestAnimationFrame(step);
         }
 
