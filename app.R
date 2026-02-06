@@ -22642,14 +22642,15 @@ deg_to_clock <- function(x) {
         bottom:0;
         border-radius:50%;
         pointer-events:none;
+        z-index:-1;
       }
       .spin-stage::before {
-        border:3px solid rgba(0,0,0,0.4);
+        border:4px solid rgba(0,0,0,0.45);
       }
       .spin-stage::after {
-        inset:12px;
-        border:3px solid rgba(0,0,0,0.35);
-        background:#fff;
+        inset:16px;
+        border:4px solid rgba(0,0,0,0.35);
+        background:transparent;
       }
       .spin-stage canvas {
         display:block;
@@ -22657,6 +22658,8 @@ deg_to_clock <- function(x) {
         height:100%;
         border-radius:50%;
         background:transparent;
+        position:relative;
+        z-index:1;
       }
     .spin-canvas {
       width:100%;
