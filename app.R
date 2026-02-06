@@ -23174,35 +23174,6 @@ deg_to_clock <- function(x) {
           var axisLineStart = { x: -axisDir.x * axisLength, y: -axisDir.y * axisLength };
           var axisLineEnd = { x: axisDir.x * axisLength, y: axisDir.y * axisLength };
 
-          ctx.save();
-          ctx.fillStyle = 'rgba(235, 235, 240, 0.45)';
-          ctx.beginPath();
-          ctx.moveTo(cx + axisLineStart.x + axisPerp.x * bandWidth, cy + axisLineStart.y + axisPerp.y * bandWidth);
-          ctx.lineTo(cx + axisLineStart.x - axisPerp.x * bandWidth, cy + axisLineStart.y - axisPerp.y * bandWidth);
-          ctx.lineTo(cx + axisLineEnd.x - axisPerp.x * bandWidth, cy + axisLineEnd.y - axisPerp.y * bandWidth);
-          ctx.lineTo(cx + axisLineEnd.x + axisPerp.x * bandWidth, cy + axisLineEnd.y + axisPerp.y * bandWidth);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-
-          ctx.save();
-          ctx.lineWidth = Math.max(4, radius * 0.125);
-          ctx.lineCap = 'round';
-          ctx.strokeStyle = 'rgba(185, 185, 195, 0.75)';
-          ctx.beginPath();
-          ctx.moveTo(cx + axisLineStart.x, cy + axisLineStart.y);
-          ctx.lineTo(cx + axisLineEnd.x, cy + axisLineEnd.y);
-          ctx.stroke();
-          ctx.lineWidth = Math.max(2, radius * 0.08);
-          ctx.setLineDash([6, 6]);
-          ctx.strokeStyle = 'rgba(185, 185, 195, 0.35)';
-          ctx.beginPath();
-          ctx.moveTo(cx + axisLineStart.x, cy + axisLineStart.y);
-          ctx.lineTo(cx + axisLineEnd.x, cy + axisLineEnd.y);
-          ctx.stroke();
-          ctx.setLineDash([]);
-          ctx.restore();
-
           drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency);
           drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency);
         }
@@ -23294,30 +23265,34 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
         function drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency) {
           if (!axisDir) return;
           ctx.save();
-          var arrowCount = 8;
-          var axisLen = radius * (0.7 + efficiency * 0.2);
+          var arrowCount = 10;
+          var axisLen = radius * (0.8 + efficiency * 0.2);
           var arrowLen = radius * 0.18;
           var arrowWidth = radius * 0.045;
-          var travel = (rotation / (Math.PI * 2)) * 1.2;
+          var travel = -(rotation / (Math.PI * 2)) * 1.2;
           for (var i = 0; i < arrowCount; i++) {
             var phase = (i / arrowCount + travel) % 1;
+            if (phase < 0) phase += 1;
             var scaled = phase * 2 - 1;
             var centerX = cx + axisDir.x * scaled * axisLen + axisPerp.x * radius * 0.08;
             var centerY = cy + axisDir.y * scaled * axisLen + axisPerp.y * radius * 0.08;
-            var tipX = centerX + axisDir.x * arrowLen * 0.55;
-            var tipY = centerY + axisDir.y * arrowLen * 0.55;
-            var baseX = centerX - axisDir.x * arrowLen * 0.35;
-            var baseY = centerY - axisDir.y * arrowLen * 0.35;
-            var headInnerX = tipX - axisDir.x * arrowLen * 0.2;
-            var headInnerY = tipY - axisDir.y * arrowLen * 0.2;
+            var localFade = Math.max(0, 1 - Math.abs(scaled));
+            var localLen = arrowLen * (0.5 + 0.5 * localFade);
+            var tipX = centerX + axisDir.x * localLen * 0.55;
+            var tipY = centerY + axisDir.y * localLen * 0.55;
+            var baseX = centerX - axisDir.x * localLen * 0.35;
+            var baseY = centerY - axisDir.y * localLen * 0.35;
+            var headInnerX = tipX - axisDir.x * localLen * 0.2;
+            var headInnerY = tipY - axisDir.y * localLen * 0.2;
             var normal = { x: -axisDir.y, y: axisDir.x };
 
-            var depthFade = 0.5 + 0.5 * Math.cos(phase * Math.PI * 2);
             var arrowGrad = ctx.createLinearGradient(baseX, baseY, tipX, tipY);
-            arrowGrad.addColorStop(0, 'rgba(170, 125, 48,' + (0.25 + depthFade * 0.4) + ')');
-            arrowGrad.addColorStop(0.6, 'rgba(215, 185, 120,' + (0.55 + depthFade * 0.35) + ')');
-            arrowGrad.addColorStop(1, 'rgba(255, 255, 255,' + (0.3 + depthFade * 0.3) + ')');
+            arrowGrad.addColorStop(0, 'rgba(170, 125, 48,' + (0.25 + localFade * 0.5) + ')');
+            arrowGrad.addColorStop(0.6, 'rgba(215, 185, 120,' + (0.55 + localFade * 0.3) + ')');
+            arrowGrad.addColorStop(1, 'rgba(255, 255, 255,' + (0.3 + localFade * 0.25) + ')');
 
+            var arrowAlpha = Math.min(1, 0.3 + localFade * 0.8);
+            ctx.globalAlpha = arrowAlpha;
             ctx.fillStyle = arrowGrad;
             ctx.beginPath();
             ctx.moveTo(tipX, tipY);
@@ -23327,7 +23302,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
             ctx.lineTo(headInnerX - normal.x * arrowWidth, headInnerY - normal.y * arrowWidth);
             ctx.closePath();
             ctx.fill();
-            ctx.strokeStyle = 'rgba(112, 72, 34,' + (0.25 + depthFade * 0.3) + ')';
+            ctx.strokeStyle = 'rgba(112, 72, 34,' + (0.2 + localFade * 0.3) + ')';
             ctx.lineWidth = Math.max(1, radius * 0.02);
             ctx.stroke();
           }
