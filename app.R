@@ -22622,21 +22622,34 @@ deg_to_clock <- function(x) {
       width:100%;
       max-width:520px;
     }
-      .spin-stage {
-        width:100%;
-        aspect-ratio:1 / 1;
-        padding:12px;
-        border-radius:50%;
-        background: transparent;
-        box-shadow: 0 28px 55px rgba(15,15,15,0.12);
-        position:relative;
-        overflow:hidden;
-        border:1px solid rgba(0,0,0,0.08);
-      }
-      .spin-stage::after,
-      .spin-stage::before {
+    .spin-stage {
+      width:100%;
+      aspect-ratio:1 / 1;
+      padding:12px;
+      border-radius:50%;
+      background: transparent;
+      box-shadow: 0 28px 55px rgba(15,15,15,0.12);
+      position:relative;
+      overflow:hidden;
+      border:1px solid rgba(0,0,0,0.08);
+    }
+      .spin-stage::before,
+      .spin-stage::after {
         content:'';
-        display:none;
+        position:absolute;
+        top:0;
+        left:0;
+        right:0;
+        bottom:0;
+        border-radius:50%;
+        pointer-events:none;
+      }
+      .spin-stage::before {
+        border:1px solid rgba(0,0,0,0.45);
+      }
+      .spin-stage::after {
+        inset:14px;
+        border:1px solid rgba(0,0,0,0.45);
       }
       .spin-stage canvas {
         display:block;
