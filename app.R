@@ -22622,17 +22622,16 @@ deg_to_clock <- function(x) {
       width:100%;
       max-width:520px;
     }
-    .spin-stage {
-      width:100%;
-      aspect-ratio:1 / 1;
-      padding:12px;
-      border-radius:50%;
-      background: transparent;
-      box-shadow: 0 28px 55px rgba(15,15,15,0.12);
-      position:relative;
-      overflow:hidden;
-      border:1px solid rgba(0,0,0,0.08);
-    }
+      .spin-stage {
+        width:100%;
+        aspect-ratio:1 / 1;
+        padding:12px;
+        border-radius:50%;
+        background: transparent;
+        box-shadow: none;
+        position:relative;
+        overflow:hidden;
+      }
       .spin-stage::before,
       .spin-stage::after {
         content:'';
@@ -22645,11 +22644,12 @@ deg_to_clock <- function(x) {
         pointer-events:none;
       }
       .spin-stage::before {
-        border:1px solid rgba(0,0,0,0.45);
+        border:3px solid rgba(0,0,0,0.4);
       }
       .spin-stage::after {
-        inset:14px;
-        border:1px solid rgba(0,0,0,0.45);
+        inset:12px;
+        border:3px solid rgba(0,0,0,0.35);
+        background:#fff;
       }
       .spin-stage canvas {
         display:block;
@@ -23182,7 +23182,9 @@ deg_to_clock <- function(x) {
           var axisPerp = { x: -axisDir.y, y: axisDir.x };
           var rodDir = normalizeVec2D({ x: -tiltDir.y, y: tiltDir.x }) || axisDir;
           var rodPerp = { x: -rodDir.y, y: rodDir.x };
-          var axisLength = radius * 1.1;
+          var stageRadius = radius / 0.64;
+          var axisLength = Math.min(stageRadius - 14, radius * 1.05);
+          axisLength = Math.max(radius * 0.65, axisLength);
           var bandWidth = radius * 0.045;
           var axisLineStart = { x: -axisDir.x * axisLength, y: -axisDir.y * axisLength };
           var axisLineEnd = { x: axisDir.x * axisLength, y: axisDir.y * axisLength };
@@ -23485,7 +23487,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
           var size = ensureSize();
           var cx = size / 2;
           var cy = size / 2;
-          var radius = size * 0.32;
+          var radius = size * 0.3;
           ctx.clearRect(0, 0, size, size);
           drawBall(cx, cy, radius, angle);
           requestAnimationFrame(step);
