@@ -35,10 +35,13 @@ list_ftp_files <- function(ftp_path) {
   url <- paste0("ftp://", FTP_HOST, ftp_path)
   tryCatch({
     handle <- curl::new_handle(userpwd = FTP_USERPWD)
-    curl::handle_setopt(handle, ftp_use_epsv = FALSE)
+    # Request names-only directory listings so regex checks (MM/DD/CSV) work reliably.
+    curl::handle_setopt(handle, ftp_use_epsv = FALSE, dirlistonly = TRUE)
     contents <- curl::curl_fetch_memory(url, handle = handle)$content
     files <- rawToChar(contents)
-    strsplit(files, "\n")[[1]]
+    entries <- strsplit(files, "\n", fixed = TRUE)[[1]]
+    entries <- trimws(gsub("\r", "", entries, fixed = TRUE))
+    entries[nzchar(entries)]
   }, error = function(e) {
     cat("Error listing files in", ftp_path, ":", e$message, "\n")
     character(0)
@@ -196,14 +199,15 @@ sync_v3_data <- function() {
           
           for (file in csv_files) {
             if (!nzchar(file)) next
-            file_key <- tolower(trimws(file))
+            remote_path <- paste0(csv_path, file)
+            # De-dupe by full remote path, not basename, so same filename on new dates is still synced.
+            file_key <- tolower(trimws(remote_path))
             if (file_key %in% seen_v3_files) {
               cat("Skipping duplicate v3 CSV suffix:", file, "(already processed)\n")
               next
             }
             seen_v3_files <- c(seen_v3_files, file_key)
 
-            remote_path <- paste0(csv_path, file)
             local_path <- file.path(LOCAL_V3_DIR, paste0("v3_", yr, "_", month_dir, "_", day_dir, "_", file))
             
             if (download_csv(remote_path, local_path)) {
@@ -219,14 +223,15 @@ sync_v3_data <- function() {
           
           for (file in csv_files) {
             if (!nzchar(file)) next
-            file_key <- tolower(trimws(file))
+            remote_path <- paste0(day_path, file)
+            # De-dupe by full remote path, not basename, so same filename on new dates is still synced.
+            file_key <- tolower(trimws(remote_path))
             if (file_key %in% seen_v3_files) {
               cat("Skipping duplicate v3 CSV suffix:", file, "(already processed)\n")
               next
             }
             seen_v3_files <- c(seen_v3_files, file_key)
 
-            remote_path <- paste0(day_path, file)
             local_path <- file.path(LOCAL_V3_DIR, paste0("v3_", yr, "_", month_dir, "_", day_dir, "_", file))
             
             if (download_csv(remote_path, local_path)) {
