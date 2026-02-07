@@ -22645,11 +22645,11 @@ deg_to_clock <- function(x) {
       }
       .spin-stage::before {
         z-index:0;
-        background:#d7d9dd;
+        background:#e0e3e8;
       }
       .spin-stage::after {
         z-index:1;
-        inset:34px;
+        inset:38px;
         background:#fff;
       }
       .spin-stage canvas {
@@ -22666,7 +22666,7 @@ deg_to_clock <- function(x) {
       height:100%;
       border-radius:50%;
       background:transparent;
-      box-shadow: 0 18px 40px rgba(0,0,0,0.35);
+      box-shadow:none;
     }
     .spin-canvas-card .spin-controls {
       display:flex;
@@ -22927,11 +22927,11 @@ deg_to_clock <- function(x) {
       function drawClockNumbers(ctx, radius) {
         ctx.save();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-        var fontSize = Math.max(8, radius * 0.07);
+        var fontSize = Math.max(8, radius * 0.064);
         ctx.font = fontSize + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        var clockRadius = radius;
+        var clockRadius = radius - Math.max(2, fontSize * 0.2);
         if (clockRadius < radius * 0.95) {
           clockRadius = radius * 0.95;
         }
@@ -23083,8 +23083,8 @@ deg_to_clock <- function(x) {
         function drawSeam(cx, cy, radius, stageRadius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          var ringCenterRadius = stageRadius + 17;
-          var numbersRadius = Math.max(radius + 36, ringCenterRadius);
+          var ringCenterRadius = stageRadius + 10;
+          var numbersRadius = Math.max(radius + 32, ringCenterRadius);
           drawClockNumbers(ctx, numbersRadius);
           drawTiltArrows(ctx, 0, 0, radius, releaseTiltVal, breakTiltVal);
           drawRotatingTiltLine(ctx, 0, 0, radius, stageRadius, releaseTiltVal, rotation);
@@ -23492,7 +23492,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
           var cx = size / 2;
           var cy = size / 2;
           var radius = size * 0.3;
-          var stageRadius = Math.max(size / 2 - 34, radius + 18);
+          var stageRadius = Math.max(size / 2 - 38, radius + 16);
           ctx.clearRect(0, 0, size, size);
           drawBall(cx, cy, radius, stageRadius, angle);
           requestAnimationFrame(step);
