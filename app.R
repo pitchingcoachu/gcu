@@ -22929,12 +22929,11 @@ deg_to_clock <- function(x) {
       function drawClockNumbers(ctx, radius) {
         ctx.save();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-        var fontSize = Math.max(8, radius * 0.088);
+        var fontSize = Math.max(8, radius * 0.07);
         ctx.font = fontSize + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        var offset = Math.min(radius * 0.07, 16);
-        var clockRadius = radius + offset;
+        var clockRadius = radius;
         if (clockRadius < radius * 0.95) {
           clockRadius = radius * 0.95;
         }
@@ -23086,7 +23085,8 @@ deg_to_clock <- function(x) {
         function drawSeam(cx, cy, radius, stageRadius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          var numbersRadius = Math.max(radius + 28, Math.min(stageRadius - 6, radius * 1.12));
+          var ringCenterRadius = stageRadius + 14;
+          var numbersRadius = Math.max(radius + 34, Math.min(ringCenterRadius, stageRadius + 18));
           drawClockNumbers(ctx, numbersRadius);
           drawTiltArrows(ctx, 0, 0, radius, releaseTiltVal, breakTiltVal);
           drawRotatingTiltLine(ctx, 0, 0, radius, stageRadius, releaseTiltVal, rotation);
