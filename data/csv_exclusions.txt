@@ -462,3 +462,15 @@
 20260207-StephenBDolnyStadium-1_unverified.csv
 # Auto-pruned non-team data
 20260207-TedABroerStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260207-700-HughAdamsPark-1_unverified.csv
+# Auto-pruned non-team data
+20260207-AndersonUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260207-JimReevesField-1_unverified.csv
+# Auto-pruned non-team data
+20260207-LeeUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260207-LoyolaNewOrleans-1_unverified.csv
+# Auto-pruned non-team data
+20260207-WilliamCarey-1_unverified.csv
