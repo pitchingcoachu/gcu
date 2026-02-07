@@ -456,3 +456,9 @@
 20260206-TedABroerStadium-1.csv
 # Auto-pruned non-team data
 20260206-WarriorField-1.csv
+# Auto-pruned non-team data
+20260207-HenleyField-1_unverified.csv
+# Auto-pruned non-team data
+20260207-StephenBDolnyStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260207-TedABroerStadium-1_unverified.csv
