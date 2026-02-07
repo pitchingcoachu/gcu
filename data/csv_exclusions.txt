@@ -392,3 +392,29 @@
 20260206-TedABroerStadium-1_unverified.csv
 # Auto-pruned non-team data
 20260206-WilliamCarey-1_unverified.csv
+# Auto-pruned non-team data
+20260206-DubHerringPark-2_unverified.csv
+# Auto-pruned non-team data
+20260206-DurhamField-2_unverified.csv
+# Auto-pruned non-team data
+20260206-FresnoPacificUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260206-FresnoPacificUniversity-2_unverified.csv
+# Auto-pruned non-team data
+20260206-GoldenWestCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260206-LoyolaNewOrleans-2_unverified.csv
+# Auto-pruned non-team data
+20260206-OdessaCollege-3_unverified.csv
+# Auto-pruned non-team data
+20260206-PaulDemieMainieriField-2_unverified.csv
+# Auto-pruned non-team data
+20260206-PomonaPitzer-1_unverified.csv
+# Auto-pruned non-team data
+20260206-RussellCarrField-1_unverified.csv
+# Auto-pruned non-team data
+20260206-StephenBDolnyStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260206-WarriorField-1_unverified.csv
+# Auto-pruned non-team data
+20260206-WilliamCarey-2_unverified.csv
