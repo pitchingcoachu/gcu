@@ -23037,11 +23037,11 @@ deg_to_clock <- function(x) {
         function drawBall(cx, cy, radius, stageRadius, rotation) {
           // Create more transparent/glass-like baseball
           var grad = ctx.createRadialGradient(cx - radius * 0.3, cy - radius * 0.3, radius * 0.1, cx, cy, radius * 1.1);
-          grad.addColorStop(0, 'rgba(255, 255, 255, 0.4)');
-          grad.addColorStop(0.25, 'rgba(253, 251, 247, 0.35)');
-          grad.addColorStop(0.5, 'rgba(245, 240, 230, 0.3)');
-          grad.addColorStop(0.75, 'rgba(232, 220, 200, 0.25)');
-          grad.addColorStop(1, 'rgba(212, 196, 168, 0.2)');
+          grad.addColorStop(0, 'rgba(255, 255, 255, 0.3)');
+          grad.addColorStop(0.25, 'rgba(253, 251, 247, 0.27)');
+          grad.addColorStop(0.5, 'rgba(245, 240, 230, 0.23)');
+          grad.addColorStop(0.75, 'rgba(232, 220, 200, 0.19)');
+          grad.addColorStop(1, 'rgba(212, 196, 168, 0.15)');
           ctx.fillStyle = grad;
           ctx.beginPath();
           ctx.arc(cx, cy, radius, 0, Math.PI * 2);
@@ -23049,7 +23049,7 @@ deg_to_clock <- function(x) {
           
           // Subtle outer edge with transparency
           ctx.lineWidth = 1.5;
-          ctx.strokeStyle = 'rgba(150,130,100,0.4)';
+          ctx.strokeStyle = 'rgba(150,130,100,0.28)';
           ctx.stroke();
           
           // Enhanced highlight for glass-like 3D appearance
@@ -23058,8 +23058,8 @@ deg_to_clock <- function(x) {
             cx - radius * 0.3, cy - radius * 0.3, 0,
             cx - radius * 0.3, cy - radius * 0.3, radius * 0.5
           );
-          highlightGrad.addColorStop(0, 'rgba(255,255,255,0.8)');
-          highlightGrad.addColorStop(0.5, 'rgba(255,255,255,0.4)');
+          highlightGrad.addColorStop(0, 'rgba(255,255,255,0.65)');
+          highlightGrad.addColorStop(0.5, 'rgba(255,255,255,0.28)');
           highlightGrad.addColorStop(1, 'rgba(255,255,255,0)');
           ctx.fillStyle = highlightGrad;
           ctx.beginPath();
@@ -23067,7 +23067,7 @@ deg_to_clock <- function(x) {
           ctx.fill();
           
           // Secondary smaller highlight for more glass effect
-          ctx.fillStyle = 'rgba(255,255,255,0.6)';
+          ctx.fillStyle = 'rgba(255,255,255,0.45)';
           ctx.beginPath();
           ctx.ellipse(cx - radius * 0.35, cy - radius * 0.35, radius * 0.15, radius * 0.1, -Math.PI / 4, 0, Math.PI * 2);
           ctx.fill();
@@ -23198,90 +23198,41 @@ deg_to_clock <- function(x) {
           var axisLineStart = { x: -axisDir.x * axisLength, y: -axisDir.y * axisLength };
           var axisLineEnd = { x: axisDir.x * axisLength, y: axisDir.y * axisLength };
 
-          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency);
+          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, safeStageRadius, efficiency);
           drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency);
         }
 
-function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
-          var baseOffset = radius * (0.25 + efficiency * 0.45);
-          var rodLength = radius * (0.6 + efficiency * 0.25);
-          var positiveBase = {
-            x: rodDir.x * baseOffset,
-            y: rodDir.y * baseOffset
-          };
-          var negativeBase = {
-            x: -rodDir.x * baseOffset,
-            y: -rodDir.y * baseOffset
-          };
-          var positiveTip = {
-            x: positiveBase.x + rodDir.x * rodLength,
-            y: positiveBase.y + rodDir.y * rodLength
-          };
-          var negativeTip = {
-            x: negativeBase.x - rodDir.x * rodLength,
-            y: negativeBase.y - rodDir.y * rodLength
-          };
-          drawRodSegment(ctx, cx, cy, positiveBase, positiveTip, rodPerp, radius);
-          drawRodSegment(ctx, cx, cy, negativeBase, negativeTip, rodPerp, radius);
-          drawRodCap(ctx, cx, cy, positiveTip, rodDir, rodPerp, radius, false);
-          drawRodCap(ctx, cx, cy, negativeTip, rodDir, rodPerp, radius, true);
+function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficiency) {
+          var outerLimit = Math.max(radius + 6, stageRadius - 2); // Stop at inner edge of gray border
+          var ballLimit = Math.max(2, radius);
+          var rodWidth = Math.max(radius * 0.018, 1.2); // Thinner rod
+          drawRodSegment(ctx, cx, cy, -outerLimit, -ballLimit, rodDir, rodPerp, rodWidth, 1.0);
+          drawRodSegment(ctx, cx, cy, -ballLimit, ballLimit, rodDir, rodPerp, rodWidth, 0.42); // Fainter through ball
+          drawRodSegment(ctx, cx, cy, ballLimit, outerLimit, rodDir, rodPerp, rodWidth, 1.0);
         }
 
-        function drawRodSegment(ctx, cx, cy, start, end, axisPerp, radius) {
+        function drawRodSegment(ctx, cx, cy, startDist, endDist, axisDir, axisPerp, halfWidth, alpha) {
+          var start = { x: axisDir.x * startDist, y: axisDir.y * startDist };
+          var end = { x: axisDir.x * endDist, y: axisDir.y * endDist };
           ctx.save();
-          var rodWidth = Math.max(radius * 0.045, 3);
           var grad = ctx.createLinearGradient(
             cx + start.x, cy + start.y,
             cx + end.x, cy + end.y
           );
-          grad.addColorStop(0, 'rgba(236, 232, 225, 0.9)');
-          grad.addColorStop(0.4, 'rgba(210, 205, 198, 0.95)');
-          grad.addColorStop(0.7, 'rgba(190, 180, 165, 0.95)');
-          grad.addColorStop(1, 'rgba(160, 140, 115, 0.9)');
+          grad.addColorStop(0, 'rgba(236, 232, 225,' + (0.88 * alpha) + ')');
+          grad.addColorStop(0.4, 'rgba(210, 205, 198,' + (0.92 * alpha) + ')');
+          grad.addColorStop(0.7, 'rgba(190, 180, 165,' + (0.92 * alpha) + ')');
+          grad.addColorStop(1, 'rgba(160, 140, 115,' + (0.88 * alpha) + ')');
           ctx.fillStyle = grad;
           ctx.beginPath();
-          ctx.moveTo(cx + start.x + axisPerp.x * rodWidth, cy + start.y + axisPerp.y * rodWidth);
-          ctx.lineTo(cx + start.x - axisPerp.x * rodWidth, cy + start.y - axisPerp.y * rodWidth);
-          ctx.lineTo(cx + end.x - axisPerp.x * rodWidth, cy + end.y - axisPerp.y * rodWidth);
-          ctx.lineTo(cx + end.x + axisPerp.x * rodWidth, cy + end.y + axisPerp.y * rodWidth);
+          ctx.moveTo(cx + start.x + axisPerp.x * halfWidth, cy + start.y + axisPerp.y * halfWidth);
+          ctx.lineTo(cx + start.x - axisPerp.x * halfWidth, cy + start.y - axisPerp.y * halfWidth);
+          ctx.lineTo(cx + end.x - axisPerp.x * halfWidth, cy + end.y - axisPerp.y * halfWidth);
+          ctx.lineTo(cx + end.x + axisPerp.x * halfWidth, cy + end.y + axisPerp.y * halfWidth);
           ctx.closePath();
           ctx.fill();
-          ctx.strokeStyle = 'rgba(35, 50, 70, 0.4)';
-          ctx.lineWidth = Math.max(1, radius * 0.01);
-          ctx.stroke();
-          ctx.restore();
-        }
-
-        function drawRodCap(ctx, cx, cy, point, axisDir, axisPerp, radius, isStart) {
-          ctx.save();
-          var capLength = Math.max(radius * 0.32, 10);
-          var capWidth = Math.max(radius * 0.045, 3);
-          var direction = isStart ? -1 : 1;
-          var outerPoint = {
-            x: point.x + axisDir.x * capLength * direction,
-            y: point.y + axisDir.y * capLength * direction
-          };
-          var innerPoint = {
-            x: point.x - axisDir.x * capLength * 0.3 * direction,
-            y: point.y - axisDir.y * capLength * 0.3 * direction
-          };
-          var capGrad = ctx.createLinearGradient(
-            cx + innerPoint.x, cy + innerPoint.y,
-            cx + outerPoint.x, cy + outerPoint.y
-          );
-          capGrad.addColorStop(0, 'rgba(235, 219, 178, 0.9)');
-          capGrad.addColorStop(0.6, 'rgba(160, 136, 98, 0.9)');
-          capGrad.addColorStop(1, 'rgba(125, 95, 52, 0.9)');
-          ctx.fillStyle = capGrad;
-          ctx.beginPath();
-          ctx.moveTo(cx + innerPoint.x + axisPerp.x * capWidth, cy + innerPoint.y + axisPerp.y * capWidth);
-          ctx.lineTo(cx + innerPoint.x - axisPerp.x * capWidth, cy + innerPoint.y - axisPerp.y * capWidth);
-          ctx.lineTo(cx + outerPoint.x - axisPerp.x * capWidth, cy + outerPoint.y - axisPerp.y * capWidth);
-          ctx.lineTo(cx + outerPoint.x + axisPerp.x * capWidth, cy + outerPoint.y + axisPerp.y * capWidth);
-          ctx.closePath();
-          ctx.fill();
-          ctx.strokeStyle = 'rgba(95, 65, 32, 0.6)';
-          ctx.lineWidth = Math.max(1, radius * 0.02);
+          ctx.strokeStyle = 'rgba(35, 50, 70,' + (0.32 * alpha) + ')';
+          ctx.lineWidth = Math.max(0.8, halfWidth * 0.42);
           ctx.stroke();
           ctx.restore();
         }
