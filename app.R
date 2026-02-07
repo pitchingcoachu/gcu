@@ -23187,28 +23187,43 @@ deg_to_clock <- function(x) {
             y: tiltDir.y * (1 - efficiency) + releaseDir.y * efficiency
           }) || tiltDir;
 
-          var axisDir = normalizeVec2D(blended) || tiltDir;
+          var axisDir = normalizeVec2D(releaseDir) || normalizeVec2D(blended) || tiltDir;
           var axisPerp = { x: -axisDir.y, y: axisDir.x };
           var rodDir = normalizeVec2D({ x: -tiltDir.y, y: tiltDir.x }) || axisDir;
           var rodPerp = { x: -rodDir.y, y: rodDir.x };
           var safeStageRadius = Math.max(stageRadius || radius * 2, radius + 20);
-          var axisLength = Math.min(safeStageRadius - 14, radius * 1.05);
-          axisLength = Math.max(radius * 0.65, axisLength);
-          var bandWidth = radius * 0.045;
-          var axisLineStart = { x: -axisDir.x * axisLength, y: -axisDir.y * axisLength };
-          var axisLineEnd = { x: axisDir.x * axisLength, y: axisDir.y * axisLength };
+          var maxShift = radius * 0.9;
+          var signedShift = -efficiency * maxShift;
+          var centerShift = { x: rodDir.x * signedShift, y: rodDir.y * signedShift };
 
-          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, safeStageRadius, efficiency);
-          drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency);
+          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, safeStageRadius, efficiency, signedShift);
+          drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency, centerShift);
         }
 
-function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficiency) {
+function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficiency, signedShift) {
           var outerLimit = Math.max(radius + 6, stageRadius - 2); // Stop at inner edge of gray border
           var ballLimit = Math.max(2, radius);
           var rodWidth = Math.max(radius * 0.018, 1.2); // Thinner rod
-          drawRodSegment(ctx, cx, cy, -outerLimit, -ballLimit, rodDir, rodPerp, rodWidth, 1.0);
-          drawRodSegment(ctx, cx, cy, -ballLimit, ballLimit, rodDir, rodPerp, rodWidth, 0.42); // Fainter through ball
-          drawRodSegment(ctx, cx, cy, ballLimit, outerLimit, rodDir, rodPerp, rodWidth, 1.0);
+          var clampedShift = Math.max(-outerLimit, Math.min(outerLimit, signedShift || 0));
+          var maxHalfLen = Math.max(2, outerLimit - Math.abs(clampedShift));
+          var halfLen = maxHalfLen * (0.12 + (0.88 * efficiency)); // 0% looks viewer-facing, 100% spans to edges
+          halfLen = Math.max(radius * 0.06, Math.min(maxHalfLen, halfLen));
+          var startScalar = clampedShift - halfLen;
+          var endScalar = clampedShift + halfLen;
+          var segMin = Math.min(startScalar, endScalar);
+          var segMax = Math.max(startScalar, endScalar);
+
+          if (segMin < -ballLimit) {
+            drawRodSegment(ctx, cx, cy, segMin, Math.min(segMax, -ballLimit), rodDir, rodPerp, rodWidth, 1.0);
+          }
+          var innerStart = Math.max(segMin, -ballLimit);
+          var innerEnd = Math.min(segMax, ballLimit);
+          if (innerEnd > innerStart) {
+            drawRodSegment(ctx, cx, cy, innerStart, innerEnd, rodDir, rodPerp, rodWidth, 0.42); // Fainter through ball
+          }
+          if (segMax > ballLimit) {
+            drawRodSegment(ctx, cx, cy, Math.max(segMin, ballLimit), segMax, rodDir, rodPerp, rodWidth, 1.0);
+          }
         }
 
         function drawRodSegment(ctx, cx, cy, startDist, endDist, axisDir, axisPerp, halfWidth, alpha) {
@@ -23237,11 +23252,12 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
           ctx.restore();
         }
 
-        function drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency) {
+        function drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency, centerShift) {
           if (!axisDir) return;
           ctx.save();
           var arrowCount = 10;
-          var axisLen = radius * (0.8 + efficiency * 0.2);
+          var shift = centerShift || { x: 0, y: 0 };
+          var axisLen = radius * (0.22 + efficiency * 0.78);
           var arrowLen = radius * 0.18;
           var arrowWidth = radius * 0.045;
           var travel = -(rotation / (Math.PI * 2)) * 1.2;
@@ -23249,8 +23265,8 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
             var phase = (i / arrowCount + travel) % 1;
             if (phase < 0) phase += 1;
             var scaled = phase * 2 - 1;
-            var centerX = cx + axisDir.x * scaled * axisLen;
-            var centerY = cy + axisDir.y * scaled * axisLen;
+            var centerX = cx + shift.x + axisDir.x * scaled * axisLen;
+            var centerY = cy + shift.y + axisDir.y * scaled * axisLen;
             var fadeFactor = Math.max(0, 1 - Math.abs(scaled));
             var localLen = arrowLen * (0.3 + 0.7 * fadeFactor);
             var tipX = centerX - axisDir.x * localLen * 0.55;
