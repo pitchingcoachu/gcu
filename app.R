@@ -22645,13 +22645,11 @@ deg_to_clock <- function(x) {
       }
       .spin-stage::before {
         z-index:0;
-        border:22px solid rgba(200, 200, 200, 0.88);
-        box-sizing:border-box;
-        background: radial-gradient(circle, rgba(255,255,255,0) 0 58%, rgba(135,135,135,0.65) 58% 86%, rgba(205,205,205,0.9) 86% 100%);
+        background:#d7d9dd;
       }
       .spin-stage::after {
         z-index:1;
-        inset:30px;
+        inset:34px;
         background:#fff;
       }
       .spin-stage canvas {
@@ -23085,8 +23083,8 @@ deg_to_clock <- function(x) {
         function drawSeam(cx, cy, radius, stageRadius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          var ringCenterRadius = stageRadius + 14;
-          var numbersRadius = Math.max(radius + 34, Math.min(ringCenterRadius, stageRadius + 18));
+          var ringCenterRadius = stageRadius + 17;
+          var numbersRadius = Math.max(radius + 36, ringCenterRadius);
           drawClockNumbers(ctx, numbersRadius);
           drawTiltArrows(ctx, 0, 0, radius, releaseTiltVal, breakTiltVal);
           drawRotatingTiltLine(ctx, 0, 0, radius, stageRadius, releaseTiltVal, rotation);
@@ -23494,7 +23492,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
           var cx = size / 2;
           var cy = size / 2;
           var radius = size * 0.3;
-          var stageRadius = Math.max(size / 2 - 30, radius + 26);
+          var stageRadius = Math.max(size / 2 - 34, radius + 18);
           ctx.clearRect(0, 0, size, size);
           drawBall(cx, cy, radius, stageRadius, angle);
           requestAnimationFrame(step);
