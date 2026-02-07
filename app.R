@@ -22627,7 +22627,7 @@ deg_to_clock <- function(x) {
         aspect-ratio:1 / 1;
         padding:12px;
         border-radius:50%;
-        background: transparent;
+        background:#e0e3e8;
         box-shadow: none;
         position:relative;
         overflow:hidden;
@@ -22645,7 +22645,7 @@ deg_to_clock <- function(x) {
       }
       .spin-stage::before {
         z-index:0;
-        background:#e0e3e8;
+        background:transparent;
       }
       .spin-stage::after {
         z-index:1;
@@ -22924,16 +22924,21 @@ deg_to_clock <- function(x) {
         });
       }
 
-      function drawClockNumbers(ctx, radius) {
+      function drawClockNumbers(ctx, ringInnerRadius, ringOuterRadius) {
         ctx.save();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
-        var fontSize = Math.max(8, radius * 0.064);
+        var ringThickness = Math.max(1, ringOuterRadius - ringInnerRadius);
+        var fontSize = Math.max(8, Math.min(ringThickness * 0.5, ringOuterRadius * 0.06));
         ctx.font = fontSize + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        var clockRadius = radius - Math.max(2, fontSize * 0.2);
-        if (clockRadius < radius * 0.95) {
-          clockRadius = radius * 0.95;
+        var innerPad = Math.max(2, fontSize * 0.35);
+        var outerPad = Math.max(3, fontSize * 0.65);
+        var minRadius = ringInnerRadius + innerPad + (fontSize * 0.35);
+        var maxRadius = ringOuterRadius - outerPad - (fontSize * 0.5);
+        var clockRadius = (minRadius + maxRadius) / 2;
+        if (!isFinite(clockRadius) || minRadius >= maxRadius) {
+          clockRadius = ringInnerRadius + (ringThickness * 0.5);
         }
         
         // Draw all 12 numbers - 12 is at top (90 degrees), going clockwise
@@ -23083,9 +23088,8 @@ deg_to_clock <- function(x) {
         function drawSeam(cx, cy, radius, stageRadius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          var ringCenterRadius = stageRadius + 10;
-          var numbersRadius = Math.max(radius + 32, ringCenterRadius);
-          drawClockNumbers(ctx, numbersRadius);
+          var ringOuterRadius = stageRadius + 38;
+          drawClockNumbers(ctx, stageRadius, ringOuterRadius);
           drawTiltArrows(ctx, 0, 0, radius, releaseTiltVal, breakTiltVal);
           drawRotatingTiltLine(ctx, 0, 0, radius, stageRadius, releaseTiltVal, rotation);
           ctx.restore();
@@ -23491,8 +23495,9 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
           var size = ensureSize();
           var cx = size / 2;
           var cy = size / 2;
-          var radius = size * 0.3;
-          var stageRadius = Math.max(size / 2 - 38, radius + 16);
+          var stageRadius = size / 2 - 38;
+          var ballGap = Math.max(14, size * 0.03);
+          var radius = Math.min(size * 0.3, stageRadius - ballGap);
           ctx.clearRect(0, 0, size, size);
           drawBall(cx, cy, radius, stageRadius, angle);
           requestAnimationFrame(step);
