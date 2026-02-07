@@ -22625,7 +22625,7 @@ deg_to_clock <- function(x) {
       .spin-stage {
         width:100%;
         aspect-ratio:1 / 1;
-        padding:12px;
+        padding:0;
         border-radius:50%;
         background:#e0e3e8;
         box-shadow: none;
@@ -22658,7 +22658,8 @@ deg_to_clock <- function(x) {
         height:100%;
         border-radius:50%;
         background:transparent;
-        position:relative;
+        position:absolute;
+        inset:0;
         z-index:2;
       }
     .spin-canvas {
@@ -22928,18 +22929,15 @@ deg_to_clock <- function(x) {
         ctx.save();
         ctx.fillStyle = 'rgba(0, 0, 0, 0.65)';
         var ringThickness = Math.max(1, ringOuterRadius - ringInnerRadius);
-        var fontSize = Math.max(8, Math.min(ringThickness * 0.5, ringOuterRadius * 0.06));
+        var fontSize = Math.max(8, Math.min(ringThickness * 0.42, ringOuterRadius * 0.055));
         ctx.font = fontSize + 'px \"Inter\", \"Helvetica Neue\", sans-serif';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
-        var innerPad = Math.max(2, fontSize * 0.35);
-        var outerPad = Math.max(3, fontSize * 0.65);
-        var minRadius = ringInnerRadius + innerPad + (fontSize * 0.35);
-        var maxRadius = ringOuterRadius - outerPad - (fontSize * 0.5);
-        var clockRadius = (minRadius + maxRadius) / 2;
-        if (!isFinite(clockRadius) || minRadius >= maxRadius) {
-          clockRadius = ringInnerRadius + (ringThickness * 0.5);
-        }
+        var minRadius = ringInnerRadius + (fontSize * 0.6);
+        var maxRadius = ringOuterRadius - (fontSize * 0.6);
+        var clockRadius = ringInnerRadius + (ringThickness * 0.58);
+        if (!isFinite(clockRadius)) clockRadius = ringInnerRadius + (ringThickness * 0.5);
+        clockRadius = Math.min(maxRadius, Math.max(minRadius, clockRadius));
         
         // Draw all 12 numbers - 12 is at top (90 degrees), going clockwise
         for (var hour = 1; hour <= 12; hour++) {
@@ -22998,11 +22996,14 @@ deg_to_clock <- function(x) {
         var speed = baseSpeed * multiplier;
         var lastTs = null;
         var sliderUpdating = false;
+        var sizeCache = 0;
 
         function ensureSize() {
           var parent = canvas.parentElement;
           var width = parent ? parent.clientWidth : canvas.clientWidth;
-          var size = Math.max(220, width);
+          var height = parent ? parent.clientHeight : canvas.clientHeight;
+          var base = Math.min(width, height || width);
+          var size = Math.max(220, base);
           if (canvas.width !== size) {
             canvas.width = size;
             canvas.height = size;
@@ -23088,7 +23089,7 @@ deg_to_clock <- function(x) {
         function drawSeam(cx, cy, radius, stageRadius, rotation) {
           ctx.save();
           ctx.translate(cx, cy);
-          var ringOuterRadius = stageRadius + 38;
+          var ringOuterRadius = sizeCache > 0 ? (sizeCache / 2) : (stageRadius + 38);
           drawClockNumbers(ctx, stageRadius, ringOuterRadius);
           drawTiltArrows(ctx, 0, 0, radius, releaseTiltVal, breakTiltVal);
           drawRotatingTiltLine(ctx, 0, 0, radius, stageRadius, releaseTiltVal, rotation);
@@ -23493,10 +23494,11 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, efficiency) {
             updateSliderValue();
           }
           var size = ensureSize();
+          sizeCache = size;
           var cx = size / 2;
           var cy = size / 2;
           var stageRadius = size / 2 - 38;
-          var ballGap = Math.max(14, size * 0.03);
+          var ballGap = Math.max(18, size * 0.035);
           var radius = Math.min(size * 0.3, stageRadius - ballGap);
           ctx.clearRect(0, 0, size, size);
           drawBall(cx, cy, radius, stageRadius, angle);
