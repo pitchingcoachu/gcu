@@ -520,3 +520,5 @@
 20260207-WarriorField-1_unverified.csv
 # Auto-pruned non-team data
 20260207-WilliamCarey-2_unverified.csv
+# Auto-pruned non-team data
+20260207-CarsonNewman-1_unverified.csv
