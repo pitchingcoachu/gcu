@@ -23346,12 +23346,12 @@ deg_to_clock <- function(x) {
             var centerY = pt.y;
             var fadeFactor = pt.lineFade * (1 - curveMix) + curveMix;
             var localLen = arrowLen * (0.3 + 0.7 * fadeFactor);
-            var tipX = centerX - tangent.x * localLen * 0.55;
-            var tipY = centerY - tangent.y * localLen * 0.55;
-            var baseX = centerX + tangent.x * localLen * 0.35;
-            var baseY = centerY + tangent.y * localLen * 0.35;
-            var headInnerX = tipX + tangent.x * localLen * 0.2;
-            var headInnerY = tipY + tangent.y * localLen * 0.2;
+            var tipX = centerX + tangent.x * localLen * 0.55;
+            var tipY = centerY + tangent.y * localLen * 0.55;
+            var baseX = centerX - tangent.x * localLen * 0.35;
+            var baseY = centerY - tangent.y * localLen * 0.35;
+            var headInnerX = tipX - tangent.x * localLen * 0.2;
+            var headInnerY = tipY - tangent.y * localLen * 0.2;
 
             var arrowGrad = ctx.createLinearGradient(baseX, baseY, tipX, tipY);
             arrowGrad.addColorStop(0, 'rgba(170, 125, 48, 1)');
