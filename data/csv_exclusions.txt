@@ -526,3 +526,53 @@
 20260207-CarsonNewman-2_unverified.csv
 # Auto-pruned non-team data
 20260207-HDetterField-2_unverified.csv
+# Auto-pruned non-team data
+20260207-AndersonUniversity-3.csv
+# Auto-pruned non-team data
+20260207-BobSteinStadium-1.csv
+# Auto-pruned non-team data
+20260207-CarsonNewman-1.csv
+# Auto-pruned non-team data
+20260207-CarsonNewman-2.csv
+# Auto-pruned non-team data
+20260207-DurhamField-1.csv
+# Auto-pruned non-team data
+20260207-FresnoPacificUniversity-1.csv
+# Auto-pruned non-team data
+20260207-HDetterField-2.csv
+# Auto-pruned non-team data
+20260207-JohnAltobelliPark-1.csv
+# Auto-pruned non-team data
+20260207-LeeUniversity-1.csv
+# Auto-pruned non-team data
+20260207-LeeUniversity-2.csv
+# Auto-pruned non-team data
+20260207-PomonaPitzer-1.csv
+# Auto-pruned non-team data
+20260207-PomonaPitzer-2.csv
+# Auto-pruned non-team data
+20260207-RussellCarrField-1.csv
+# Auto-pruned non-team data
+20260207-RussellCarrField-2.csv
+# Auto-pruned non-team data
+20260207-SammyCoxField-1.csv
+# Auto-pruned non-team data
+20260207-StephenBDolnyStadium-1.csv
+# Auto-pruned non-team data
+20260207-StephenBDolnyStadium-2.csv
+# Auto-pruned non-team data
+20260207-WarriorField-1.csv
+# Auto-pruned non-team data
+20260208-AndersonUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260208-BobSteinStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260208-BurchellStallard-1_unverified.csv
+# Auto-pruned non-team data
+20260208-DurhamField-1_unverified.csv
+# Auto-pruned non-team data
+20260208-LamarHennonField-1_unverified.csv
+# Auto-pruned non-team data
+20260208-PioneerPark-1_unverified.csv
+# Auto-pruned non-team data
+20260208-SammyCoxField-1_unverified.csv
