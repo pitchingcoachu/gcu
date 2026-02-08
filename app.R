@@ -23202,7 +23202,7 @@ deg_to_clock <- function(x) {
           drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency, centerShift, axisLen);
         }
 
-function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadius, efficiency, releaseDir, pitcherHand) {
+        function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadius, efficiency, releaseDir, pitcherHand) {
           var outerLimit = Math.max(radius + 6, stageRadius - 2); // Stop at inner edge of gray border
           var ballLimit = Math.max(2, radius);
           var rodWidth = Math.max(radius * 0.018, 1.2); // Thinner rod
@@ -23216,7 +23216,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
           // LHP = release tilt +3 hours (clockwise 90deg), RHP = release tilt -3 hours (counterclockwise 90deg)
           var fullSideSign;
           if (pitcherHand.indexOf('L') === 0 || pitcherHand.indexOf('R') === 0) {
-            var handSign = (pitcherHand.indexOf('L') === 0) ? 1 : -1;
+            var handSign = (pitcherHand.indexOf('L') === 0) ? -1 : 1; // flipped per user request
             var sideVec = {
               x: releaseDir.y * handSign,
               y: -releaseDir.x * handSign
@@ -23226,27 +23226,15 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
             fullSideSign = ((rodDir.x * releaseDir.x + rodDir.y * releaseDir.y) >= 0) ? 1 : -1;
           }
           
-          // Draw outside the baseball - fully visible on both sides
-          drawRodSegment(ctx, cx, cy, -outerLimit, -ballLimit, rodDir, rodPerp, rodWidth, 1.0);
-          drawRodSegment(ctx, cx, cy, ballLimit, outerLimit, rodDir, rodPerp, rodWidth, 1.0);
+          // Base rod is low-transparency gray across full span.
+          drawRodSegment(ctx, cx, cy, -outerLimit, outerLimit, rodDir, rodPerp, rodWidth, 0.32);
 
-          // Inside the baseball: only one side (release tilt side) gets full visibility
+          // Black visibility segment: from outer border to efficiency endpoint on chosen side only.
+          var visibilityEnd = Math.max(0, ballLimit - penetrationDistance); // 100%->ball edge, 0%->center
           if (fullSideSign > 0) {
-            // Right side is release tilt side - draw fully visible from edge toward center
-            if (penetrationDistance > 1e-3) {
-              // Fully visible part (from edge toward center by penetration distance)
-              drawRodSegment(ctx, cx, cy, ballLimit - penetrationDistance, ballLimit, rodDir, rodPerp, rodWidth, 1.0);
-            }
-            // Transparent part continues to opposite edge
-            drawRodSegment(ctx, cx, cy, -ballLimit, ballLimit - penetrationDistance, rodDir, rodPerp, rodWidth, 0.35);
+            drawBlackRodSegment(ctx, cx, cy, visibilityEnd, outerLimit, rodDir, rodPerp, rodWidth * 1.05, 0.98);
           } else {
-            // Left side is release tilt side - draw fully visible from edge toward center
-            if (penetrationDistance > 1e-3) {
-              // Fully visible part (from edge toward center by penetration distance)
-              drawRodSegment(ctx, cx, cy, -ballLimit, -ballLimit + penetrationDistance, rodDir, rodPerp, rodWidth, 1.0);
-            }
-            // Transparent part continues to opposite edge
-            drawRodSegment(ctx, cx, cy, -ballLimit + penetrationDistance, ballLimit, rodDir, rodPerp, rodWidth, 0.35);
+            drawBlackRodSegment(ctx, cx, cy, -outerLimit, -visibilityEnd, rodDir, rodPerp, rodWidth * 1.05, 0.98);
           }
         }
 
@@ -23273,6 +23261,21 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
           ctx.strokeStyle = 'rgba(35, 50, 70,' + (0.32 * alpha) + ')';
           ctx.lineWidth = Math.max(0.8, halfWidth * 0.42);
           ctx.stroke();
+          ctx.restore();
+        }
+
+        function drawBlackRodSegment(ctx, cx, cy, startDist, endDist, axisDir, axisPerp, halfWidth, alpha) {
+          var start = { x: axisDir.x * startDist, y: axisDir.y * startDist };
+          var end = { x: axisDir.x * endDist, y: axisDir.y * endDist };
+          ctx.save();
+          ctx.fillStyle = 'rgba(0, 0, 0,' + alpha + ')';
+          ctx.beginPath();
+          ctx.moveTo(cx + start.x + axisPerp.x * halfWidth, cy + start.y + axisPerp.y * halfWidth);
+          ctx.lineTo(cx + start.x - axisPerp.x * halfWidth, cy + start.y - axisPerp.y * halfWidth);
+          ctx.lineTo(cx + end.x - axisPerp.x * halfWidth, cy + end.y - axisPerp.y * halfWidth);
+          ctx.lineTo(cx + end.x + axisPerp.x * halfWidth, cy + end.y + axisPerp.y * halfWidth);
+          ctx.closePath();
+          ctx.fill();
           ctx.restore();
         }
 
