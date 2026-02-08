@@ -23216,6 +23216,14 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
             // At 0% efficiency, fully visible extends to center from both sides
             drawRodSegment(ctx, cx, cy, -outerLimit, outerLimit, rodDir, rodPerp, rodWidth, 1.0);
           }
+
+          // One-sided black penetration marker inside the ball.
+          // 100%: none, 50%: edge->midpoint, 0%: edge->center.
+          var blackPenetration = Math.max(0, Math.min(ballLimit, (1 - efficiency) * ballLimit));
+          if (blackPenetration > 1e-3) {
+            var blackStart = ballLimit - blackPenetration;
+            drawBlackRodSegment(ctx, cx, cy, blackStart, ballLimit, rodDir, rodPerp, rodWidth * 1.05, 0.98);
+          }
         }
 
         function drawRodSegment(ctx, cx, cy, startDist, endDist, axisDir, axisPerp, halfWidth, alpha) {
@@ -23241,6 +23249,21 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
           ctx.strokeStyle = 'rgba(35, 50, 70,' + (0.32 * alpha) + ')';
           ctx.lineWidth = Math.max(0.8, halfWidth * 0.42);
           ctx.stroke();
+          ctx.restore();
+        }
+
+        function drawBlackRodSegment(ctx, cx, cy, startDist, endDist, axisDir, axisPerp, halfWidth, alpha) {
+          var start = { x: axisDir.x * startDist, y: axisDir.y * startDist };
+          var end = { x: axisDir.x * endDist, y: axisDir.y * endDist };
+          ctx.save();
+          ctx.fillStyle = 'rgba(0, 0, 0,' + alpha + ')';
+          ctx.beginPath();
+          ctx.moveTo(cx + start.x + axisPerp.x * halfWidth, cy + start.y + axisPerp.y * halfWidth);
+          ctx.lineTo(cx + start.x - axisPerp.x * halfWidth, cy + start.y - axisPerp.y * halfWidth);
+          ctx.lineTo(cx + end.x - axisPerp.x * halfWidth, cy + end.y - axisPerp.y * halfWidth);
+          ctx.lineTo(cx + end.x + axisPerp.x * halfWidth, cy + end.y + axisPerp.y * halfWidth);
+          ctx.closePath();
+          ctx.fill();
           ctx.restore();
         }
 
@@ -23518,6 +23541,20 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
       if (is.null(val)) return(NA_real_)
       suppressWarnings(as.numeric(val))
     }
+    get_col_first <- function(names_vec) {
+      for (nm in names_vec) {
+        val <- row[[nm]]
+        if (is.null(val) || length(val) == 0 || is.na(val)) next
+        num <- suppressWarnings(as.numeric(val))
+        if (is.finite(num)) return(num)
+        chr <- trimws(as.character(val))
+        if (!nzchar(chr)) next
+        chr <- gsub("%", "", chr, fixed = TRUE)
+        num <- suppressWarnings(as.numeric(chr))
+        if (is.finite(num)) return(num)
+      }
+      NA_real_
+    }
 
     axis_vec <- c(
       get_col("SpinAxis3dVectorX"),
@@ -23527,7 +23564,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
     axis_vec <- vapply(axis_vec, function(v) if (is.finite(v)) v else 0, numeric(1))
     spin_rate_val <- get_col("SpinAxis3dActiveSpinRate")
     if (!is.finite(spin_rate_val) || spin_rate_val <= 0) spin_rate_val <- 1800
-    spin_eff_val <- get_col("SpinAxis3dSpinEfficiency")
+    spin_eff_val <- get_col_first(c("SpinAxis3dSpinEfficiency", "SpinEfficiency", "SpinEff", "SpinEffPct"))
     tilt_val <- get_col("SpinAxis3dTilt")
     rtilt_val <- get_col("ReleaseTilt")
     if (!is.finite(rtilt_val)) rtilt_val <- get_col("rTilt")
