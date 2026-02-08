@@ -462,3 +462,61 @@
 20260207-StephenBDolnyStadium-1_unverified.csv
 # Auto-pruned non-team data
 20260207-TedABroerStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260207-700-HughAdamsPark-1_unverified.csv
+# Auto-pruned non-team data
+20260207-AndersonUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260207-JimReevesField-1_unverified.csv
+# Auto-pruned non-team data
+20260207-LeeUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260207-LoyolaNewOrleans-1_unverified.csv
+# Auto-pruned non-team data
+20260207-WilliamCarey-1_unverified.csv
+# Auto-pruned non-team data
+20260207-700-HughAdamsPark-2_unverified.csv
+# Auto-pruned non-team data
+20260207-AndersonUniversity-2_unverified.csv
+# Auto-pruned non-team data
+20260207-AndersonUniversity-3_unverified.csv
+# Auto-pruned non-team data
+20260207-BobSteinStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260207-FresnoPacificUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260207-GulfCoastState-1_unverified.csv
+# Auto-pruned non-team data
+20260207-GulfCoastState-2_unverified.csv
+# Auto-pruned non-team data
+20260207-HDetterField-1_unverified.csv
+# Auto-pruned non-team data
+20260207-JimReevesField-2_unverified.csv
+# Auto-pruned non-team data
+20260207-JohnAltobelliPark-1_unverified.csv
+# Auto-pruned non-team data
+20260207-LeeUniversity-2_unverified.csv
+# Auto-pruned non-team data
+20260207-LoyolaNewOrleans-2_unverified.csv
+# Auto-pruned non-team data
+20260207-OdessaCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260207-PaulDemieMainieriField-1_unverified.csv
+# Auto-pruned non-team data
+20260207-PomonaPitzer-1_unverified.csv
+# Auto-pruned non-team data
+20260207-PomonaPitzer-2_unverified.csv
+# Auto-pruned non-team data
+20260207-RussellCarrField-1_unverified.csv
+# Auto-pruned non-team data
+20260207-RussellCarrField-2_unverified.csv
+# Auto-pruned non-team data
+20260207-SammyCoxField-1_unverified.csv
+# Auto-pruned non-team data
+20260207-StephenBDolnyStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260207-TedABroerStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260207-WarriorField-1_unverified.csv
+# Auto-pruned non-team data
+20260207-WilliamCarey-2_unverified.csv
