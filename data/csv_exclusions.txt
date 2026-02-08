@@ -580,3 +580,5 @@
 20260208-LeeUniversity-1_unverified.csv
 # Auto-pruned non-team data
 20260208-WarriorField-1_unverified.csv
+# Auto-pruned non-team data
+20260208-HDetterField-1_unverified.csv
