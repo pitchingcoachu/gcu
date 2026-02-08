@@ -23193,9 +23193,9 @@ deg_to_clock <- function(x) {
           var rodPerp = { x: -rodDir.y, y: rodDir.x };
           var safeStageRadius = Math.max(stageRadius || radius * 2, radius + 20);
           var visiblePenetration = (1 - efficiency) * radius; // 100% -> 0, 0% -> edge to center
-          var arrowShift = visiblePenetration * 0.5;
-          var centerShift = { x: axisDir.x * arrowShift, y: axisDir.y * arrowShift };
-          var axisLen = Math.max(radius * 0.22, radius - arrowShift); // Anchors release-tilt side, shifts opposite side
+          var shiftAmount = visiblePenetration;
+          var centerShift = { x: axisDir.x * shiftAmount, y: axisDir.y * shiftAmount };
+          var axisLen = Math.max(radius * 0.22, radius - shiftAmount);
 
           drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, safeStageRadius, efficiency);
           drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency, centerShift, axisLen);
@@ -23253,22 +23253,47 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
           if (!isFinite(axisLen)) axisLen = radius * (0.22 + efficiency * 0.78);
           var arrowLen = radius * 0.18;
           var arrowWidth = radius * 0.045;
+          var curveMix = Math.max(0, Math.min(1, 1 - efficiency)); // 0 = straight, 1 = circular
+          var axisAngle = Math.atan2(axisDir.y, axisDir.x);
+          var orbitRadius = radius * 0.78;
           var travel = -(rotation / (Math.PI * 2)) * 1.2;
+
+          function sampleBlendedPath(phase) {
+            var p = phase;
+            while (p < 0) p += 1;
+            while (p >= 1) p -= 1;
+            var scaled = p * 2 - 1;
+            var lineX = shift.x + axisDir.x * scaled * axisLen;
+            var lineY = shift.y + axisDir.y * scaled * axisLen;
+            var theta = p * Math.PI * 2 + axisAngle;
+            var orbitX = Math.cos(theta) * orbitRadius;
+            var orbitY = Math.sin(theta) * orbitRadius;
+            return {
+              x: cx + lineX * (1 - curveMix) + orbitX * curveMix,
+              y: cy + lineY * (1 - curveMix) + orbitY * curveMix,
+              lineFade: Math.max(0, 1 - Math.abs(scaled))
+            };
+          }
+
           for (var i = 0; i < arrowCount; i++) {
             var phase = (i / arrowCount + travel) % 1;
             if (phase < 0) phase += 1;
-            var scaled = phase * 2 - 1;
-            var centerX = cx + shift.x + axisDir.x * scaled * axisLen;
-            var centerY = cy + shift.y + axisDir.y * scaled * axisLen;
-            var fadeFactor = Math.max(0, 1 - Math.abs(scaled));
+            var pt = sampleBlendedPath(phase);
+            var dPhase = 1 / arrowCount;
+            var prev = sampleBlendedPath(phase - dPhase);
+            var next = sampleBlendedPath(phase + dPhase);
+            var tangent = normalizeVec2D({ x: next.x - prev.x, y: next.y - prev.y }) || axisDir;
+            var normal = { x: -tangent.y, y: tangent.x };
+            var centerX = pt.x;
+            var centerY = pt.y;
+            var fadeFactor = pt.lineFade * (1 - curveMix) + curveMix;
             var localLen = arrowLen * (0.3 + 0.7 * fadeFactor);
-            var tipX = centerX - axisDir.x * localLen * 0.55;
-            var tipY = centerY - axisDir.y * localLen * 0.55;
-            var baseX = centerX + axisDir.x * localLen * 0.35;
-            var baseY = centerY + axisDir.y * localLen * 0.35;
-            var headInnerX = tipX + axisDir.x * localLen * 0.2;
-            var headInnerY = tipY + axisDir.y * localLen * 0.2;
-            var normal = { x: -axisDir.y, y: axisDir.x };
+            var tipX = centerX - tangent.x * localLen * 0.55;
+            var tipY = centerY - tangent.y * localLen * 0.55;
+            var baseX = centerX + tangent.x * localLen * 0.35;
+            var baseY = centerY + tangent.y * localLen * 0.35;
+            var headInnerX = tipX + tangent.x * localLen * 0.2;
+            var headInnerY = tipY + tangent.y * localLen * 0.2;
 
             var arrowGrad = ctx.createLinearGradient(baseX, baseY, tipX, tipY);
             arrowGrad.addColorStop(0, 'rgba(170, 125, 48, 1)');
