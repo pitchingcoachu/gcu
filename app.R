@@ -23197,32 +23197,43 @@ deg_to_clock <- function(x) {
           var centerShift = { x: axisDir.x * shiftAmount, y: axisDir.y * shiftAmount };
           var axisLen = Math.max(radius * 0.22, radius - shiftAmount);
 
-          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, safeStageRadius, efficiency);
+          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, safeStageRadius, efficiency, axisDir);
           drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency, centerShift, axisLen);
         }
 
-function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficiency) {
+function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadius, efficiency, releaseDir) {
           var outerLimit = Math.max(radius + 6, stageRadius - 2); // Stop at inner edge of gray border
           var ballLimit = Math.max(2, radius);
           var rodWidth = Math.max(radius * 0.018, 1.2); // Thinner rod
-          var visiblePenetration = (1 - efficiency) * ballLimit;
-          var faintHalfSpan = Math.max(0, ballLimit - visiblePenetration);
+          var fullPenetration = Math.max(0, Math.min(ballLimit, (1 - efficiency) * ballLimit));
+          var fullSideSign = ((rodDir.x * releaseDir.x + rodDir.y * releaseDir.y) >= 0) ? 1 : -1;
+          var fullSideStart = ballLimit - fullPenetration;
 
-          if (faintHalfSpan > 0) {
-            drawRodSegment(ctx, cx, cy, -outerLimit, -faintHalfSpan, rodDir, rodPerp, rodWidth, 1.0);
-            drawRodSegment(ctx, cx, cy, -faintHalfSpan, faintHalfSpan, rodDir, rodPerp, rodWidth, 0.42); // Fainter central core
-            drawRodSegment(ctx, cx, cy, faintHalfSpan, outerLimit, rodDir, rodPerp, rodWidth, 1.0);
+          // Outside the baseball stays fully visible on both sides.
+          drawRodSegment(ctx, cx, cy, -outerLimit, -ballLimit, rodDir, rodPerp, rodWidth, 1.0);
+          drawRodSegment(ctx, cx, cy, ballLimit, outerLimit, rodDir, rodPerp, rodWidth, 1.0);
+
+          // Inside the baseball: only one side gains full-opacity penetration by efficiency.
+          if (fullSideSign > 0) {
+            drawRodSegment(ctx, cx, cy, -ballLimit, 0, rodDir, rodPerp, rodWidth, 0.42);
+            if (fullSideStart > 0) {
+              drawRodSegment(ctx, cx, cy, 0, fullSideStart, rodDir, rodPerp, rodWidth, 0.42);
+            }
+            if (fullPenetration > 1e-3) {
+              drawRodSegment(ctx, cx, cy, fullSideStart, ballLimit, rodDir, rodPerp, rodWidth, 1.0);
+            } else {
+              drawRodSegment(ctx, cx, cy, 0, ballLimit, rodDir, rodPerp, rodWidth, 0.42);
+            }
           } else {
-            // At 0% efficiency, fully visible extends to center from both sides
-            drawRodSegment(ctx, cx, cy, -outerLimit, outerLimit, rodDir, rodPerp, rodWidth, 1.0);
-          }
-
-          // One-sided black penetration marker inside the ball.
-          // 100%: none, 50%: edge->midpoint, 0%: edge->center.
-          var blackPenetration = Math.max(0, Math.min(ballLimit, (1 - efficiency) * ballLimit));
-          if (blackPenetration > 1e-3) {
-            var blackStart = ballLimit - blackPenetration;
-            drawBlackRodSegment(ctx, cx, cy, blackStart, ballLimit, rodDir, rodPerp, rodWidth * 1.05, 0.98);
+            drawRodSegment(ctx, cx, cy, 0, ballLimit, rodDir, rodPerp, rodWidth, 0.42);
+            if (fullSideStart > 0) {
+              drawRodSegment(ctx, cx, cy, -fullSideStart, 0, rodDir, rodPerp, rodWidth, 0.42);
+            }
+            if (fullPenetration > 1e-3) {
+              drawRodSegment(ctx, cx, cy, -ballLimit, -fullSideStart, rodDir, rodPerp, rodWidth, 1.0);
+            } else {
+              drawRodSegment(ctx, cx, cy, -ballLimit, 0, rodDir, rodPerp, rodWidth, 0.42);
+            }
           }
         }
 
@@ -23252,21 +23263,6 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
           ctx.restore();
         }
 
-        function drawBlackRodSegment(ctx, cx, cy, startDist, endDist, axisDir, axisPerp, halfWidth, alpha) {
-          var start = { x: axisDir.x * startDist, y: axisDir.y * startDist };
-          var end = { x: axisDir.x * endDist, y: axisDir.y * endDist };
-          ctx.save();
-          ctx.fillStyle = 'rgba(0, 0, 0,' + alpha + ')';
-          ctx.beginPath();
-          ctx.moveTo(cx + start.x + axisPerp.x * halfWidth, cy + start.y + axisPerp.y * halfWidth);
-          ctx.lineTo(cx + start.x - axisPerp.x * halfWidth, cy + start.y - axisPerp.y * halfWidth);
-          ctx.lineTo(cx + end.x - axisPerp.x * halfWidth, cy + end.y - axisPerp.y * halfWidth);
-          ctx.lineTo(cx + end.x + axisPerp.x * halfWidth, cy + end.y + axisPerp.y * halfWidth);
-          ctx.closePath();
-          ctx.fill();
-          ctx.restore();
-        }
-
         function drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency, centerShift, axisLenOverride) {
           if (!axisDir) return;
           ctx.save();
@@ -23278,8 +23274,10 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
           var arrowWidth = radius * 0.045;
           var curveMix = Math.max(0, Math.min(1, 1 - efficiency)); // 0 = straight, 1 = circular
           var axisAngle = Math.atan2(axisDir.y, axisDir.x);
-          var orbitRadius = radius * 0.78;
+          var orbitRadius = axisLen;
           var travel = -(rotation / (Math.PI * 2)) * 1.2;
+          var orbitCx = cx + shift.x;
+          var orbitCy = cy + shift.y;
 
           function sampleBlendedPath(phase) {
             var p = phase;
@@ -23289,12 +23287,25 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
             var lineX = shift.x + axisDir.x * scaled * axisLen;
             var lineY = shift.y + axisDir.y * scaled * axisLen;
             var theta = p * Math.PI * 2 + axisAngle;
-            var orbitX = Math.cos(theta) * orbitRadius;
-            var orbitY = Math.sin(theta) * orbitRadius;
+            var cosT = Math.cos(theta);
+            var sinT = Math.sin(theta);
+            var circX = orbitCx + axisDir.x * cosT * orbitRadius + axisPerp.x * sinT * orbitRadius;
+            var circY = orbitCy + axisDir.y * cosT * orbitRadius + axisPerp.y * sinT * orbitRadius;
+            var lineCx = cx + lineX;
+            var lineCy = cy + lineY;
+            var lineTanX = axisDir.x;
+            var lineTanY = axisDir.y;
+            var circTanX = -axisDir.x * sinT + axisPerp.x * cosT;
+            var circTanY = -axisDir.y * sinT + axisPerp.y * cosT;
+            var tan = normalizeVec2D({
+              x: lineTanX * (1 - curveMix) + circTanX * curveMix,
+              y: lineTanY * (1 - curveMix) + circTanY * curveMix
+            }) || axisDir;
             return {
-              x: cx + lineX * (1 - curveMix) + orbitX * curveMix,
-              y: cy + lineY * (1 - curveMix) + orbitY * curveMix,
-              lineFade: Math.max(0, 1 - Math.abs(scaled))
+              x: lineCx * (1 - curveMix) + circX * curveMix,
+              y: lineCy * (1 - curveMix) + circY * curveMix,
+              lineFade: Math.max(0, 1 - Math.abs(scaled)),
+              tangent: tan
             };
           }
 
@@ -23302,10 +23313,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficien
             var phase = (i / arrowCount + travel) % 1;
             if (phase < 0) phase += 1;
             var pt = sampleBlendedPath(phase);
-            var dPhase = 1 / arrowCount;
-            var prev = sampleBlendedPath(phase - dPhase);
-            var next = sampleBlendedPath(phase + dPhase);
-            var tangent = normalizeVec2D({ x: next.x - prev.x, y: next.y - prev.y }) || axisDir;
+            var tangent = pt.tangent || axisDir;
             var normal = { x: -tangent.y, y: tangent.x };
             var centerX = pt.x;
             var centerY = pt.y;
