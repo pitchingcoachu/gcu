@@ -23195,13 +23195,14 @@ deg_to_clock <- function(x) {
           var visiblePenetration = (1 - efficiency) * radius; // 100% -> 0, 0% -> edge to center
           var shiftAmount = visiblePenetration;
           var centerShift = { x: axisDir.x * shiftAmount, y: axisDir.y * shiftAmount };
-          var axisLen = Math.max(radius * 0.22, radius - shiftAmount);
+          var axisLen = radius;
+          var pitcherHand = (cfg.pitcherHand || '').toString().toUpperCase();
 
-          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, safeStageRadius, efficiency, axisDir);
+          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, safeStageRadius, efficiency, axisDir, pitcherHand);
           drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency, centerShift, axisLen);
         }
 
-function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadius, efficiency, releaseDir) {
+function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadius, efficiency, releaseDir, pitcherHand) {
           var outerLimit = Math.max(radius + 6, stageRadius - 2); // Stop at inner edge of gray border
           var ballLimit = Math.max(2, radius);
           var rodWidth = Math.max(radius * 0.018, 1.2); // Thinner rod
@@ -23211,8 +23212,19 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
           // 0% efficiency (0.0) -> full penetration (rod fully visible to center on one side)
           var penetrationDistance = (1 - efficiency) * ballLimit;
           
-          // Determine which side is the release tilt side (should be fully visible)
-          var fullSideSign = ((rodDir.x * releaseDir.x + rodDir.y * releaseDir.y) >= 0) ? 1 : -1;
+          // Determine visible side by handedness:
+          // LHP = release tilt +3 hours (clockwise 90deg), RHP = release tilt -3 hours (counterclockwise 90deg)
+          var fullSideSign;
+          if (pitcherHand.indexOf('L') === 0 || pitcherHand.indexOf('R') === 0) {
+            var handSign = (pitcherHand.indexOf('L') === 0) ? 1 : -1;
+            var sideVec = {
+              x: releaseDir.y * handSign,
+              y: -releaseDir.x * handSign
+            };
+            fullSideSign = ((rodDir.x * sideVec.x + rodDir.y * sideVec.y) >= 0) ? 1 : -1;
+          } else {
+            fullSideSign = ((rodDir.x * releaseDir.x + rodDir.y * releaseDir.y) >= 0) ? 1 : -1;
+          }
           
           // Draw outside the baseball - fully visible on both sides
           drawRodSegment(ctx, cx, cy, -outerLimit, -ballLimit, rodDir, rodPerp, rodWidth, 1.0);
@@ -23270,7 +23282,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
           var arrowCount = 10;
           var shift = centerShift || { x: 0, y: 0 };
           var axisLen = Number(axisLenOverride);
-          if (!isFinite(axisLen)) axisLen = radius * (0.22 + efficiency * 0.78);
+          if (!isFinite(axisLen)) axisLen = radius;
           var arrowLen = radius * 0.18;
           var arrowWidth = radius * 0.045;
           
@@ -23280,7 +23292,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
           var travel = -(rotation / (Math.PI * 2)) * 1.2;
           
           // For circular path (0% efficiency), arrows orbit around the entire ball edge
-          var circleRadius = radius * 0.95; // Just inside ball edge
+          var circleRadius = radius * 0.995; // Ride the edge so low-eff looks like top-edge spin
 
           function sampleBlendedPath(phase) {
             var p = phase;
@@ -23290,11 +23302,11 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
             // For straight line path (100% efficiency): go from release tilt through opposite side
             // The line should go through the center of the ball in a straight line
             var straightAngle = axisAngle;
-            var lineProgress = (p - 0.5) * 2; // -1 to 1, where 0 is center
+            var lineProgress = 1 - (p * 2); // +1 (release) to -1 (opposite)
             var lineX = cx + Math.cos(straightAngle) * lineProgress * radius;
             var lineY = cy + Math.sin(straightAngle) * lineProgress * radius;
-            var lineTanX = Math.cos(straightAngle);
-            var lineTanY = Math.sin(straightAngle);
+            var lineTanX = -Math.cos(straightAngle);
+            var lineTanY = -Math.sin(straightAngle);
             
             // For circular path (0% efficiency): full circle around ball edge
             var circAngle = axisAngle + (p * Math.PI * 2);
@@ -23573,6 +23585,16 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
       }
       NA_real_
     }
+    get_chr_first <- function(names_vec) {
+      for (nm in names_vec) {
+        val <- row[[nm]]
+        if (is.null(val) || length(val) == 0 || is.na(val)) next
+        chr <- toupper(trimws(as.character(val)))
+        if (!nzchar(chr)) next
+        return(chr)
+      }
+      ""
+    }
 
     axis_vec <- c(
       get_col("SpinAxis3dVectorX"),
@@ -23604,6 +23626,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
     if (!is.finite(break_tilt_deg)) {
       break_tilt_deg <- get_col("bTilt")
     }
+    pitcher_hand_val <- get_chr_first(c("PitcherThrows", "PitcherHand", "Throws", "Hand"))
     
     # Get all three seam orientation rotation angles (in radians from TrackMan)
     seam_rot_x <- get_col("SpinAxis3dSeamOrientationRotationX")
@@ -23644,6 +23667,7 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
       seamRotationZ = ifelse(is.finite(seam_rot_z), seam_rot_z, 0),
       releaseTilt = ifelse(is.finite(release_tilt_deg), release_tilt_deg, NA_real_),
       breakTilt = ifelse(is.finite(break_tilt_deg), break_tilt_deg, NA_real_),
+      pitcherHand = pitcher_hand_val,
       spinSpeedMultiplier = spin_speed_multiplier,
       autoplay = TRUE
     )
