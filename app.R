@@ -23205,35 +23205,36 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
           var outerLimit = Math.max(radius + 6, stageRadius - 2); // Stop at inner edge of gray border
           var ballLimit = Math.max(2, radius);
           var rodWidth = Math.max(radius * 0.018, 1.2); // Thinner rod
-          var fullPenetration = Math.max(0, Math.min(ballLimit, (1 - efficiency) * ballLimit));
+          
+          // Calculate how far the rod penetrates from edge toward center based on efficiency
+          // 100% efficiency (1.0) -> 0 penetration (rod goes to ball edge on both sides)
+          // 0% efficiency (0.0) -> full penetration (rod fully visible to center on one side)
+          var penetrationDistance = (1 - efficiency) * ballLimit;
+          
+          // Determine which side is the release tilt side (should be fully visible)
           var fullSideSign = ((rodDir.x * releaseDir.x + rodDir.y * releaseDir.y) >= 0) ? 1 : -1;
-          var fullSideStart = ballLimit - fullPenetration;
-
-          // Outside the baseball stays fully visible on both sides.
+          
+          // Draw outside the baseball - fully visible on both sides
           drawRodSegment(ctx, cx, cy, -outerLimit, -ballLimit, rodDir, rodPerp, rodWidth, 1.0);
           drawRodSegment(ctx, cx, cy, ballLimit, outerLimit, rodDir, rodPerp, rodWidth, 1.0);
 
-          // Inside the baseball: only one side gains full-opacity penetration by efficiency.
+          // Inside the baseball: only one side (release tilt side) gets full visibility
           if (fullSideSign > 0) {
-            drawRodSegment(ctx, cx, cy, -ballLimit, 0, rodDir, rodPerp, rodWidth, 0.42);
-            if (fullSideStart > 0) {
-              drawRodSegment(ctx, cx, cy, 0, fullSideStart, rodDir, rodPerp, rodWidth, 0.42);
+            // Right side is release tilt side - draw fully visible from edge toward center
+            if (penetrationDistance > 1e-3) {
+              // Fully visible part (from edge toward center by penetration distance)
+              drawRodSegment(ctx, cx, cy, ballLimit - penetrationDistance, ballLimit, rodDir, rodPerp, rodWidth, 1.0);
             }
-            if (fullPenetration > 1e-3) {
-              drawRodSegment(ctx, cx, cy, fullSideStart, ballLimit, rodDir, rodPerp, rodWidth, 1.0);
-            } else {
-              drawRodSegment(ctx, cx, cy, 0, ballLimit, rodDir, rodPerp, rodWidth, 0.42);
-            }
+            // Transparent part continues to opposite edge
+            drawRodSegment(ctx, cx, cy, -ballLimit, ballLimit - penetrationDistance, rodDir, rodPerp, rodWidth, 0.35);
           } else {
-            drawRodSegment(ctx, cx, cy, 0, ballLimit, rodDir, rodPerp, rodWidth, 0.42);
-            if (fullSideStart > 0) {
-              drawRodSegment(ctx, cx, cy, -fullSideStart, 0, rodDir, rodPerp, rodWidth, 0.42);
+            // Left side is release tilt side - draw fully visible from edge toward center
+            if (penetrationDistance > 1e-3) {
+              // Fully visible part (from edge toward center by penetration distance)
+              drawRodSegment(ctx, cx, cy, -ballLimit, -ballLimit + penetrationDistance, rodDir, rodPerp, rodWidth, 1.0);
             }
-            if (fullPenetration > 1e-3) {
-              drawRodSegment(ctx, cx, cy, -ballLimit, -fullSideStart, rodDir, rodPerp, rodWidth, 1.0);
-            } else {
-              drawRodSegment(ctx, cx, cy, -ballLimit, 0, rodDir, rodPerp, rodWidth, 0.42);
-            }
+            // Transparent part continues to opposite edge
+            drawRodSegment(ctx, cx, cy, -ballLimit + penetrationDistance, ballLimit, rodDir, rodPerp, rodWidth, 0.35);
           }
         }
 
@@ -23272,39 +23273,48 @@ function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, ringRadius, stageRadi
           if (!isFinite(axisLen)) axisLen = radius * (0.22 + efficiency * 0.78);
           var arrowLen = radius * 0.18;
           var arrowWidth = radius * 0.045;
-          var curveMix = Math.max(0, Math.min(1, 1 - efficiency)); // 0 = straight, 1 = circular
+          
+          // curveMix: 0 = 100% efficiency (straight line), 1 = 0% efficiency (full circle)
+          var curveMix = Math.max(0, Math.min(1, 1 - efficiency));
           var axisAngle = Math.atan2(axisDir.y, axisDir.x);
-          var orbitRadius = axisLen;
           var travel = -(rotation / (Math.PI * 2)) * 1.2;
-          var orbitCx = cx + shift.x;
-          var orbitCy = cy + shift.y;
+          
+          // For circular path (0% efficiency), arrows orbit around the entire ball edge
+          var circleRadius = radius * 0.95; // Just inside ball edge
 
           function sampleBlendedPath(phase) {
             var p = phase;
             while (p < 0) p += 1;
             while (p >= 1) p -= 1;
-            var scaled = p * 2 - 1;
-            var lineX = shift.x + axisDir.x * scaled * axisLen;
-            var lineY = shift.y + axisDir.y * scaled * axisLen;
-            var theta = p * Math.PI * 2 + axisAngle;
-            var cosT = Math.cos(theta);
-            var sinT = Math.sin(theta);
-            var circX = orbitCx + axisDir.x * cosT * orbitRadius + axisPerp.x * sinT * orbitRadius;
-            var circY = orbitCy + axisDir.y * cosT * orbitRadius + axisPerp.y * sinT * orbitRadius;
-            var lineCx = cx + lineX;
-            var lineCy = cy + lineY;
-            var lineTanX = axisDir.x;
-            var lineTanY = axisDir.y;
-            var circTanX = -axisDir.x * sinT + axisPerp.x * cosT;
-            var circTanY = -axisDir.y * sinT + axisPerp.y * cosT;
-            var tan = normalizeVec2D({
-              x: lineTanX * (1 - curveMix) + circTanX * curveMix,
-              y: lineTanY * (1 - curveMix) + circTanY * curveMix
-            }) || axisDir;
+            
+            // For straight line path (100% efficiency): go from release tilt through opposite side
+            // The line should go through the center of the ball in a straight line
+            var straightAngle = axisAngle;
+            var lineProgress = (p - 0.5) * 2; // -1 to 1, where 0 is center
+            var lineX = cx + Math.cos(straightAngle) * lineProgress * radius;
+            var lineY = cy + Math.sin(straightAngle) * lineProgress * radius;
+            var lineTanX = Math.cos(straightAngle);
+            var lineTanY = Math.sin(straightAngle);
+            
+            // For circular path (0% efficiency): full circle around ball edge
+            var circAngle = axisAngle + (p * Math.PI * 2);
+            var circX = cx + Math.cos(circAngle) * circleRadius;
+            var circY = cy + Math.sin(circAngle) * circleRadius;
+            var circTanX = -Math.sin(circAngle);
+            var circTanY = Math.cos(circAngle);
+            
+            // Blend between straight and circular based on efficiency
+            var finalX = lineX * (1 - curveMix) + circX * curveMix;
+            var finalY = lineY * (1 - curveMix) + circY * curveMix;
+            var tanX = lineTanX * (1 - curveMix) + circTanX * curveMix;
+            var tanY = lineTanY * (1 - curveMix) + circTanY * curveMix;
+            
+            var tan = normalizeVec2D({ x: tanX, y: tanY }) || { x: lineTanX, y: lineTanY };
+            
             return {
-              x: lineCx * (1 - curveMix) + circX * curveMix,
-              y: lineCy * (1 - curveMix) + circY * curveMix,
-              lineFade: Math.max(0, 1 - Math.abs(scaled)),
+              x: finalX,
+              y: finalY,
+              lineFade: 1.0, // All arrows fully visible
               tangent: tan
             };
           }
