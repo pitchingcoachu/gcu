@@ -23283,16 +23283,18 @@ deg_to_clock <- function(x) {
           if (!axisDir) return;
           ctx.save();
           var arrowCount = 10;
-          var shift = centerShift || { x: 0, y: 0 };
           var axisLen = Number(axisLenOverride);
           if (!isFinite(axisLen)) axisLen = radius;
           var arrowLen = radius * 0.18;
           var arrowWidth = radius * 0.045;
           
           // curveMix: 0 = 100% efficiency (straight line), 1 = 0% efficiency (full circle)
-          var curveMix = Math.max(0, Math.min(1, 1 - efficiency));
+          var curveMixRaw = Math.max(0, Math.min(1, 1 - efficiency));
+          // Delay circular pull so medium efficiencies still reach the opposite edge first.
+          var curveMix = Math.pow(curveMixRaw, 1.35);
           var axisAngle = Math.atan2(axisDir.y, axisDir.x);
           var travel = -(rotation / (Math.PI * 2)) * 1.2;
+          var fullCircleThreshold = 0.985;
           
           // For circular path (0% efficiency), arrows orbit around the entire ball edge
           var circleRadius = radius * 0.995; // Ride the edge so low-eff looks like top-edge spin
@@ -23302,36 +23304,36 @@ deg_to_clock <- function(x) {
             while (p < 0) p += 1;
             while (p >= 1) p -= 1;
             
-            // For straight line path (100% efficiency): go from release tilt through opposite side
-            // The line should go through the center of the ball in a straight line
-            var straightAngle = axisAngle;
+            // Straight baseline: release edge -> opposite edge.
             var lineProgress = 1 - (p * 2); // +1 (release) to -1 (opposite)
-            var lineX = cx + Math.cos(straightAngle) * lineProgress * radius;
-            var lineY = cy + Math.sin(straightAngle) * lineProgress * radius;
-            var lineTanX = -Math.cos(straightAngle);
-            var lineTanY = -Math.sin(straightAngle);
-            
-            // For circular path (0% efficiency): full circle around ball edge
-            var circAngle = axisAngle + (p * Math.PI * 2);
-            var circX = cx + Math.cos(circAngle) * circleRadius;
-            var circY = cy + Math.sin(circAngle) * circleRadius;
-            var circTanX = -Math.sin(circAngle);
-            var circTanY = Math.cos(circAngle);
-            
-            // Blend between straight and circular based on efficiency
-            var finalX = lineX * (1 - curveMix) + circX * curveMix;
-            var finalY = lineY * (1 - curveMix) + circY * curveMix;
-            var tanX = lineTanX * (1 - curveMix) + circTanX * curveMix;
-            var tanY = lineTanY * (1 - curveMix) + circTanY * curveMix;
-            
+            var lineX = cx + Math.cos(axisAngle) * lineProgress * axisLen;
+            var lineY = cy + Math.sin(axisAngle) * lineProgress * axisLen;
+            var lineTanX = -Math.cos(axisAngle);
+            var lineTanY = -Math.sin(axisAngle);
+
+            // At true 0% efficiency, use full circular orbit around the edge.
+            if (curveMixRaw >= fullCircleThreshold) {
+              var fullAngle = axisAngle + (p * Math.PI * 2);
+              var fullX = cx + Math.cos(fullAngle) * circleRadius;
+              var fullY = cy + Math.sin(fullAngle) * circleRadius;
+              var fullTan = normalizeVec2D({ x: -Math.sin(fullAngle), y: Math.cos(fullAngle) }) || axisDir;
+              return { x: fullX, y: fullY, lineFade: 1.0, tangent: fullTan };
+            }
+
+            // Curved arc that still ends at the opposite edge (release -> opposite).
+            var arcAngle = axisAngle + (p * Math.PI);
+            var arcX = cx + Math.cos(arcAngle) * circleRadius;
+            var arcY = cy + Math.sin(arcAngle) * circleRadius;
+            var arcTanX = -Math.sin(arcAngle);
+            var arcTanY = Math.cos(arcAngle);
+
+            var finalX = lineX * (1 - curveMix) + arcX * curveMix;
+            var finalY = lineY * (1 - curveMix) + arcY * curveMix;
+            var tanX = lineTanX * (1 - curveMix) + arcTanX * curveMix;
+            var tanY = lineTanY * (1 - curveMix) + arcTanY * curveMix;
             var tan = normalizeVec2D({ x: tanX, y: tanY }) || { x: lineTanX, y: lineTanY };
-            
-            return {
-              x: finalX,
-              y: finalY,
-              lineFade: 1.0, // All arrows fully visible
-              tangent: tan
-            };
+
+            return { x: finalX, y: finalY, lineFade: 1.0, tangent: tan };
           }
 
           for (var i = 0; i < arrowCount; i++) {
