@@ -23293,7 +23293,7 @@ deg_to_clock <- function(x) {
           // Delay circular pull so medium efficiencies still reach the opposite edge first.
           var curveMix = Math.pow(curveMixRaw, 1.35);
           var axisAngle = Math.atan2(axisDir.y, axisDir.x);
-          var travel = -(rotation / (Math.PI * 2)) * 1.2;
+          var travel = (rotation / (Math.PI * 2)) * 1.2;
           var fullCircleThreshold = 0.985;
           
           // For circular path (0% efficiency), arrows orbit around the entire ball edge
