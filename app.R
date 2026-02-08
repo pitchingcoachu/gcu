@@ -23192,51 +23192,35 @@ deg_to_clock <- function(x) {
           var rodDir = normalizeVec2D({ x: -tiltDir.y, y: tiltDir.x }) || axisDir;
           var rodPerp = { x: -rodDir.y, y: rodDir.x };
           var safeStageRadius = Math.max(stageRadius || radius * 2, radius + 20);
-          var shiftMag = efficiency * radius * 0.35; // Linear efficiency shift
-          var centerShift = { x: axisDir.x * shiftMag, y: axisDir.y * shiftMag };
-          var axisLen = Math.max(radius * 0.22, radius - shiftMag); // Keep arrows originating at release-tilt side
+          var visiblePenetration = (1 - efficiency) * radius; // 100% -> 0, 0% -> edge to center
+          var arrowShift = visiblePenetration * 0.5;
+          var centerShift = { x: axisDir.x * arrowShift, y: axisDir.y * arrowShift };
+          var axisLen = Math.max(radius * 0.22, radius - arrowShift); // Anchors release-tilt side, shifts opposite side
 
-          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, safeStageRadius, centerShift);
+          drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, safeStageRadius, efficiency);
           drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency, centerShift, axisLen);
         }
 
-function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, centerShift) {
+function drawSpinRod(ctx, cx, cy, rodDir, rodPerp, radius, stageRadius, efficiency) {
           var outerLimit = Math.max(radius + 6, stageRadius - 2); // Stop at inner edge of gray border
+          var ballLimit = Math.max(2, radius);
           var rodWidth = Math.max(radius * 0.018, 1.2); // Thinner rod
-          var shift = centerShift || { x: 0, y: 0 };
-          var startScalar = -outerLimit;
-          var endScalar = outerLimit;
+          var visiblePenetration = (1 - efficiency) * ballLimit;
+          var faintHalfSpan = Math.max(0, ballLimit - visiblePenetration);
 
-          var b = 2 * (shift.x * rodDir.x + shift.y * rodDir.y);
-          var c = (shift.x * shift.x + shift.y * shift.y) - (radius * radius);
-          var disc = (b * b) - (4 * c);
-
-          if (disc <= 0) {
-            drawRodSegment(ctx, cx, cy, startScalar, endScalar, rodDir, rodPerp, rodWidth, 1.0, shift);
-            return;
-          }
-
-          var sqrtDisc = Math.sqrt(disc);
-          var t1 = (-b - sqrtDisc) / 2;
-          var t2 = (-b + sqrtDisc) / 2;
-          var inStart = Math.min(t1, t2);
-          var inEnd = Math.max(t1, t2);
-
-          if (startScalar < inStart) {
-            drawRodSegment(ctx, cx, cy, startScalar, Math.min(endScalar, inStart), rodDir, rodPerp, rodWidth, 1.0, shift);
-          }
-          if (endScalar > inStart && startScalar < inEnd) {
-            drawRodSegment(ctx, cx, cy, Math.max(startScalar, inStart), Math.min(endScalar, inEnd), rodDir, rodPerp, rodWidth, 0.42, shift); // Fainter through ball
-          }
-          if (endScalar > inEnd) {
-            drawRodSegment(ctx, cx, cy, Math.max(startScalar, inEnd), endScalar, rodDir, rodPerp, rodWidth, 1.0, shift);
+          if (faintHalfSpan > 0) {
+            drawRodSegment(ctx, cx, cy, -outerLimit, -faintHalfSpan, rodDir, rodPerp, rodWidth, 1.0);
+            drawRodSegment(ctx, cx, cy, -faintHalfSpan, faintHalfSpan, rodDir, rodPerp, rodWidth, 0.42); // Fainter central core
+            drawRodSegment(ctx, cx, cy, faintHalfSpan, outerLimit, rodDir, rodPerp, rodWidth, 1.0);
+          } else {
+            // At 0% efficiency, fully visible extends to center from both sides
+            drawRodSegment(ctx, cx, cy, -outerLimit, outerLimit, rodDir, rodPerp, rodWidth, 1.0);
           }
         }
 
-        function drawRodSegment(ctx, cx, cy, startDist, endDist, axisDir, axisPerp, halfWidth, alpha, originShift) {
-          var shift = originShift || { x: 0, y: 0 };
-          var start = { x: shift.x + axisDir.x * startDist, y: shift.y + axisDir.y * startDist };
-          var end = { x: shift.x + axisDir.x * endDist, y: shift.y + axisDir.y * endDist };
+        function drawRodSegment(ctx, cx, cy, startDist, endDist, axisDir, axisPerp, halfWidth, alpha) {
+          var start = { x: axisDir.x * startDist, y: axisDir.y * startDist };
+          var end = { x: axisDir.x * endDist, y: axisDir.y * endDist };
           ctx.save();
           var grad = ctx.createLinearGradient(
             cx + start.x, cy + start.y,
