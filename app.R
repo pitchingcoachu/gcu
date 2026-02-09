@@ -20503,7 +20503,14 @@ ui <- tagList(
       Shiny.addCustomMessageHandler('pcu_logout', function(_) {
         var basePath = appBasePath();
         var localLogout = basePath + '__logout__';
-        var svcLogout = 'https://login.shinyapps.io/logout';
+        var nonce = Date.now();
+        var appLoginAbs = window.location.origin + basePath + '__login__?prompt=login&select_account=1&_=' + nonce;
+        var svcLogoutBase = 'https://login.shinyapps.io/logout';
+        var svcLogout = svcLogoutBase +
+          '?redirect=' + encodeURIComponent(appLoginAbs) +
+          '&return_to=' + encodeURIComponent(appLoginAbs) +
+          '&continue=' + encodeURIComponent(appLoginAbs) +
+          '&next=' + encodeURIComponent(appLoginAbs);
 
         // 1) Clear app-level auth cookie without leaving the page context.
         fetch(localLogout, { method: 'GET', credentials: 'include' })
