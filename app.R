@@ -20481,16 +20481,53 @@ ui <- tagList(
   ")),
   tags$script(HTML("
     // Centralized logout handler for shinyapps.io authenticated deployments.
-    Shiny.addCustomMessageHandler('pcu_logout', function(_) {
-      var basePath = window.location.pathname || '/';
-      if (basePath && !basePath.endsWith('/')) basePath = basePath + '/';
-      var localLogout = basePath + '__logout__';
-      window.location.href = localLogout;
-      // Fallback in case deployment expects root logout route.
-      setTimeout(function() {
-        window.location.href = '/__logout__';
-      }, 700);
-    });
+    // Attempts a hard sign-out + forced account re-selection on next login.
+    (function() {
+      function appBasePath() {
+        var p = window.location.pathname || '/';
+        if (!p.endsWith('/')) p = p + '/';
+        return p;
+      }
+
+      function forceLoginRedirect() {
+        var nonce = Date.now();
+        var loginRoot = appBasePath() + '__login__';
+        var loginUrl = loginRoot + '?prompt=login&select_account=1&_=' + nonce;
+        var fallbackLoginUrl = '/__login__?prompt=login&select_account=1&_=' + nonce;
+        window.location.href = loginUrl;
+        setTimeout(function() {
+          window.location.href = fallbackLoginUrl;
+        }, 700);
+      }
+
+      // If we just completed logout, immediately push user to explicit login prompt.
+      document.addEventListener('DOMContentLoaded', function() {
+        try {
+          var needsReauth = sessionStorage.getItem('pcu_force_reauth') === '1';
+          if (!needsReauth) return;
+          sessionStorage.removeItem('pcu_force_reauth');
+          forceLoginRedirect();
+        } catch (e) {}
+      });
+
+      Shiny.addCustomMessageHandler('pcu_logout', function(_) {
+        try {
+          // Clear app/browser cached auth hints.
+          sessionStorage.setItem('pcu_force_reauth', '1');
+          sessionStorage.removeItem('shinyapps_auth');
+          localStorage.removeItem('shinyapps_auth');
+        } catch (e) {}
+
+        var basePath = appBasePath();
+        var localLogout = basePath + '__logout__';
+        var rootLogout = '/__logout__';
+        window.location.href = localLogout;
+        // Fallback for deployments that only honor root-scoped logout.
+        setTimeout(function() {
+          window.location.href = rootLogout;
+        }, 700);
+      });
+    })();
   ")),
   
   shinyjs::useShinyjs(),
