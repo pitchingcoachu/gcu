@@ -23051,7 +23051,9 @@ deg_to_clock <- function(x) {
         var pauseBtn = cfg.pauseBtnId ? document.getElementById(cfg.pauseBtnId) : null;
         var running = cfg.autoplay !== false;
         var angle = 0;
-        var baseSpeed = (spinRate / 60) * 2 * Math.PI;
+        // Keep animation speed constant across pitch types by decoupling from spinRate.
+        var referenceSpinRate = 1800;
+        var baseSpeed = (referenceSpinRate / 60) * 2 * Math.PI;
         
         // Fixed slow speed
         var multiplier = Number(cfg.spinSpeedMultiplier) || 0.008;
@@ -23368,6 +23370,10 @@ deg_to_clock <- function(x) {
         function drawOrbitingArrows(ctx, cx, cy, axisDir, axisPerp, radius, rotation, efficiency, centerShift, axisLenOverride) {
           if (!axisDir) return;
           ctx.save();
+          // Keep all arrow rendering strictly inside the baseball edge.
+          ctx.beginPath();
+          ctx.arc(cx, cy, Math.max(1, radius), 0, Math.PI * 2);
+          ctx.clip();
           var arrowCount = 10;
           var axisLen = Number(axisLenOverride);
           if (!isFinite(axisLen)) axisLen = radius;
@@ -23432,25 +23438,21 @@ deg_to_clock <- function(x) {
             var centerY = pt.y;
             var fadeFactor = pt.lineFade * (1 - curveMix) + curveMix;
             var localLen = arrowLen * (0.3 + 0.7 * fadeFactor);
-            var fullTipX = centerX + tangent.x * localLen * 0.55;
-            var fullTipY = centerY + tangent.y * localLen * 0.55;
+            // Reveal logic: at entry, keep tip on the edge and progressively add forward lead.
+            var startFeather = 0.10;
+            var startReveal = 1;
+            if (curveMixRaw < fullCircleThreshold) {
+              startReveal = Math.max(0, Math.min(1, phase / startFeather));
+              startReveal = startReveal * startReveal * (3 - 2 * startReveal); // smoothstep
+            }
+            var tipLead = 0.55 * startReveal;
+            var fullTipX = centerX + tangent.x * localLen * tipLead;
+            var fullTipY = centerY + tangent.y * localLen * tipLead;
             var fullBaseX = centerX - tangent.x * localLen * 0.35;
             var fullBaseY = centerY - tangent.y * localLen * 0.35;
             var fullHeadInnerX = fullTipX - tangent.x * localLen * 0.2;
             var fullHeadInnerY = fullTipY - tangent.y * localLen * 0.2;
 
-            // For non-full-circle paths, fade arrows in/out smoothly at endpoints.
-            var edgeVis = 1;
-            if (curveMixRaw < fullCircleThreshold) {
-              var feather = 0.085;
-              var fadeIn = Math.max(0, Math.min(1, phase / feather));
-              var fadeOut = Math.max(0, Math.min(1, (1 - phase) / feather));
-              edgeVis = Math.min(fadeIn, fadeOut);
-              edgeVis = edgeVis * edgeVis * (3 - 2 * edgeVis); // smoothstep
-            }
-            if (edgeVis <= 0.001) continue;
-
-            // Keep full arrow shape, but clip tip->tail for true progressive reveal/hide.
             var tipX = fullTipX;
             var tipY = fullTipY;
             var baseX = fullBaseX;
@@ -23465,20 +23467,19 @@ deg_to_clock <- function(x) {
             arrowGrad.addColorStop(1, 'rgba(255, 255, 255, 1)');
 
             ctx.save();
-            if (curveMixRaw < fullCircleThreshold && edgeVis < 0.999) {
-              var revealLen = Math.max(localLen * 0.01, localLen * edgeVis);
-              var clipHalfWidth = localWidth * 2.6;
-              var clipEndX = tipX - tangent.x * revealLen;
-              var clipEndY = tipY - tangent.y * revealLen;
-              ctx.beginPath();
-              ctx.moveTo(tipX + normal.x * clipHalfWidth, tipY + normal.y * clipHalfWidth);
-              ctx.lineTo(tipX - normal.x * clipHalfWidth, tipY - normal.y * clipHalfWidth);
-              ctx.lineTo(clipEndX - normal.x * clipHalfWidth, clipEndY - normal.y * clipHalfWidth);
-              ctx.lineTo(clipEndX + normal.x * clipHalfWidth, clipEndY + normal.y * clipHalfWidth);
-              ctx.closePath();
-              ctx.clip();
+            // Fade logic: once arrows reach the far edge, fade out the full arrow.
+            var endAlpha = 1;
+            if (curveMixRaw < fullCircleThreshold) {
+              var endFeather = 0.095;
+              var endFade = Math.max(0, Math.min(1, (1 - phase) / endFeather));
+              endFade = endFade * endFade * (3 - 2 * endFade); // smoothstep
+              endAlpha = endFade;
             }
-            ctx.globalAlpha = 1;
+            if (endAlpha <= 0.001) {
+              ctx.restore();
+              continue;
+            }
+            ctx.globalAlpha = endAlpha;
             ctx.fillStyle = arrowGrad;
             ctx.beginPath();
             ctx.moveTo(tipX, tipY);
