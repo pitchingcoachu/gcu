@@ -20481,7 +20481,7 @@ ui <- tagList(
   ")),
   tags$script(HTML("
     // Centralized logout handler for shinyapps.io authenticated deployments.
-    // Attempts a hard sign-out + forced account re-selection on next login.
+    // Performs both app logout and shinyapps identity logout.
     (function() {
       function appBasePath() {
         var p = window.location.pathname || '/';
@@ -20500,32 +20500,41 @@ ui <- tagList(
         }, 700);
       }
 
-      // If we just completed logout, immediately push user to explicit login prompt.
-      document.addEventListener('DOMContentLoaded', function() {
-        try {
-          var needsReauth = sessionStorage.getItem('pcu_force_reauth') === '1';
-          if (!needsReauth) return;
-          sessionStorage.removeItem('pcu_force_reauth');
-          forceLoginRedirect();
-        } catch (e) {}
-      });
-
       Shiny.addCustomMessageHandler('pcu_logout', function(_) {
-        try {
-          // Clear app/browser cached auth hints.
-          sessionStorage.setItem('pcu_force_reauth', '1');
-          sessionStorage.removeItem('shinyapps_auth');
-          localStorage.removeItem('shinyapps_auth');
-        } catch (e) {}
-
         var basePath = appBasePath();
         var localLogout = basePath + '__logout__';
-        var rootLogout = '/__logout__';
-        window.location.href = localLogout;
-        // Fallback for deployments that only honor root-scoped logout.
-        setTimeout(function() {
-          window.location.href = rootLogout;
-        }, 700);
+        var svcLogout = 'https://login.shinyapps.io/logout';
+
+        // 1) Clear app-level auth cookie without leaving the page context.
+        fetch(localLogout, { method: 'GET', credentials: 'include' })
+          .catch(function() {})
+          .finally(function() {
+            // 2) Clear shinyapps identity session in a popup (top-level context).
+            var popup = null;
+            try {
+              popup = window.open(
+                svcLogout,
+                'pcu_svc_logout',
+                'noopener,noreferrer,width=560,height=680'
+              );
+            } catch (e) {}
+
+            // If popup is blocked, navigate current tab to service logout.
+            if (!popup) {
+              window.location.href = svcLogout;
+              return;
+            }
+
+            // 3) Return this tab to explicit login chooser.
+            setTimeout(function() {
+              forceLoginRedirect();
+            }, 450);
+
+            // Best effort: close helper window after identity logout completes.
+            setTimeout(function() {
+              try { popup.close(); } catch (e) {}
+            }, 2200);
+          });
       });
     })();
   ")),
