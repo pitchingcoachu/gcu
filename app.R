@@ -21764,7 +21764,7 @@ deg_to_clock <- function(x) {
       aes(x = x, y = y),
       inherit.aes = FALSE,
       shape = point_shape,
-      size = 5,
+      size = 4.3,
       alpha = 0.95,
       color = pt_col,
       fill = pt_col,
@@ -22029,8 +22029,8 @@ deg_to_clock <- function(x) {
         tags$div(style = "overflow:auto;flex:1 1 auto;padding:0 0 4px 0;", content),
         if (!is.null(zone_output_id)) {
           tags$div(
-            style = "padding: 4px 0 2px 0;",
-            plotOutput(zone_output_id, height = "200px", width = "100%")
+            style = "padding: 2px 0 0 0; margin-top: -8px;",
+            plotOutput(zone_output_id, height = "190px", width = "100%")
           )
         },
         tags$img(
@@ -23163,7 +23163,7 @@ deg_to_clock <- function(x) {
           ctx.translate(cx, cy);
           var ringOuterRadius = sizeCache > 0 ? (sizeCache / 2) : (stageRadius + 38);
           drawClockNumbers(ctx, stageRadius, ringOuterRadius);
-          drawTiltArrows(ctx, 0, 0, radius, releaseTiltVal, breakTiltVal);
+          drawTiltArrows(ctx, 0, 0, radius, stageRadius, releaseTiltVal, breakTiltVal);
           drawRotatingTiltLine(ctx, 0, 0, radius, stageRadius, releaseTiltVal, rotation);
           ctx.restore();
         }
@@ -23193,13 +23193,13 @@ deg_to_clock <- function(x) {
           return eff;
         }
 
-        function drawTiltArrow(ctx, cx, cy, radius, deg, color, dashed) {
+        function drawTiltArrow(ctx, cx, cy, radius, stageRadius, deg, color, dashed) {
           var vec = tiltDegreesToVector(deg);
           if (!vec) return;
           
           // Position arrow between ball edge and clock numbers
-          var startRadius = radius * 1.02; // Just outside ball
-          var endRadius = radius * 1.18; // Just inside clock numbers
+          var startRadius = radius * 1.01; // Just outside ball
+          var endRadius = Math.max(radius * 1.18, (stageRadius || radius * 1.2) - 2); // Reach inner border edge
           
           var startX = cx + vec.x * startRadius;
           var startY = cy + vec.y * startRadius;
@@ -23209,7 +23209,7 @@ deg_to_clock <- function(x) {
           ctx.save();
           ctx.strokeStyle = color;
           ctx.fillStyle = color;
-          ctx.lineWidth = 5; // Thicker
+          ctx.lineWidth = 5.8; // Thicker/larger
           ctx.lineCap = 'round';
           ctx.setLineDash(dashed ? [6, 5] : []);
           ctx.beginPath();
@@ -23218,7 +23218,7 @@ deg_to_clock <- function(x) {
           ctx.stroke();
           
           // Calculate arrowhead based on the tilt direction
-          var headLen = radius * 0.12;
+          var headLen = radius * 0.14;
           var tiltAngle = Math.atan2(vec.y, vec.x);
           var perpAngle = tiltAngle + Math.PI / 2;
           var perpX = Math.cos(perpAngle);
@@ -23237,12 +23237,12 @@ deg_to_clock <- function(x) {
           ctx.restore();
         }
 
-        function drawTiltArrows(ctx, cx, cy, radius, releaseAngle, breakAngle) {
+        function drawTiltArrows(ctx, cx, cy, radius, stageRadius, releaseAngle, breakAngle) {
           if (releaseAngle !== null && isFinite(releaseAngle)) {
-            drawTiltArrow(ctx, cx, cy, radius, releaseAngle, '#ffb300', true);
+            drawTiltArrow(ctx, cx, cy, radius, stageRadius, releaseAngle, '#ffb300', true);
           }
           if (breakAngle !== null && isFinite(breakAngle)) {
-            drawTiltArrow(ctx, cx, cy, radius, breakAngle, '#4caf50', false);
+            drawTiltArrow(ctx, cx, cy, radius, stageRadius, breakAngle, '#4caf50', false);
           }
         }
 
@@ -23452,7 +23452,7 @@ deg_to_clock <- function(x) {
             // For non-full-circle paths, fade arrows in/out smoothly at endpoints.
             var edgeVis = 1;
             if (curveMixRaw < fullCircleThreshold) {
-              var feather = 0.12;
+              var feather = 0.085;
               var fadeIn = Math.max(0, Math.min(1, phase / feather));
               var fadeOut = Math.max(0, Math.min(1, (1 - phase) / feather));
               edgeVis = Math.min(fadeIn, fadeOut);
@@ -23476,7 +23476,7 @@ deg_to_clock <- function(x) {
 
             ctx.save();
             if (curveMixRaw < fullCircleThreshold && edgeVis < 0.999) {
-              var revealLen = Math.max(localLen * 0.06, localLen * edgeVis);
+              var revealLen = Math.max(localLen * 0.01, localLen * edgeVis);
               var clipHalfWidth = localWidth * 2.6;
               var clipEndX = tipX - tangent.x * revealLen;
               var clipEndY = tipY - tangent.y * revealLen;
@@ -23913,8 +23913,8 @@ deg_to_clock <- function(x) {
           tags$div(style = "overflow:auto;flex:1 1 auto;padding:0 0 4px 0;", content),
           if (!is.null(zone_output_id)) {
             tags$div(
-              style = "padding: 4px 0 2px 0;",
-              plotOutput(zone_output_id, height = "200px", width = "100%")
+              style = "padding: 2px 0 0 0; margin-top: -8px;",
+              plotOutput(zone_output_id, height = "190px", width = "100%")
             )
           },
           tags$img(
