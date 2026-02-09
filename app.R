@@ -21715,6 +21715,62 @@ deg_to_clock <- function(x) {
       )
     )
   }
+
+  build_modal_zone_plot <- function(row, dark_on = FALSE) {
+    line_col <- if (isTRUE(dark_on)) "#ffffff" else "black"
+    home <- data.frame(
+      x = c(-0.75, 0.75, 0.75, 0, -0.75),
+      y = c(1.05, 1.05, 1.15, 1.25, 1.15) - 0.5
+    )
+    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+    sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
+
+    p <- ggplot() +
+      geom_polygon(data = home, aes(x, y), inherit.aes = FALSE, fill = NA, color = line_col) +
+      geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                inherit.aes = FALSE, fill = NA, linetype = "dashed", color = line_col) +
+      geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                inherit.aes = FALSE, fill = NA, color = line_col) +
+      coord_fixed(ratio = 1, xlim = c(-2.5, 2.5), ylim = c(0, 4.5)) +
+      theme_void() +
+      theme(
+        plot.background = element_rect(fill = "transparent", color = NA),
+        panel.background = element_rect(fill = "transparent", color = NA)
+      )
+
+    row_df <- tryCatch(as.data.frame(row, stringsAsFactors = FALSE), error = function(e) NULL)
+    if (is.null(row_df) || !nrow(row_df)) return(p)
+
+    x <- suppressWarnings(as.numeric(row_df$PlateLocSide[1]))
+    y <- suppressWarnings(as.numeric(row_df$PlateLocHeight[1]))
+    if (!is.finite(x) || !is.finite(y)) return(p)
+
+    pt <- as.character(row_df$TaggedPitchType[1] %||% "")
+    pal <- if (exists("colors_for_mode")) colors_for_mode(isTRUE(dark_on)) else all_colors
+    pt_col <- pal[[pt]]
+    if (is.null(pt_col) || !nzchar(pt_col)) pt_col <- "gray"
+
+    result_val <- as.character(row_df$Result[1] %||% "")
+    if (!nzchar(trimws(result_val))) {
+      pitch_call <- as.character(row_df$PitchCall[1] %||% "")
+      play_result <- as.character(row_df$PlayResult[1] %||% "")
+      result_val <- compute_result(pitch_call, play_result) %||% ""
+    }
+    point_shape <- if (!nzchar(result_val) || !(result_val %in% names(shape_map))) 16 else shape_map[[result_val]]
+
+    point_df <- data.frame(x = x, y = y)
+    p + geom_point(
+      data = point_df,
+      aes(x = x, y = y),
+      inherit.aes = FALSE,
+      shape = point_shape,
+      size = 5,
+      alpha = 0.95,
+      color = pt_col,
+      fill = pt_col,
+      stroke = 0.9
+    )
+  }
   
   show_pitch_video_modal_multi <- function(row, right_ui = NULL, dataset = NULL, dataset_idx = NA_integer_) {
     data_full <- dataset
@@ -21962,7 +22018,7 @@ deg_to_clock <- function(x) {
       urls[vapply(urls, nzchar, logical(1))]
     }
     
-    metrics_block <- function(content) {
+    metrics_block <- function(content, zone_output_id = NULL) {
       if (is.null(content)) return(NULL)
       tags$div(
         style = paste(
@@ -21971,6 +22027,12 @@ deg_to_clock <- function(x) {
           "text-align:center;padding:0;"
         ),
         tags$div(style = "overflow:auto;flex:1 1 auto;padding:0 0 4px 0;", content),
+        if (!is.null(zone_output_id)) {
+          tags$div(
+            style = "padding: 4px 0 2px 0;",
+            plotOutput(zone_output_id, height = "200px", width = "100%", bg = "transparent")
+          )
+        },
         tags$img(
           src = "PCUlogo.png", alt = "PCU",
           style = paste(
@@ -22019,6 +22081,8 @@ deg_to_clock <- function(x) {
     sync_pause_id      <- paste0(uid_base, "_pause_sync")
     download_single_id <- paste0(uid_base, "_download_single")
     download_all_id    <- paste0(uid_base, "_download_all")
+    primary_zone_id    <- paste0(uid_base, "_zone_primary")
+    secondary_zone_id  <- paste0(uid_base, "_zone_secondary")
     
     observeEvent(input[[next_id]], {
       cur <- idx()
@@ -22063,6 +22127,14 @@ deg_to_clock <- function(x) {
     })
     
     cmp_urls <- reactive(collect_urls(cmp_current_row()))
+    
+    output[[primary_zone_id]] <- renderPlot({
+      build_modal_zone_plot(current_row(), dark_on = isTRUE(input$dark_mode))
+    }, bg = "transparent")
+    
+    output[[secondary_zone_id]] <- renderPlot({
+      build_modal_zone_plot(cmp_current_row(), dark_on = isTRUE(input$dark_mode))
+    }, bg = "transparent")
     
     cam_names <- camera_display_labels
     
@@ -22400,7 +22472,7 @@ deg_to_clock <- function(x) {
       } else character(0)
       
       if (!isTRUE(compare_mode())) {
-        right_pane <- metrics_block(right)
+        right_pane <- metrics_block(right, primary_zone_id)
         main_layout <- if (is.null(right_pane)) {
           video_core
         } else {
@@ -22467,8 +22539,8 @@ deg_to_clock <- function(x) {
           tags$div("Select a pitch", style = placeholder_style)
         }
         
-        left_metrics_block <- metrics_block(right)
-        right_metrics_block <- metrics_block(if (!is.null(cmp_row)) build_metrics_panel(cmp_row) else NULL)
+        left_metrics_block <- metrics_block(right, primary_zone_id)
+        right_metrics_block <- metrics_block(if (!is.null(cmp_row)) build_metrics_panel(cmp_row) else NULL, secondary_zone_id)
         
         primary_selected_val <- primary_pool_idx_reactive()
         secondary_selected_val <- secondary_idx()
@@ -23388,21 +23460,35 @@ deg_to_clock <- function(x) {
             }
             if (edgeVis <= 0.001) continue;
 
-            // Grow/shrink from the tip so entry is tip-first and exit is gradual.
+            // Keep full arrow shape, but clip tip->tail for true progressive reveal/hide.
             var tipX = fullTipX;
             var tipY = fullTipY;
-            var baseX = tipX + (fullBaseX - fullTipX) * edgeVis;
-            var baseY = tipY + (fullBaseY - fullTipY) * edgeVis;
-            var headInnerX = tipX + (fullHeadInnerX - fullTipX) * edgeVis;
-            var headInnerY = tipY + (fullHeadInnerY - fullTipY) * edgeVis;
-            var localWidth = arrowWidth * edgeVis;
+            var baseX = fullBaseX;
+            var baseY = fullBaseY;
+            var headInnerX = fullHeadInnerX;
+            var headInnerY = fullHeadInnerY;
+            var localWidth = arrowWidth;
 
             var arrowGrad = ctx.createLinearGradient(baseX, baseY, tipX, tipY);
             arrowGrad.addColorStop(0, 'rgba(170, 125, 48, 1)');
             arrowGrad.addColorStop(0.6, 'rgba(215, 185, 120, 1)');
             arrowGrad.addColorStop(1, 'rgba(255, 255, 255, 1)');
 
-            ctx.globalAlpha = edgeVis;
+            ctx.save();
+            if (curveMixRaw < fullCircleThreshold && edgeVis < 0.999) {
+              var revealLen = Math.max(localLen * 0.06, localLen * edgeVis);
+              var clipHalfWidth = localWidth * 2.6;
+              var clipEndX = tipX - tangent.x * revealLen;
+              var clipEndY = tipY - tangent.y * revealLen;
+              ctx.beginPath();
+              ctx.moveTo(tipX + normal.x * clipHalfWidth, tipY + normal.y * clipHalfWidth);
+              ctx.lineTo(tipX - normal.x * clipHalfWidth, tipY - normal.y * clipHalfWidth);
+              ctx.lineTo(clipEndX - normal.x * clipHalfWidth, clipEndY - normal.y * clipHalfWidth);
+              ctx.lineTo(clipEndX + normal.x * clipHalfWidth, clipEndY + normal.y * clipHalfWidth);
+              ctx.closePath();
+              ctx.clip();
+            }
+            ctx.globalAlpha = 1;
             ctx.fillStyle = arrowGrad;
             ctx.beginPath();
             ctx.moveTo(tipX, tipY);
@@ -23415,6 +23501,7 @@ deg_to_clock <- function(x) {
             ctx.strokeStyle = 'rgba(112, 72, 34, 1)';
             ctx.lineWidth = Math.max(1, radius * 0.02);
             ctx.stroke();
+            ctx.restore();
           }
           ctx.restore();
         }
@@ -23803,13 +23890,19 @@ deg_to_clock <- function(x) {
       i <- max(1L, min(n_total, i))
       pool_df[i, , drop = FALSE]
     })
+    zone_id <- paste0(uid_base, "_zone")
+    
+    output[[zone_id]] <- renderPlot({
+      build_modal_zone_plot(current_row(), dark_on = isTRUE(input$dark_mode))
+    }, bg = "transparent")
+    
     output[[modal_id]] <- renderUI({
       cur_idx <- idx()
       if (!is.finite(cur_idx)) cur_idx <- 1L
       cur_idx <- max(1L, min(n_total, cur_idx))
       seq_txt <- sprintf("%d of %d", cur_idx, n_total)
 
-      metrics_block <- function(content) {
+      metrics_block <- function(content, zone_output_id = NULL) {
         if (is.null(content)) return(NULL)
         tags$div(
           style = paste(
@@ -23818,6 +23911,12 @@ deg_to_clock <- function(x) {
             "text-align:center;padding:0;"
           ),
           tags$div(style = "overflow:auto;flex:1 1 auto;padding:0 0 4px 0;", content),
+          if (!is.null(zone_output_id)) {
+            tags$div(
+              style = "padding: 4px 0 2px 0;",
+              plotOutput(zone_output_id, height = "200px", width = "100%", bg = "transparent")
+            )
+          },
           tags$img(
             src = "PCUlogo.png", alt = "PCU",
             style = paste(
@@ -23854,7 +23953,7 @@ deg_to_clock <- function(x) {
       )
 
       left_block <- make_spin_card(current_row(), label %||% "Spin Visual", paste0(uid_base, "_primary"))
-      left_metrics <- metrics_block(build_metrics_panel(current_row()))
+      left_metrics <- metrics_block(build_metrics_panel(current_row()), zone_id)
       main_layout <- tags$div(
         style = "display:grid;grid-template-columns:4fr 1fr;gap:24px;align-items:start;",
         left_block,
