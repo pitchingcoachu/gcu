@@ -20479,6 +20479,19 @@ ui <- tagList(
       Shiny.setInputValue('open_media', {url: url, type: typ, nonce: Math.random()}, {priority:'event'});
     });
   ")),
+  tags$script(HTML("
+    // Centralized logout handler for shinyapps.io authenticated deployments.
+    Shiny.addCustomMessageHandler('pcu_logout', function(_) {
+      var basePath = window.location.pathname || '/';
+      if (basePath && !basePath.endsWith('/')) basePath = basePath + '/';
+      var localLogout = basePath + '__logout__';
+      window.location.href = localLogout;
+      // Fallback in case deployment expects root logout route.
+      setTimeout(function() {
+        window.location.href = '/__logout__';
+      }, 700);
+    });
+  ")),
   
   shinyjs::useShinyjs(),
   
@@ -20514,6 +20527,12 @@ ui <- tagList(
     actionButton("openNote", label = NULL, icon = icon("sticky-note"),
                  class = "btn btn-note", title = "Add Note"),
     top = 60, right = 12, width = 50, fixed = TRUE, draggable = FALSE
+  ),
+  absolutePanel(
+    style = "background:transparent; border:none; box-shadow:none; z-index:2000;",
+    actionButton("logout_btn", label = "Logout", icon = icon("sign-out-alt"),
+                 class = "btn btn-default", title = "Sign out"),
+    top = 60, right = 70, width = 130, fixed = TRUE, draggable = FALSE
   ),
   uiOutput("spin_visual_assets"),
   navbarPage(
@@ -20593,6 +20612,10 @@ server <- function(input, output, session) {
     } else {
       shinyjs::removeClass(selector = "body", class = "theme-dark")
     }
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$logout_btn, {
+    session$sendCustomMessage("pcu_logout", list())
   }, ignoreInit = TRUE)
   
   # Helper to resolve table mode (supports saved custom tables)
