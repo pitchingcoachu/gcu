@@ -23226,8 +23226,12 @@ deg_to_clock <- function(x) {
             fullSideSign = ((rodDir.x * releaseDir.x + rodDir.y * releaseDir.y) >= 0) ? 1 : -1;
           }
           
-          // Base rod is low-transparency gray across full span.
-          drawRodSegment(ctx, cx, cy, -outerLimit, outerLimit, rodDir, rodPerp, rodWidth, 0.32);
+          // Base rod style:
+          // - inside baseball: dashed low-transparency gray
+          // - outside baseball to border: solid low-transparency gray
+          drawRodSegment(ctx, cx, cy, -outerLimit, -ballLimit, rodDir, rodPerp, rodWidth, 0.32);
+          drawRodSegment(ctx, cx, cy, ballLimit, outerLimit, rodDir, rodPerp, rodWidth, 0.32);
+          drawDashedRodLine(ctx, cx, cy, -ballLimit, ballLimit, rodDir, rodWidth, 0.32, radius);
 
           // Black visibility segment: from outer border to efficiency endpoint on chosen side only.
           var visibilityEnd = Math.max(0, ballLimit - penetrationDistance); // 100%->ball edge, 0%->center
@@ -23276,6 +23280,26 @@ deg_to_clock <- function(x) {
           ctx.lineTo(cx + end.x + axisPerp.x * halfWidth, cy + end.y + axisPerp.y * halfWidth);
           ctx.closePath();
           ctx.fill();
+          ctx.restore();
+        }
+
+        function drawDashedRodLine(ctx, cx, cy, startDist, endDist, axisDir, rodWidth, alpha, radius) {
+          var startX = cx + axisDir.x * startDist;
+          var startY = cy + axisDir.y * startDist;
+          var endX = cx + axisDir.x * endDist;
+          var endY = cy + axisDir.y * endDist;
+          var dashLen = Math.max(6, radius * 0.08);
+          var gapLen = Math.max(4, radius * 0.055);
+          ctx.save();
+          ctx.strokeStyle = 'rgba(165, 155, 142,' + (0.9 * alpha) + ')';
+          ctx.lineWidth = Math.max(1.2, rodWidth * 1.7);
+          ctx.lineCap = 'butt';
+          ctx.setLineDash([dashLen, gapLen]);
+          ctx.beginPath();
+          ctx.moveTo(startX, startY);
+          ctx.lineTo(endX, endY);
+          ctx.stroke();
+          ctx.setLineDash([]);
           ctx.restore();
         }
 
@@ -23346,26 +23370,46 @@ deg_to_clock <- function(x) {
             var centerY = pt.y;
             var fadeFactor = pt.lineFade * (1 - curveMix) + curveMix;
             var localLen = arrowLen * (0.3 + 0.7 * fadeFactor);
-            var tipX = centerX + tangent.x * localLen * 0.55;
-            var tipY = centerY + tangent.y * localLen * 0.55;
-            var baseX = centerX - tangent.x * localLen * 0.35;
-            var baseY = centerY - tangent.y * localLen * 0.35;
-            var headInnerX = tipX - tangent.x * localLen * 0.2;
-            var headInnerY = tipY - tangent.y * localLen * 0.2;
+            var fullTipX = centerX + tangent.x * localLen * 0.55;
+            var fullTipY = centerY + tangent.y * localLen * 0.55;
+            var fullBaseX = centerX - tangent.x * localLen * 0.35;
+            var fullBaseY = centerY - tangent.y * localLen * 0.35;
+            var fullHeadInnerX = fullTipX - tangent.x * localLen * 0.2;
+            var fullHeadInnerY = fullTipY - tangent.y * localLen * 0.2;
+
+            // For non-full-circle paths, fade arrows in/out smoothly at endpoints.
+            var edgeVis = 1;
+            if (curveMixRaw < fullCircleThreshold) {
+              var feather = 0.12;
+              var fadeIn = Math.max(0, Math.min(1, phase / feather));
+              var fadeOut = Math.max(0, Math.min(1, (1 - phase) / feather));
+              edgeVis = Math.min(fadeIn, fadeOut);
+              edgeVis = edgeVis * edgeVis * (3 - 2 * edgeVis); // smoothstep
+            }
+            if (edgeVis <= 0.001) continue;
+
+            // Grow/shrink from the tip so entry is tip-first and exit is gradual.
+            var tipX = fullTipX;
+            var tipY = fullTipY;
+            var baseX = tipX + (fullBaseX - fullTipX) * edgeVis;
+            var baseY = tipY + (fullBaseY - fullTipY) * edgeVis;
+            var headInnerX = tipX + (fullHeadInnerX - fullTipX) * edgeVis;
+            var headInnerY = tipY + (fullHeadInnerY - fullTipY) * edgeVis;
+            var localWidth = arrowWidth * edgeVis;
 
             var arrowGrad = ctx.createLinearGradient(baseX, baseY, tipX, tipY);
             arrowGrad.addColorStop(0, 'rgba(170, 125, 48, 1)');
             arrowGrad.addColorStop(0.6, 'rgba(215, 185, 120, 1)');
             arrowGrad.addColorStop(1, 'rgba(255, 255, 255, 1)');
 
-            ctx.globalAlpha = 1;
+            ctx.globalAlpha = edgeVis;
             ctx.fillStyle = arrowGrad;
             ctx.beginPath();
             ctx.moveTo(tipX, tipY);
-            ctx.lineTo(headInnerX + normal.x * arrowWidth, headInnerY + normal.y * arrowWidth);
-            ctx.lineTo(baseX + normal.x * arrowWidth, baseY + normal.y * arrowWidth);
-            ctx.lineTo(baseX - normal.x * arrowWidth, baseY - normal.y * arrowWidth);
-            ctx.lineTo(headInnerX - normal.x * arrowWidth, headInnerY - normal.y * arrowWidth);
+            ctx.lineTo(headInnerX + normal.x * localWidth, headInnerY + normal.y * localWidth);
+            ctx.lineTo(baseX + normal.x * localWidth, baseY + normal.y * localWidth);
+            ctx.lineTo(baseX - normal.x * localWidth, baseY - normal.y * localWidth);
+            ctx.lineTo(headInnerX - normal.x * localWidth, headInnerY - normal.y * localWidth);
             ctx.closePath();
             ctx.fill();
             ctx.strokeStyle = 'rgba(112, 72, 34, 1)';
