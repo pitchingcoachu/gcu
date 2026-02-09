@@ -582,3 +582,9 @@
 20260208-WarriorField-1_unverified.csv
 # Auto-pruned non-team data
 20260208-HDetterField-1_unverified.csv
+# Auto-pruned non-team data
+20260208-BurchellStallard-2_unverified.csv
+# Auto-pruned non-team data
+20260208-LamarHennonField-2_unverified.csv
+# Auto-pruned non-team data
+20260208-PioneerPark-2_unverified.csv
