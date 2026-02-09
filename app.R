@@ -22030,7 +22030,7 @@ deg_to_clock <- function(x) {
         if (!is.null(zone_output_id)) {
           tags$div(
             style = "padding: 4px 0 2px 0;",
-            plotOutput(zone_output_id, height = "200px", width = "100%", bg = "transparent")
+            plotOutput(zone_output_id, height = "200px", width = "100%")
           )
         },
         tags$img(
@@ -23914,7 +23914,7 @@ deg_to_clock <- function(x) {
           if (!is.null(zone_output_id)) {
             tags$div(
               style = "padding: 4px 0 2px 0;",
-              plotOutput(zone_output_id, height = "200px", width = "100%", bg = "transparent")
+              plotOutput(zone_output_id, height = "200px", width = "100%")
             )
           },
           tags$img(
