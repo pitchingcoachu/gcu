@@ -22084,16 +22084,6 @@ deg_to_clock <- function(x) {
     primary_zone_id    <- paste0(uid_base, "_zone_primary")
     secondary_zone_id  <- paste0(uid_base, "_zone_secondary")
     
-    observeEvent(input[[next_id]], {
-      cur <- idx()
-      if (is.finite(cur) && cur < n_total) idx(cur + 1L)
-    }, ignoreNULL = TRUE)
-
-    observeEvent(input[[prev_id]], {
-      cur <- idx()
-      if (is.finite(cur) && cur > 1L) idx(cur - 1L)
-    }, ignoreNULL = TRUE)
-
     current_row <- reactive({
       i <- idx()
       if (!is.finite(i)) i <- 1L
@@ -23964,6 +23954,18 @@ deg_to_clock <- function(x) {
         main_layout
       )
     })
+
+    observeEvent(input[[next_id]], {
+      cur <- idx()
+      if (!is.finite(cur)) cur <- 1L
+      if (cur < n_total) idx(cur + 1L)
+    }, ignoreNULL = TRUE)
+
+    observeEvent(input[[prev_id]], {
+      cur <- idx()
+      if (!is.finite(cur)) cur <- 1L
+      if (cur > 1L) idx(cur - 1L)
+    }, ignoreNULL = TRUE)
 
     modal_css <- tags$style(HTML(
       ".modal-dialog.pseq-wide{width:96%;max-width:1400px;}"
