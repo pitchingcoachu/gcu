@@ -23467,19 +23467,32 @@ deg_to_clock <- function(x) {
             arrowGrad.addColorStop(1, 'rgba(255, 255, 255, 1)');
 
             ctx.save();
-            // Fade logic: once arrows reach the far edge, fade out the full arrow.
-            var endAlpha = 1;
+            // Fade logic (mirrors reveal): shrink visible arrow toward the tip at the end.
+            var endReveal = 1;
             if (curveMixRaw < fullCircleThreshold) {
               var endFeather = 0.095;
               var endFade = Math.max(0, Math.min(1, (1 - phase) / endFeather));
               endFade = endFade * endFade * (3 - 2 * endFade); // smoothstep
-              endAlpha = endFade;
+              endReveal = endFade;
             }
-            if (endAlpha <= 0.001) {
+            if (endReveal <= 0.001) {
               ctx.restore();
               continue;
             }
-            ctx.globalAlpha = endAlpha;
+            if (curveMixRaw < fullCircleThreshold && endReveal < 0.999) {
+              var keepLen = Math.max(localLen * 0.01, localLen * endReveal);
+              var clipHalfWidth = localWidth * 2.6;
+              var clipEndX = tipX - tangent.x * keepLen;
+              var clipEndY = tipY - tangent.y * keepLen;
+              ctx.beginPath();
+              ctx.moveTo(tipX + normal.x * clipHalfWidth, tipY + normal.y * clipHalfWidth);
+              ctx.lineTo(tipX - normal.x * clipHalfWidth, tipY - normal.y * clipHalfWidth);
+              ctx.lineTo(clipEndX - normal.x * clipHalfWidth, clipEndY - normal.y * clipHalfWidth);
+              ctx.lineTo(clipEndX + normal.x * clipHalfWidth, clipEndY + normal.y * clipHalfWidth);
+              ctx.closePath();
+              ctx.clip();
+            }
+            ctx.globalAlpha = 1;
             ctx.fillStyle = arrowGrad;
             ctx.beginPath();
             ctx.moveTo(tipX, tipY);
