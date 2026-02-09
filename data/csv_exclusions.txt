@@ -588,3 +588,47 @@
 20260208-LamarHennonField-2_unverified.csv
 # Auto-pruned non-team data
 20260208-PioneerPark-2_unverified.csv
+# Auto-pruned non-team data
+20260130-700-HughAdamsPark-1.csv
+# Auto-pruned non-team data
+20260206-JackBowlingField-1.csv
+# Auto-pruned non-team data
+20260206-JackBowlingField-2.csv
+# Auto-pruned non-team data
+20260207-700-HughAdamsPark-2.csv
+# Auto-pruned non-team data
+20260207-GulfCoastState-1.csv
+# Auto-pruned non-team data
+20260207-GulfCoastState-2.csv
+# Auto-pruned non-team data
+20260207-HenleyField-3_unverified.csv
+# Auto-pruned non-team data
+20260207-JackBowlingField-1.csv
+# Auto-pruned non-team data
+20260208-AndersonUniversity-1.csv
+# Auto-pruned non-team data
+20260208-BobSteinStadium-1.csv
+# Auto-pruned non-team data
+20260208-BurchellStallard-1.csv
+# Auto-pruned non-team data
+20260208-BurchellStallard-2.csv
+# Auto-pruned non-team data
+20260208-DurhamField-1.csv
+# Auto-pruned non-team data
+20260208-HDetterField-1.csv
+# Auto-pruned non-team data
+20260208-LamarHennonField-1.csv
+# Auto-pruned non-team data
+20260208-LamarHennonField-2.csv
+# Auto-pruned non-team data
+20260208-LeeUniversity-1.csv
+# Auto-pruned non-team data
+20260208-PioneerPark-1.csv
+# Auto-pruned non-team data
+20260208-PioneerPark-2.csv
+# Auto-pruned non-team data
+20260208-SammyCoxField-1.csv
+# Auto-pruned non-team data
+20260208-WarriorField-1.csv
+# Auto-pruned non-team data
+20260209-PioneerPark-1_unverified.csv
