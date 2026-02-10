@@ -19450,35 +19450,6 @@ ui <- tagList(
       });
     ")),
     tags$script(HTML("
-      // Inject a right-aligned Logout nav item so it matches navbar tab styling.
-      document.addEventListener('DOMContentLoaded', function() {
-        var addLogoutNav = function() {
-          if (document.getElementById('pcuLogoutNav')) return;
-          var collapse = document.querySelector('#top .navbar-collapse');
-          if (!collapse) return;
-          var ul = document.createElement('ul');
-          ul.className = 'nav navbar-nav navbar-right';
-          ul.id = 'pcuLogoutNav';
-          var li = document.createElement('li');
-          var a = document.createElement('a');
-          a.href = '#';
-          a.textContent = 'Logout';
-          a.setAttribute('role', 'button');
-          a.addEventListener('click', function(e) {
-            e.preventDefault();
-            if (window.Shiny && Shiny.setInputValue) {
-              Shiny.setInputValue('logout_btn', Date.now(), {priority: 'event'});
-            }
-          });
-          li.appendChild(a);
-          ul.appendChild(li);
-          collapse.appendChild(ul);
-        };
-        addLogoutNav();
-        setTimeout(addLogoutNav, 300);
-      });
-    ")),
-    tags$script(HTML("
       // Add dropdown mirrors for inner tabsets (suite pages) - mobile-friendly
       document.addEventListener('DOMContentLoaded', function() {
         var ensureSidebarDock = function() {
@@ -20201,13 +20172,13 @@ ui <- tagList(
       }
       body.theme-dark .well,
       body.theme-dark .panel {
-        background: rgba(15,23,42,0.9) !important;
-        border: 1px solid #1f2937 !important;
+        background: rgba(0,0,0,0.92) !important;
+        border: 1px solid #2a2a2a !important;
         box-shadow: 0 6px 24px rgba(0,0,0,0.45);
         color: #e5e7eb !important;
       }
       body.theme-dark .panel-default > .panel-heading {
-        background: linear-gradient(135deg, #111827 0%, #0b1220 100%) !important;
+        background: linear-gradient(135deg, #000000 0%, #101010 100%) !important;
         color: #e5e7eb !important;
         border: none !important;
       }
@@ -20331,8 +20302,8 @@ ui <- tagList(
         border-radius: 6px;
       }
       body.theme-dark .creport-cell {
-        background: rgba(15,23,42,0.9) !important;
-        border: 1px solid #1f2937 !important;
+        background: rgba(0,0,0,0.92) !important;
+        border: 1px solid #2a2a2a !important;
         box-shadow: 0 4px 18px rgba(0,0,0,0.35);
         color: #e5e7eb;
       }
@@ -20377,13 +20348,13 @@ ui <- tagList(
       }
       body.theme-dark #creports-sidebar_column .well,
       body.theme-dark #creports-main_column .well {
-        background: radial-gradient(circle at top left, #1f2937 0%, #0f172a 60%, #0b0f19 100%) !important;
+        background: radial-gradient(circle at top left, #1a1a1a 0%, #050505 60%, #000000 100%) !important;
         border-left: 4px solid #ff8c1a !important;
         color: #e5e7eb !important;
       }
       body.theme-dark #creports-main_column .panel,
       body.theme-dark #creports-sidebar_column .panel {
-        background: #0f172a !important;
+        background: #000000 !important;
         color: #e5e7eb !important;
         box-shadow: 0 2px 12px rgba(0,0,0,0.35);
       }
@@ -20393,19 +20364,19 @@ ui <- tagList(
         background: transparent !important;
       }
       body.theme-dark .pp-root .goal-container {
-        background: rgba(15,23,42,0.85) !important;
-        border: 1px solid #1f2937 !important;
+        background: rgba(0,0,0,0.9) !important;
+        border: 1px solid #2a2a2a !important;
         box-shadow: 0 4px 20px rgba(0,0,0,0.35);
         color: #e5e7eb;
       }
       body.theme-dark .pp-root .goal-description {
-        background: rgba(17,24,39,0.9) !important;
-        border-color: #1f2937 !important;
+        background: rgba(8,8,8,0.95) !important;
+        border-color: #2a2a2a !important;
         color: #e5e7eb !important;
       }
       body.theme-dark .pp-root .panel,
       body.theme-dark .pp-root .well {
-        background: rgba(15,23,42,0.9) !important;
+        background: rgba(0,0,0,0.92) !important;
         color: #e5e7eb !important;
         box-shadow: 0 2px 12px rgba(0,0,0,0.35);
       }
@@ -20634,7 +20605,8 @@ ui <- tagList(
                br(),
                DT::dataTableOutput("notesTable")
              )
-    )
+    ),
+    tabPanel("Logout", value = "Logout", fluidPage())
   )
 )
 
@@ -20688,6 +20660,17 @@ server <- function(input, output, session) {
     } else {
       shinyjs::removeClass(selector = "body", class = "theme-dark")
     }
+  }, ignoreInit = TRUE)
+  
+  last_non_logout_tab <- reactiveVal("Pitching")
+  observeEvent(input$top, {
+    cur_tab <- input$top %||% "Pitching"
+    if (!identical(cur_tab, "Logout")) {
+      last_non_logout_tab(cur_tab)
+      return()
+    }
+    session$sendCustomMessage("pcu_logout", list())
+    updateNavbarPage(session, "top", selected = last_non_logout_tab())
   }, ignoreInit = TRUE)
   
   observeEvent(input$logout_btn, {
@@ -33217,7 +33200,14 @@ deg_to_clock <- function(x) {
   # Add basic output renders for Player Plans
   output$pp_player_name <- renderText({
     req(input$pp_player_select)
-    input$pp_player_select
+    nm <- trimws(as.character(input$pp_player_select))
+    if (grepl(",", nm, fixed = TRUE)) {
+      parts <- trimws(strsplit(nm, ",", fixed = TRUE)[[1]])
+      if (length(parts) >= 2 && nzchar(parts[1]) && nzchar(parts[2])) {
+        return(paste(parts[2], parts[1]))
+      }
+    }
+    nm
   })
   
   output$pp_date_range_display <- renderText({
@@ -34215,10 +34205,11 @@ deg_to_clock <- function(x) {
         expand = expansion(mult = c(0.05, 0.05))
       )
     
+    target_line_col <- if (isTRUE(input$dark_mode)) "#ffffff" else "black"
     # Add target line if target is set and numeric
     if (!is.null(target_numeric) && is.finite(target_numeric)) {
       p <- p + geom_hline(yintercept = target_numeric, 
-                          color = "black", 
+                          color = target_line_col, 
                           linetype = "dashed", 
                           alpha = 0.6, 
                           size = 1.2)
