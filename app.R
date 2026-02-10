@@ -178,6 +178,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
     if (!is.null(dom) && !is.null(dom$input$dark_mode)) dark_on <- isTRUE(dom$input$dark_mode)
   }, silent = TRUE)
   line_col <- if (dark_on) "#ffffff" else "black"
+  text_col <- if (dark_on) "#ffffff" else "black"
   bg_transparent <- element_rect(fill = "transparent", color = NA)
   
   home <- data.frame(
@@ -263,8 +264,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
       theme_void() +
       theme(
         legend.position = "none",
-        axis.text.x = element_text(size = 10, face = "bold", margin = margin(t = 3)),
-        axis.title.x = element_text(face = "bold", size = 11, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 10, face = "bold", margin = margin(t = 3), color = text_col),
+        axis.title.x = element_text(face = "bold", size = 11, margin = margin(t = 8), color = text_col),
         plot.margin = margin(5, 0, 10, 0),
         plot.background = element_rect(fill = "transparent", color = NA),
         panel.background = element_rect(fill = "transparent", color = NA),
@@ -296,6 +297,8 @@ draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
     dom <- shiny::getDefaultReactiveDomain()
     if (!is.null(dom) && !is.null(dom$input$dark_mode)) dark_on <- isTRUE(dom$input$dark_mode)
   }, silent = TRUE)
+  line_col <- if (dark_on) "#ffffff" else "black"
+  text_col <- if (dark_on) "#ffffff" else "black"
   
   home <- data.frame(
     x = c(-0.75, 0.75, 0.75, 0.00, -0.75),
@@ -309,9 +312,9 @@ draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
   p_heat <- ggplot(grid, aes(x = x, y = y, fill = z)) +
     geom_tile(width = bin_size, height = bin_size, color = NA) +
     scale_fill_gradientn(colors = grad_vals, limits = scale_limits, na.value = "#00000000") +
-    geom_polygon(data = home, aes(x, y), fill = NA, color = "black", inherit.aes = FALSE) +
+    geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
     geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-              fill = NA, color = "black", inherit.aes = FALSE) +
+              fill = NA, color = line_col, inherit.aes = FALSE) +
     coord_fixed(ratio = 1, xlim = c(-2.5, 2.5), ylim = c(0, 4.5)) +
     theme_void() + 
     theme(legend.position = "none",
@@ -350,8 +353,8 @@ draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
       theme_void() +
       theme(
         legend.position = "none",
-        axis.text.x = element_text(size = 10, face = "bold", margin = margin(t = 3)),
-        axis.title.x = element_text(face = "bold", size = 11, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 10, face = "bold", margin = margin(t = 3), color = text_col),
+        axis.title.x = element_text(face = "bold", size = 11, margin = margin(t = 8), color = text_col),
         plot.margin = margin(5, 0, 10, 0),
         plot.background = element_rect(fill = "transparent", color = NA),
         panel.background = element_rect(fill = "transparent", color = NA),
@@ -4877,6 +4880,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
     if (!is.null(dom) && !is.null(dom$input$dark_mode)) dark_on <- isTRUE(dom$input$dark_mode)
   }, silent = TRUE)
   line_col <- if (dark_on) "#ffffff" else "black"
+  text_col <- if (dark_on) "#ffffff" else "black"
   bg_transparent <- element_rect(fill = "transparent", color = NA)
   
   home <- data.frame(
@@ -4961,8 +4965,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
       theme_void() +
       theme(
         legend.position = "none",
-        axis.text.x = element_text(size = 10, face = "bold", margin = margin(t = 3)),
-        axis.title.x = element_text(face = "bold", size = 11, margin = margin(t = 8)),
+        axis.text.x = element_text(size = 10, face = "bold", margin = margin(t = 3), color = text_col),
+        axis.title.x = element_text(face = "bold", size = 11, margin = margin(t = 8), color = text_col),
         plot.margin = margin(5, 0, 10, 0),
         plot.background = bg_transparent,
         panel.background = bg_transparent,
@@ -10599,6 +10603,8 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
     # ---- HeatMaps: Heat (Called-Strike% per taken opportunity, smooth; alpha = opportunity) ----
     output$heatPlot <- renderPlot({
       df <- filtered_catch(); if (!nrow(df)) return()
+      dark_on <- isTRUE(input$dark_mode)
+      line_col <- if (dark_on) "#ffffff" else "black"
       # NEW: filter by selected pitch results (matches pitching suite behavior)
       res_sel <- input$hmResults
       if (!is.null(res_sel) && length(res_sel)) {
@@ -10631,11 +10637,11 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
         geom_raster(data = surf, aes(x, y, fill = p, alpha = a), interpolate = TRUE) +
         scale_fill_gradientn(colors = cols, limits = c(0, 1), name = "CS%") +
         scale_alpha(range = c(0.25, 1), guide = "none") +
-        geom_polygon(data = home, aes(x, y), fill = NA, color = "black", linewidth = 0.6) +
+        geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, linewidth = 0.6) +
         geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                  fill = NA, color = "black", linetype = "dashed", linewidth = 0.6) +
+                  fill = NA, color = line_col, linetype = "dashed", linewidth = 0.6) +
         geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                  fill = NA, color = "black", linewidth = 0.8) +
+                  fill = NA, color = line_col, linewidth = 0.8) +
         coord_fixed(ratio = 1, xlim = c(lims[1], lims[2]), ylim = c(lims[3], lims[4])) +
         labs(title = "Called-Strike%", x = NULL, y = NULL) +
         theme_void() +
@@ -10647,6 +10653,8 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
     output$pitchPlot <- ggiraph::renderGirafe({
       req(input$hmChartType == "Pitch")
       df <- filtered_catch(); if (!nrow(df)) return(NULL)
+      dark_on <- isTRUE(input$dark_mode)
+      line_col <- if (dark_on) "#ffffff" else "black"
       # NEW: filter by selected pitch results
       res_sel <- input$hmResults
       if (!is.null(res_sel) && length(res_sel)) {
@@ -10668,9 +10676,9 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       df_other <- dplyr::filter(df_i,  is.na(Result))
       
       p <- ggplot() +
-        geom_polygon(data = home, aes(x, y), fill = NA, color = "black") +
-        geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = NA, color = "black", linetype = "dashed") +
-        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = NA, color = "black") +
+        geom_polygon(data = home, aes(x, y), fill = NA, color = line_col) +
+        geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = NA, color = line_col, linetype = "dashed") +
+        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = NA, color = line_col) +
         ggiraph::geom_point_interactive(
           data = df_other,
           aes(PlateLocSide, PlateLocHeight, color = TaggedPitchType, fill = TaggedPitchType, tooltip = tt, data_id = rid),
@@ -30844,6 +30852,8 @@ deg_to_clock <- function(x) {
   # Pitch Plot
   output$pitchPlot <- ggiraph::renderGirafe({
     df <- filtered_data(); if (!nrow(df)) return(NULL)
+    dark_on <- isTRUE(input$dark_mode)
+    line_col <- if (dark_on) "#ffffff" else "black"
     types <- ordered_types(); types_chr <- as.character(types)
     
     sel <- sel_results()
@@ -30867,11 +30877,11 @@ deg_to_clock <- function(x) {
     df_other <- dplyr::filter(df_i,  is.na(Result))
     
     p <- ggplot() +
-      geom_polygon(data = home, aes(x, y), fill = NA, color = "black", inherit.aes = FALSE) +
+      geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
       geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                fill = NA, color = "black", linetype = "dashed", inherit.aes = FALSE) +
+                fill = NA, color = line_col, linetype = "dashed", inherit.aes = FALSE) +
       geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                fill = NA, color = "black", inherit.aes = FALSE) +
+                fill = NA, color = line_col, inherit.aes = FALSE) +
       
       ggiraph::geom_point_interactive(
         data = df_other,
@@ -31021,6 +31031,8 @@ deg_to_clock <- function(x) {
   output$heatmapsPitchPlot <- ggiraph::renderGirafe({
     req(input$hmChartType == "Pitch")
     df <- filtered_data(); if (!nrow(df)) return(NULL)
+    dark_on <- isTRUE(input$dark_mode)
+    line_col <- if (dark_on) "#ffffff" else "black"
     
     # Ensure Result for filtering + shapes
     if (!("Result" %in% names(df))) {
@@ -31049,11 +31061,11 @@ deg_to_clock <- function(x) {
     sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
     
     p <- ggplot() +
-      geom_polygon(data = home, aes(x, y), fill = NA, color = "black") +
+      geom_polygon(data = home, aes(x, y), fill = NA, color = line_col) +
       geom_rect(data = cz, aes(xmin=xmin,xmax=xmax,ymin=ymin,ymax=ymax),
-                fill = NA, color = "black", linetype = "dashed") +
+                fill = NA, color = line_col, linetype = "dashed") +
       geom_rect(data = sz, aes(xmin=xmin,xmax=xmax,ymin=ymin,ymax=ymax),
-                fill = NA, color = "black") +
+                fill = NA, color = line_col) +
       
       # visible points (unknown result as solid circle)
       ggiraph::geom_point_interactive(
