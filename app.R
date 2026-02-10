@@ -4871,6 +4871,13 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
                       show_scale = FALSE, scale_label = NULL, scale_limits = NULL,
                       scale_breaks = NULL, scale_labels = NULL) {
   if (!nrow(grid)) return(ggplot() + theme_void())
+  dark_on <- FALSE
+  try({
+    dom <- shiny::getDefaultReactiveDomain()
+    if (!is.null(dom) && !is.null(dom$input$dark_mode)) dark_on <- isTRUE(dom$input$dark_mode)
+  }, silent = TRUE)
+  line_col <- if (dark_on) "#ffffff" else "black"
+  bg_transparent <- element_rect(fill = "transparent", color = NA)
   
   home <- data.frame(
     x = c(-0.75, 0.75, 0.75, 0.00, -0.75),
@@ -4887,6 +4894,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
   }
   
   n_bins <- if (is.null(breaks)) bins else max(1, length(breaks) - 1)
+  fill_vals <- pal_fun(n_bins)
+  if (length(fill_vals) >= 1) fill_vals[1] <- "#00000000"
   
   # Main heatmap plot
   p_heat <- ggplot(grid, aes(x, y, z = z)) +
@@ -4896,10 +4905,10 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
       else
         geom_contour_filled(aes(fill = after_stat(level)), breaks = breaks, show.legend = FALSE)
     } +
-    scale_fill_manual(values = pal_fun(n_bins), guide = "none") +
-    geom_polygon(data = home, aes(x, y), fill = NA, color = "black", inherit.aes = FALSE) +
+    scale_fill_manual(values = fill_vals, guide = "none") +
+    geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
     geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-              fill = NA, color = "black", inherit.aes = FALSE) +
+              fill = NA, color = line_col, inherit.aes = FALSE) +
     { if (!is.null(peak_df))
       geom_point(data = peak_df, aes(x = px, y = py), inherit.aes = FALSE,
                  size = 3.8, shape = 21, fill = "red", color = "black", stroke = 0.5)
@@ -4908,8 +4917,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
     theme_void() + 
     theme(legend.position = "none",
           plot.title = element_text(face = "bold", hjust = 0.5),
-          plot.background = element_rect(fill = "transparent", color = NA),
-          panel.background = element_rect(fill = "transparent", color = NA)) +
+          plot.background = bg_transparent,
+          panel.background = bg_transparent) +
     labs(title = title)
   
   # If show_scale, add gradient bar on top
@@ -4955,14 +4964,20 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
         axis.text.x = element_text(size = 10, face = "bold", margin = margin(t = 3)),
         axis.title.x = element_text(face = "bold", size = 11, margin = margin(t = 8)),
         plot.margin = margin(5, 0, 10, 0),
-        plot.background = element_rect(fill = "transparent", color = NA),
-        panel.background = element_rect(fill = "transparent", color = NA),
+        plot.background = bg_transparent,
+        panel.background = bg_transparent,
         aspect.ratio = 0.15  # Make scale bar much narrower
       ) +
       labs(x = scale_label)
     
-    # Combine scale bar on top of heatmap with tighter layout
-    return(p_scale / p_heat + plot_layout(heights = c(0.08, 1), widths = c(sz_width)))
+    # Combine scale bar on top of heatmap with transparent patchwork background
+    return(
+      (p_scale / p_heat + plot_layout(heights = c(0.08, 1), widths = c(sz_width))) &
+        theme(
+          plot.background = bg_transparent,
+          panel.background = bg_transparent
+        )
+    )
   }
   
   p_heat
