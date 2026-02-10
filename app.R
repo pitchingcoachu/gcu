@@ -195,6 +195,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
   }
   
   n_bins <- if (is.null(breaks)) bins else max(1, length(breaks) - 1)
+  fill_vals <- pal_fun(n_bins)
+  if (dark_on && length(fill_vals) >= 1) fill_vals[1] <- "#00000000"
   
   # Main heatmap plot
   p_heat <- ggplot(grid, aes(x, y, z = z)) +
@@ -204,7 +206,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
       else
         geom_contour_filled(aes(fill = after_stat(level)), breaks = breaks, show.legend = FALSE)
     } +
-    scale_fill_manual(values = pal_fun(n_bins), guide = "none") +
+    scale_fill_manual(values = fill_vals, guide = "none") +
     geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
     geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
               fill = NA, color = line_col, inherit.aes = FALSE) +
@@ -282,17 +284,24 @@ draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
                              title = NULL, breaks = NULL,
                              show_scale = FALSE, scale_label = NULL, scale_limits = NULL) {
   if (!nrow(grid)) return(ggplot() + theme_void())
+  dark_on <- FALSE
+  try({
+    dom <- shiny::getDefaultReactiveDomain()
+    if (!is.null(dom) && !is.null(dom$input$dark_mode)) dark_on <- isTRUE(dom$input$dark_mode)
+  }, silent = TRUE)
   
   home <- data.frame(
     x = c(-0.75, 0.75, 0.75, 0.00, -0.75),
     y = c(1.05, 1.05, 1.15, 1.25, 1.15) - 0.5
   )
   sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
+  grad_vals <- pal_fun(100)
+  if (dark_on && length(grad_vals) >= 1) grad_vals[1] <- "#00000000"
   
   # Use geom_tile to show actual bins
   p_heat <- ggplot(grid, aes(x = x, y = y, fill = z)) +
     geom_tile(width = bin_size, height = bin_size, color = NA) +
-    scale_fill_gradientn(colors = pal_fun(100), limits = scale_limits, na.value = "white") +
+    scale_fill_gradientn(colors = grad_vals, limits = scale_limits, na.value = "#00000000") +
     geom_polygon(data = home, aes(x, y), fill = NA, color = "black", inherit.aes = FALSE) +
     geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
               fill = NA, color = "black", inherit.aes = FALSE) +
