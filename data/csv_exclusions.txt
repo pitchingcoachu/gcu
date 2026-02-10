@@ -638,3 +638,11 @@
 20260209-PioneerPark-1.csv
 # Auto-pruned non-team data
 20260209-PioneerPark-2.csv
+# Auto-pruned non-team data
+20260207-HDetterField-1.csv
+# Auto-pruned non-team data
+20260207-JimReevesField-1.csv
+# Auto-pruned non-team data
+20260207-JimReevesField-2.csv
+# Auto-pruned non-team data
+20260207-OdessaCollege-1.csv
