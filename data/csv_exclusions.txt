@@ -634,3 +634,7 @@
 20260209-PioneerPark-1_unverified.csv
 # Auto-pruned non-team data
 20260209-PioneerPark-2_unverified.csv
+# Auto-pruned non-team data
+20260209-PioneerPark-1.csv
+# Auto-pruned non-team data
+20260209-PioneerPark-2.csv
