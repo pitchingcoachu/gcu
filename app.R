@@ -196,7 +196,8 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
   
   n_bins <- if (is.null(breaks)) bins else max(1, length(breaks) - 1)
   fill_vals <- pal_fun(n_bins)
-  if (dark_on && length(fill_vals) >= 1) fill_vals[1] <- "#00000000"
+  # Keep lowest-density band transparent so the page background shows through.
+  if (length(fill_vals) >= 1) fill_vals[1] <- "#00000000"
   
   # Main heatmap plot
   p_heat <- ggplot(grid, aes(x, y, z = z)) +
@@ -271,8 +272,14 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
       ) +
       labs(x = scale_label)
     
-    # Combine scale bar on top of heatmap with tighter layout
-    return(p_scale / p_heat + plot_layout(heights = c(0.08, 1), widths = c(sz_width)))
+    # Combine scale bar on top of heatmap with transparent patchwork background.
+    return(
+      (p_scale / p_heat + plot_layout(heights = c(0.08, 1), widths = c(sz_width))) &
+        theme(
+          plot.background = element_rect(fill = "transparent", color = NA),
+          panel.background = element_rect(fill = "transparent", color = NA)
+        )
+    )
   }
   
   p_heat
@@ -296,7 +303,7 @@ draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
   )
   sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
   grad_vals <- pal_fun(100)
-  if (dark_on && length(grad_vals) >= 1) grad_vals[1] <- "#00000000"
+  if (length(grad_vals) >= 1) grad_vals[1] <- "#00000000"
   
   # Use geom_tile to show actual bins
   p_heat <- ggplot(grid, aes(x = x, y = y, fill = z)) +
@@ -352,7 +359,13 @@ draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
       ) +
       labs(x = scale_label)
     
-    return(p_scale / p_heat + plot_layout(heights = c(0.08, 1), widths = c(sz_width)))
+    return(
+      (p_scale / p_heat + plot_layout(heights = c(0.08, 1), widths = c(sz_width))) &
+        theme(
+          plot.background = element_rect(fill = "transparent", color = NA),
+          panel.background = element_rect(fill = "transparent", color = NA)
+        )
+    )
   }
   
   p_heat
