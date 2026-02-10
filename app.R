@@ -19409,6 +19409,11 @@ biomech_server <- function(input, output, session, app_id_fn) {
   output$newtforce_graph_plot <- renderPlot({
     df <- newtforce_graph_data()
     req(!is.null(df), nrow(df) > 0)
+    dark_on <- isTRUE(input$dark_mode)
+    axis_col <- if (dark_on) "#ffffff" else "#111827"
+    grid_col_major <- if (dark_on) "rgba(255,255,255,0.55)" else "#d1d5db"
+    grid_col_minor <- if (dark_on) "rgba(255,255,255,0.28)" else "#e5e7eb"
+    zero_line_col <- if (dark_on) "#ffffff" else "#000000"
     x_var <- input$newtforce_graph_x
     y_var <- input$newtforce_graph_y
     
@@ -19431,6 +19436,7 @@ biomech_server <- function(input, output, session, app_id_fn) {
     
     pal <- if (exists("all_colors")) unlist(all_colors) else c()
     pal <- c(pal, "All" = "#111827")
+    if (dark_on && "Fastball" %in% names(pal)) pal["Fastball"] <- "#ffffff"
     pal <- pal[names(pal) %in% present_levels]
     
     mode <- input$newtforce_graph_data_mode %||% "Averages by Pitch Type"
@@ -19442,6 +19448,8 @@ biomech_server <- function(input, output, session, app_id_fn) {
           geom_point(size = 2.8, alpha = 0.75)
         }
       } +
+      geom_hline(yintercept = 0, color = zero_line_col, linewidth = 1.2) +
+      geom_vline(xintercept = 0, color = zero_line_col, linewidth = 1.2) +
       labs(
         x = x_var,
         y = y_var,
@@ -19450,8 +19458,17 @@ biomech_server <- function(input, output, session, app_id_fn) {
       ) +
       theme_minimal(base_size = 13) +
       theme(
-        plot.title = element_text(face = "bold"),
-        axis.title = element_text(face = "bold")
+        plot.title = element_text(face = "bold", color = axis_col),
+        axis.title = element_text(face = "bold", color = axis_col),
+        axis.text = element_text(color = axis_col),
+        legend.title = element_text(color = axis_col, face = "bold"),
+        legend.text = element_text(color = axis_col),
+        panel.grid.major = element_line(color = grid_col_major, linewidth = 0.45),
+        panel.grid.minor = element_line(color = grid_col_minor, linewidth = 0.3),
+        plot.background = element_rect(fill = "transparent", color = NA),
+        panel.background = element_rect(fill = "transparent", color = NA),
+        legend.background = element_rect(fill = "transparent", color = NA),
+        legend.key = element_rect(fill = "transparent", color = NA)
       )
     
     if (length(pal) > 0) {
@@ -19459,7 +19476,7 @@ biomech_server <- function(input, output, session, app_id_fn) {
     }
     
     p
-  })
+  }, bg = "transparent")
 }
 
 video_upload_ui <- function() {
