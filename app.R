@@ -166,17 +166,29 @@ terminal_for_woba <- function(df) {
     (!is.na(pc)   & pc    == "HitByPitch")
 }
 
+# Resolve dark-mode state from reactive domain, including module root scope.
+resolve_dark_mode_from_domain <- function(dom = shiny::getDefaultReactiveDomain()) {
+  dm <- NULL
+  try({
+    if (!is.null(dom)) {
+      if (!is.null(dom$input$dark_mode)) {
+        dm <- dom$input$dark_mode
+      } else if (!is.null(dom$rootScope)) {
+        rs <- dom$rootScope()
+        if (!is.null(rs) && !is.null(rs$input$dark_mode)) dm <- rs$input$dark_mode
+      }
+    }
+  }, silent = TRUE)
+  isTRUE(dm)
+}
+
 # Draw heatmap function with optional color scale legend
 draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
                       title = NULL, mark_max = TRUE, breaks = NULL,
                       show_scale = FALSE, scale_label = NULL, scale_limits = NULL,
                       scale_breaks = NULL, scale_labels = NULL) {
   if (!nrow(grid)) return(ggplot() + theme_void())
-  dark_on <- FALSE
-  try({
-    dom <- shiny::getDefaultReactiveDomain()
-    if (!is.null(dom) && !is.null(dom$input$dark_mode)) dark_on <- isTRUE(dom$input$dark_mode)
-  }, silent = TRUE)
+  dark_on <- resolve_dark_mode_from_domain()
   line_col <- if (dark_on) "#ffffff" else "black"
   text_col <- if (dark_on) "#ffffff" else "black"
   bg_transparent <- element_rect(fill = "transparent", color = NA)
@@ -292,11 +304,7 @@ draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
                              title = NULL, breaks = NULL,
                              show_scale = FALSE, scale_label = NULL, scale_limits = NULL) {
   if (!nrow(grid)) return(ggplot() + theme_void())
-  dark_on <- FALSE
-  try({
-    dom <- shiny::getDefaultReactiveDomain()
-    if (!is.null(dom) && !is.null(dom$input$dark_mode)) dark_on <- isTRUE(dom$input$dark_mode)
-  }, silent = TRUE)
+  dark_on <- resolve_dark_mode_from_domain()
   line_col <- if (dark_on) "#ffffff" else "black"
   text_col <- if (dark_on) "#ffffff" else "black"
   
@@ -3684,6 +3692,7 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
         pitch_type = pt
       )
     }))
+    line_col <- if (resolve_dark_mode_from_domain()) "#ffffff" else "black"
     
     # Create the plot with QP+ heatmap and colored pitches
     p <- ggplot() +
@@ -3701,11 +3710,11 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
       # Add home plate
       geom_polygon(data = home_plate_all, 
                    aes(x = x, y = y, group = pitch_type), 
-                   fill = NA, color = "black", linewidth = 1) +
+                   fill = NA, color = line_col, linewidth = 1) +
       # Add strike zone
       geom_rect(data = strike_zone_all, 
                 aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                fill = NA, color = "black", linewidth = 1) +
+                fill = NA, color = line_col, linewidth = 1) +
       # Add pitched balls with interactive tooltips and pitch type colors
       {if (nrow(state_data_with_result) > 0) {
         ggiraph::geom_point_interactive(
@@ -4874,11 +4883,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
                       show_scale = FALSE, scale_label = NULL, scale_limits = NULL,
                       scale_breaks = NULL, scale_labels = NULL) {
   if (!nrow(grid)) return(ggplot() + theme_void())
-  dark_on <- FALSE
-  try({
-    dom <- shiny::getDefaultReactiveDomain()
-    if (!is.null(dom) && !is.null(dom$input$dark_mode)) dark_on <- isTRUE(dom$input$dark_mode)
-  }, silent = TRUE)
+  dark_on <- resolve_dark_mode_from_domain()
   line_col <- if (dark_on) "#ffffff" else "black"
   text_col <- if (dark_on) "#ffffff" else "black"
   bg_transparent <- element_rect(fill = "transparent", color = NA)
@@ -7332,6 +7337,14 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       })
     }
     ns <- session$ns
+    is_dark_mode_local <- reactive({
+      dm <- tryCatch({
+        rs <- session$rootScope()
+        if (!is.null(rs) && !is.null(rs$input$dark_mode)) rs$input$dark_mode else NULL
+      }, error = function(...) NULL)
+      if (is.null(dm) && !is.null(input$dark_mode)) dm <- input$dark_mode
+      isTRUE(dm)
+    })
     
     # ----- TEAM FILTER (GCU/Campers/Opponents) -----
     pd_team <- reactive({
@@ -9896,6 +9909,14 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       })
     }
     ns <- session$ns
+    is_dark_mode_local <- reactive({
+      dm <- tryCatch({
+        rs <- session$rootScope()
+        if (!is.null(rs) && !is.null(rs$input$dark_mode)) rs$input$dark_mode else NULL
+      }, error = function(...) NULL)
+      if (is.null(dm) && !is.null(input$dark_mode)) dm <- input$dark_mode
+      isTRUE(dm)
+    })
     
     MIN_THROW_MPH <- 70  # only count throws at/above this speed
     
@@ -10603,7 +10624,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
     # ---- HeatMaps: Heat (Called-Strike% per taken opportunity, smooth; alpha = opportunity) ----
     output$heatPlot <- renderPlot({
       df <- filtered_catch(); if (!nrow(df)) return()
-      dark_on <- isTRUE(input$dark_mode)
+      dark_on <- is_dark_mode_local()
       line_col <- if (dark_on) "#ffffff" else "black"
       # NEW: filter by selected pitch results (matches pitching suite behavior)
       res_sel <- input$hmResults
@@ -10653,7 +10674,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
     output$pitchPlot <- ggiraph::renderGirafe({
       req(input$hmChartType == "Pitch")
       df <- filtered_catch(); if (!nrow(df)) return(NULL)
-      dark_on <- isTRUE(input$dark_mode)
+      dark_on <- is_dark_mode_local()
       line_col <- if (dark_on) "#ffffff" else "black"
       # NEW: filter by selected pitch results
       res_sel <- input$hmResults
@@ -21989,7 +22010,7 @@ deg_to_clock <- function(x) {
     modal_css <- tags$style(HTML(
       ".modal-dialog.pseq-wide{width:96%;max-width:1400px;}"
     ))
-    showModal(tagList(modal_css, modalDialog(body, easyClose = TRUE, footer = NULL, size = "l", class = "pseq-wide")))
+    showModal(tagList(modal_css, modalDialog(body, easyClose = TRUE, footer = NULL, size = "l", class = "pseq-wide media-modal")))
   }
   
   # Normalize ggiraph selection to a single integer (use the MOST RECENT click)
@@ -22795,7 +22816,7 @@ deg_to_clock <- function(x) {
     modal_css <- tags$style(HTML(
       ".modal-dialog.pseq-wide{width:96%;max-width:1400px;}"
     ))
-    showModal(tagList(modal_css, modalDialog(uiOutput(video_id), easyClose = TRUE, footer = NULL, size = "l", class = "pseq-wide")))
+    showModal(tagList(modal_css, modalDialog(uiOutput(video_id), easyClose = TRUE, footer = NULL, size = "l", class = "pseq-wide media-modal")))
     invisible(TRUE)
   }
 
@@ -22958,6 +22979,15 @@ deg_to_clock <- function(x) {
       margin-top:4px;
       text-transform:uppercase;
     }
+    .spin-legend {
+      margin-top:10px;
+      padding:10px;
+      border-radius:8px;
+      font-size:0.85rem;
+      background:#f8f9fa;
+      color:#1f2937;
+      border:1px solid rgba(0,0,0,0.08);
+    }
     .spin-placeholder {
       width:100%;
       min-height:360px;
@@ -22971,6 +23001,131 @@ deg_to_clock <- function(x) {
       padding:40px;
       text-align:center;
       box-shadow: inset 0 0 30px rgba(255,255,255,0.04);
+    }
+    body.theme-dark .spin-modal .modal-content {
+      background: #0b1020;
+      border: 1px solid rgba(255,255,255,0.12);
+      color: #e5e7eb;
+    }
+    body.theme-dark .spin-modal .modal-header,
+    body.theme-dark .spin-modal .modal-body {
+      background: transparent;
+      color: #e5e7eb;
+    }
+    body.theme-dark .spin-modal .close {
+      color: #e5e7eb;
+      opacity: 0.9;
+      text-shadow: none;
+    }
+    body.theme-dark .spin-modal .btn-light {
+      background: #1f2937;
+      border-color: #374151;
+      color: #e5e7eb;
+    }
+    body.theme-dark .spin-modal .btn-light:hover,
+    body.theme-dark .spin-modal .btn-light:focus {
+      background: #273244;
+      border-color: #4b5563;
+      color: #ffffff;
+    }
+    body.theme-dark .spin-modal .spin-stage {
+      background: #111827;
+    }
+    body.theme-dark .spin-modal .spin-stage::after {
+      background: #0f172a;
+    }
+    body.theme-dark .spin-modal .spin-canvas-card .spin-info,
+    body.theme-dark .spin-modal .spin-canvas-card .spin-canvas-label,
+    body.theme-dark .spin-modal .spin-caption,
+    body.theme-dark .spin-modal .spin-orientation-title {
+      color: #e5e7eb;
+    }
+    body.theme-dark .spin-modal .spin-orientation-button {
+      background: #0f172a;
+      color: #e5e7eb;
+      border-color: rgba(255,255,255,0.22);
+    }
+    body.theme-dark .spin-modal .spin-orientation-button.active {
+      background: #2563eb;
+      border-color: #2563eb;
+      color: #ffffff;
+    }
+    body.theme-dark .spin-modal .spin-legend {
+      background: #0f172a;
+      color: #e5e7eb;
+      border-color: rgba(255,255,255,0.14);
+    }
+    body.theme-dark .media-modal .modal-content {
+      background: #0b1020 !important;
+      border: 1px solid rgba(255,255,255,0.12) !important;
+      color: #e5e7eb !important;
+    }
+    body.theme-dark .media-modal .modal-header,
+    body.theme-dark .media-modal .modal-body,
+    body.theme-dark .media-modal .modal-title {
+      background: transparent !important;
+      color: #e5e7eb !important;
+    }
+    body.theme-dark .media-modal .close {
+      color: #e5e7eb !important;
+      opacity: 0.9;
+      text-shadow: none;
+    }
+    body.theme-dark .media-modal .btn-light {
+      background: #1f2937 !important;
+      border-color: #374151 !important;
+      color: #e5e7eb !important;
+    }
+    body.theme-dark .media-modal .btn-light:hover,
+    body.theme-dark .media-modal .btn-light:focus {
+      background: #273244 !important;
+      border-color: #4b5563 !important;
+      color: #ffffff !important;
+    }
+    body.theme-dark .config-modal .modal-content {
+      background: #0b1020 !important;
+      border: 1px solid rgba(255,255,255,0.12) !important;
+      color: #e5e7eb !important;
+    }
+    body.theme-dark .config-modal .modal-header,
+    body.theme-dark .config-modal .modal-body,
+    body.theme-dark .config-modal .modal-title,
+    body.theme-dark .config-modal .modal-body p,
+    body.theme-dark .config-modal .modal-body strong,
+    body.theme-dark .config-modal .modal-body h4,
+    body.theme-dark .config-modal .modal-body span,
+    body.theme-dark .config-modal .modal-body div {
+      color: #e5e7eb !important;
+    }
+    body.theme-dark .config-modal .form-control,
+    body.theme-dark .config-modal .selectize-input {
+      background: #0f172a !important;
+      border-color: rgba(255,255,255,0.22) !important;
+      color: #e5e7eb !important;
+    }
+    body.theme-dark .config-modal .selectize-dropdown {
+      background: #111827 !important;
+      border-color: rgba(255,255,255,0.22) !important;
+      color: #e5e7eb !important;
+    }
+    body.theme-dark .config-modal .selectize-dropdown .option {
+      color: #e5e7eb !important;
+    }
+    body.theme-dark .config-modal .selectize-dropdown .option.active,
+    body.theme-dark .config-modal .selectize-dropdown .option:hover {
+      background: #1f2937 !important;
+      color: #ffffff !important;
+    }
+    body.theme-dark .config-modal .btn-default {
+      background: #1f2937 !important;
+      border-color: #374151 !important;
+      color: #e5e7eb !important;
+    }
+    body.theme-dark .config-modal .btn-default:hover,
+    body.theme-dark .config-modal .btn-default:focus {
+      background: #273244 !important;
+      border-color: #4b5563 !important;
+      color: #ffffff !important;
     }
   ")))
 
@@ -23974,7 +24129,6 @@ deg_to_clock <- function(x) {
       ),
       tags$div(
         class = "spin-legend",
-        style = "margin-top: 10px; padding: 10px; background: #f8f9fa; border-radius: 8px; font-size: 0.85rem;",
         HTML(paste(
           "<span style='color: #ffb300; font-weight:700;'>↗ Dashed gold arrow:</span> Release tilt direction (rTilt)",
           "<span style='color: #4caf50; font-weight:700;'>↘ Solid green arrow:</span> Break tilt direction (bTilt)",
@@ -24111,7 +24265,7 @@ deg_to_clock <- function(x) {
     modal_css <- tags$style(HTML(
       ".modal-dialog.pseq-wide{width:96%;max-width:1400px;}"
     ))
-    showModal(tagList(modal_css, modalDialog(uiOutput(modal_id), easyClose = TRUE, footer = NULL, size = "l", class = "pseq-wide")))
+    showModal(tagList(modal_css, modalDialog(uiOutput(modal_id), easyClose = TRUE, footer = NULL, size = "l", class = "pseq-wide spin-modal")))
     invisible(TRUE)
   }
   
@@ -24150,7 +24304,8 @@ deg_to_clock <- function(x) {
         actionButton("delete_selected_pitches", "Delete Selected Pitches", class = "btn-danger"),
         actionButton("confirm_pitch_edit", "Save Changes", class = "btn-primary")
       ),
-      easyClose = FALSE
+      easyClose = FALSE,
+      class = "config-modal"
     ))
     
     session$userData$selected_for_edit <- selected_pitches
@@ -29708,7 +29863,8 @@ deg_to_clock <- function(x) {
         modalButton("Cancel"),
         actionButton("confirm_pitch_edit", "Save Changes", class = "btn-primary")
       ),
-      easyClose = FALSE
+      easyClose = FALSE,
+      class = "config-modal"
     ))
     
     # Store selected data for use in confirm handler
@@ -29873,7 +30029,8 @@ deg_to_clock <- function(x) {
         modalButton("Cancel"),
         actionButton("save_target_shapes_btn", "Save Target Shapes", class = "btn-primary")
       ),
-      easyClose = FALSE
+      easyClose = FALSE,
+      class = "config-modal"
     ))
     
     session$userData$current_pitcher_for_targets <- pitcher_name
@@ -30071,7 +30228,8 @@ deg_to_clock <- function(x) {
         actionButton("delete_selected_pitches_summary", "Delete Selected Pitches", class = "btn-danger"),
         actionButton("confirm_pitch_edit_summary", "Save Changes", class = "btn-primary")
       ),
-      easyClose = FALSE
+      easyClose = FALSE,
+      class = "config-modal"
     ))
     
     # Store selected data for use in confirm handler
@@ -33671,11 +33829,7 @@ deg_to_clock <- function(x) {
                annotate("text", x = 0.5, y = 0.5, label = "No data available") +
                theme_void())
     }
-    dark_on <- FALSE
-    try({
-      dom <- shiny::getDefaultReactiveDomain()
-      if (!is.null(dom) && !is.null(dom$input$dark_mode)) dark_on <- isTRUE(dom$input$dark_mode)
-    }, silent = TRUE)
+    dark_on <- resolve_dark_mode_from_domain()
     line_col <- if (dark_on) "#ffffff" else "black"
     grid_col <- if (dark_on) "#d1d5db" else "black"
     cols <- colors_for_mode(dark_on)
@@ -33754,11 +33908,7 @@ deg_to_clock <- function(x) {
                annotate("text", x = 0.5, y = 0.5, label = "No data available") +
                theme_void())
     }
-    dark_on <- FALSE
-    try({
-      dom <- shiny::getDefaultReactiveDomain()
-      if (!is.null(dom) && !is.null(dom$input$dark_mode)) dark_on <- isTRUE(dom$input$dark_mode)
-    }, silent = TRUE)
+    dark_on <- resolve_dark_mode_from_domain()
     axis_col <- if (dark_on) "#e5e7eb" else "black"
     line_col <- if (dark_on) "#ffffff" else "gray"
     grid_col <- adjustcolor(if (dark_on) "white" else "black",
