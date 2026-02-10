@@ -17424,11 +17424,11 @@ custom_reports_server <- function(id) {
             cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
             sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
             p <- ggplot() +
-              geom_polygon(data = home, aes(x, y), fill = NA, color = "black", inherit.aes = FALSE) +
+              geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
               geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                        fill = NA, color = "black", linetype = "dashed", inherit.aes = FALSE) +
+                        fill = NA, color = line_col, linetype = "dashed", inherit.aes = FALSE) +
               geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                        fill = NA, color = "black", inherit.aes = FALSE) +
+                        fill = NA, color = line_col, inherit.aes = FALSE) +
               ggiraph::geom_point_interactive(
                 data = df_other,
                 aes(PlateLocSide, PlateLocHeight,
@@ -19450,6 +19450,35 @@ ui <- tagList(
       });
     ")),
     tags$script(HTML("
+      // Inject a right-aligned Logout nav item so it matches navbar tab styling.
+      document.addEventListener('DOMContentLoaded', function() {
+        var addLogoutNav = function() {
+          if (document.getElementById('pcuLogoutNav')) return;
+          var collapse = document.querySelector('#top .navbar-collapse');
+          if (!collapse) return;
+          var ul = document.createElement('ul');
+          ul.className = 'nav navbar-nav navbar-right';
+          ul.id = 'pcuLogoutNav';
+          var li = document.createElement('li');
+          var a = document.createElement('a');
+          a.href = '#';
+          a.textContent = 'Logout';
+          a.setAttribute('role', 'button');
+          a.addEventListener('click', function(e) {
+            e.preventDefault();
+            if (window.Shiny && Shiny.setInputValue) {
+              Shiny.setInputValue('logout_btn', Date.now(), {priority: 'event'});
+            }
+          });
+          li.appendChild(a);
+          ul.appendChild(li);
+          collapse.appendChild(ul);
+        };
+        addLogoutNav();
+        setTimeout(addLogoutNav, 300);
+      });
+    ")),
+    tags$script(HTML("
       // Add dropdown mirrors for inner tabsets (suite pages) - mobile-friendly
       document.addEventListener('DOMContentLoaded', function() {
         var ensureSidebarDock = function() {
@@ -20579,13 +20608,7 @@ ui <- tagList(
     style = "background:transparent; border:none; box-shadow:none; z-index:2000;",
     actionButton("openNote", label = NULL, icon = icon("sticky-note"),
                  class = "btn btn-note", title = "Add Note"),
-    top = 60, right = 12, width = 50, fixed = TRUE, draggable = FALSE
-  ),
-  absolutePanel(
-    style = "background:transparent; border:none; box-shadow:none; z-index:2000;",
-    actionButton("logout_btn", label = "Logout", icon = icon("sign-out-alt"),
-                 class = "btn btn-default", title = "Sign out"),
-    top = 60, right = 70, width = 130, fixed = TRUE, draggable = FALSE
+    bottom = 16, right = 12, width = 50, fixed = TRUE, draggable = FALSE
   ),
   uiOutput("spin_visual_assets"),
   navbarPage(
