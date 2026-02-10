@@ -18910,6 +18910,37 @@ biomech_newtforce_ui <- function() {
                   h4("Weight-Normalized Values by Pitch Type"),
                   tags$p("Values normalized by dividing by Player Weight"),
                   DT::dataTableOutput("newtforce_normalized_table")
+          ),
+          tabPanel("Graphs",
+                  br(),
+                  h4("Newtforce Graphs"),
+                  fluidRow(
+                    column(
+                      width = 3,
+                      selectInput(
+                        "newtforce_graph_data_mode",
+                        "Plot Mode",
+                        choices = c("Averages by Pitch Type", "Individual Pitches"),
+                        selected = "Averages by Pitch Type"
+                      )
+                    ),
+                    column(
+                      width = 3,
+                      selectInput(
+                        "newtforce_graph_value_mode",
+                        "Value Type",
+                        choices = c("Raw Values", "Normalized by Weight"),
+                        selected = "Raw Values"
+                      )
+                    ),
+                    column(width = 3, uiOutput("newtforce_graph_x_ui")),
+                    column(width = 3, uiOutput("newtforce_graph_y_ui"))
+                  ),
+                  tags$p(
+                    style = "margin-top:8px; color:#64748b;",
+                    "Select any two variables from the chosen mode and value type."
+                  ),
+                  plotOutput("newtforce_graph_plot", height = "560px")
           )
         )
       )
@@ -18952,6 +18983,123 @@ biomech_server <- function(input, output, session, app_id_fn) {
   
   # Reactive to store current data
   newtforce_data <- reactiveVal(NULL)
+  
+  # Keep pitch type order consistent with the rest of the app, with All always last.
+  order_newtforce_pitch_rows <- function(df, pitch_col = "Pitch Type") {
+    if (is.null(df) || !nrow(df) || !(pitch_col %in% names(df))) return(df)
+    base_order <- c("Fastball", "Sinker", "Cutter", "Slider", "Sweeper", "Curveball", "ChangeUp", "Splitter")
+    pitch_vals <- as.character(df[[pitch_col]])
+    extras <- sort(unique(setdiff(pitch_vals, c(base_order, "All"))))
+    final_levels <- c(base_order, extras, "All")
+    df %>%
+      dplyr::mutate(.pitch_order = factor(.data[[pitch_col]], levels = final_levels)) %>%
+      dplyr::arrange(.pitch_order) %>%
+      dplyr::select(-.pitch_order)
+  }
+  
+  newtforce_norm_specs <- c(
+    "Accel Impulse (Norm)" = "Accel Impulse (lb*s)",
+    "Decel Impulse (Norm)" = "Decel Impulse (lb*s)",
+    "Y Back (Norm)" = "Y Back (lb)",
+    "Y Front (Norm)" = "Y Front (lb)",
+    "Z Back (Norm)" = "Z Back (lb)",
+    "Z Front (Norm)" = "Z Front (lb)"
+  )
+  
+  build_newtforce_avg_by_pitch <- function(data) {
+    data %>%
+      group_by(`Pitch Type`) %>%
+      summarise(
+        Count = n(),
+        `Accel Impulse (lb*s)` = mean(`Accel Impulse (lb*s)`, na.rm = TRUE),
+        `Clawback (sec)` = mean(`Clawback (sec)`, na.rm = TRUE),
+        `Decel Impulse (lb*s)` = mean(`Decel Impulse (lb*s)`, na.rm = TRUE),
+        `Impulse Ratio (ratio)` = mean(`Impulse Ratio (ratio)`, na.rm = TRUE),
+        `Player Velo (mph)` = mean(`Player Velo (mph)`, na.rm = TRUE),
+        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
+        `Stride (in)` = mean(`Stride (in)`, na.rm = TRUE),
+        `Stride Angle (deg)` = mean(`Stride Angle (deg)`, na.rm = TRUE),
+        `Stride Ratio (%)` = mean(`Stride Ratio (%)`, na.rm = TRUE),
+        `Y Back (lb)` = mean(`Y Back (lb)`, na.rm = TRUE),
+        `Y Front (lb)` = mean(`Y Front (lb)`, na.rm = TRUE),
+        `Y Transfer (sec)` = mean(`Y Transfer (sec)`, na.rm = TRUE),
+        `Z Back (lb)` = mean(`Z Back (lb)`, na.rm = TRUE),
+        `Z Front (lb)` = mean(`Z Front (lb)`, na.rm = TRUE),
+        `Z Transfer (sec)` = mean(`Z Transfer (sec)`, na.rm = TRUE),
+        `X-Y Back (lb)` = mean(`X-Y Back (lb)`, na.rm = TRUE),
+        `X-Y Front (lb)` = mean(`X-Y Front (lb)`, na.rm = TRUE),
+        .groups = "drop"
+      )
+  }
+  
+  build_newtforce_avg_all_row <- function(data) {
+    data %>%
+      summarise(
+        `Pitch Type` = "All",
+        Count = n(),
+        `Accel Impulse (lb*s)` = mean(`Accel Impulse (lb*s)`, na.rm = TRUE),
+        `Clawback (sec)` = mean(`Clawback (sec)`, na.rm = TRUE),
+        `Decel Impulse (lb*s)` = mean(`Decel Impulse (lb*s)`, na.rm = TRUE),
+        `Impulse Ratio (ratio)` = mean(`Impulse Ratio (ratio)`, na.rm = TRUE),
+        `Player Velo (mph)` = mean(`Player Velo (mph)`, na.rm = TRUE),
+        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
+        `Stride (in)` = mean(`Stride (in)`, na.rm = TRUE),
+        `Stride Angle (deg)` = mean(`Stride Angle (deg)`, na.rm = TRUE),
+        `Stride Ratio (%)` = mean(`Stride Ratio (%)`, na.rm = TRUE),
+        `Y Back (lb)` = mean(`Y Back (lb)`, na.rm = TRUE),
+        `Y Front (lb)` = mean(`Y Front (lb)`, na.rm = TRUE),
+        `Y Transfer (sec)` = mean(`Y Transfer (sec)`, na.rm = TRUE),
+        `Z Back (lb)` = mean(`Z Back (lb)`, na.rm = TRUE),
+        `Z Front (lb)` = mean(`Z Front (lb)`, na.rm = TRUE),
+        `Z Transfer (sec)` = mean(`Z Transfer (sec)`, na.rm = TRUE),
+        `X-Y Back (lb)` = mean(`X-Y Back (lb)`, na.rm = TRUE),
+        `X-Y Front (lb)` = mean(`X-Y Front (lb)`, na.rm = TRUE),
+        .groups = "drop"
+      )
+  }
+  
+  build_newtforce_norm_by_pitch <- function(data) {
+    data %>%
+      group_by(`Pitch Type`) %>%
+      summarise(
+        Count = n(),
+        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
+        `Accel Impulse (Norm)` = mean(`Accel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Decel Impulse (Norm)` = mean(`Decel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Y Back (Norm)` = mean(`Y Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Y Front (Norm)` = mean(`Y Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Z Back (Norm)` = mean(`Z Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Z Front (Norm)` = mean(`Z Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        .groups = "drop"
+      )
+  }
+  
+  build_newtforce_norm_all_row <- function(data) {
+    data %>%
+      summarise(
+        `Pitch Type` = "All",
+        Count = n(),
+        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
+        `Accel Impulse (Norm)` = mean(`Accel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Decel Impulse (Norm)` = mean(`Decel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Y Back (Norm)` = mean(`Y Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Y Front (Norm)` = mean(`Y Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Z Back (Norm)` = mean(`Z Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        `Z Front (Norm)` = mean(`Z Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
+        .groups = "drop"
+      )
+  }
+  
+  build_newtforce_individual_norm <- function(data) {
+    out <- data
+    for (nm in names(newtforce_norm_specs)) {
+      src <- unname(newtforce_norm_specs[[nm]])
+      out[[nm]] <- suppressWarnings(as.numeric(out[[src]]) / as.numeric(out[["Player Weight (lb)"]]))
+    }
+    keep_cols <- c("Date", "First Name", "Last Name", "Pitch Type", "Player Weight (lb)", names(newtforce_norm_specs))
+    keep_cols <- intersect(keep_cols, names(out))
+    out %>% dplyr::select(dplyr::all_of(keep_cols))
+  }
   
   # Load data on startup
   observe({
@@ -19129,57 +19277,10 @@ biomech_server <- function(input, output, session, app_id_fn) {
       return(DT::datatable(data.frame(Message = "No data available.")))
     }
     
-    # Calculate averages by pitch type
-    avg_data <- data %>%
-      group_by(`Pitch Type`) %>%
-      summarise(
-        Count = n(),
-        `Accel Impulse (lb*s)` = mean(`Accel Impulse (lb*s)`, na.rm = TRUE),
-        `Clawback (sec)` = mean(`Clawback (sec)`, na.rm = TRUE),
-        `Decel Impulse (lb*s)` = mean(`Decel Impulse (lb*s)`, na.rm = TRUE),
-        `Impulse Ratio (ratio)` = mean(`Impulse Ratio (ratio)`, na.rm = TRUE),
-        `Player Velo (mph)` = mean(`Player Velo (mph)`, na.rm = TRUE),
-        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
-        `Stride (in)` = mean(`Stride (in)`, na.rm = TRUE),
-        `Stride Angle (deg)` = mean(`Stride Angle (deg)`, na.rm = TRUE),
-        `Stride Ratio (%)` = mean(`Stride Ratio (%)`, na.rm = TRUE),
-        `Y Back (lb)` = mean(`Y Back (lb)`, na.rm = TRUE),
-        `Y Front (lb)` = mean(`Y Front (lb)`, na.rm = TRUE),
-        `Y Transfer (sec)` = mean(`Y Transfer (sec)`, na.rm = TRUE),
-        `Z Back (lb)` = mean(`Z Back (lb)`, na.rm = TRUE),
-        `Z Front (lb)` = mean(`Z Front (lb)`, na.rm = TRUE),
-        `Z Transfer (sec)` = mean(`Z Transfer (sec)`, na.rm = TRUE),
-        `X-Y Back (lb)` = mean(`X-Y Back (lb)`, na.rm = TRUE),
-        `X-Y Front (lb)` = mean(`X-Y Front (lb)`, na.rm = TRUE),
-        .groups = 'drop'
-      )
-    
-    # Add "All" row
-    all_row <- data %>%
-      summarise(
-        `Pitch Type` = "All",
-        Count = n(),
-        `Accel Impulse (lb*s)` = mean(`Accel Impulse (lb*s)`, na.rm = TRUE),
-        `Clawback (sec)` = mean(`Clawback (sec)`, na.rm = TRUE),
-        `Decel Impulse (lb*s)` = mean(`Decel Impulse (lb*s)`, na.rm = TRUE),
-        `Impulse Ratio (ratio)` = mean(`Impulse Ratio (ratio)`, na.rm = TRUE),
-        `Player Velo (mph)` = mean(`Player Velo (mph)`, na.rm = TRUE),
-        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
-        `Stride (in)` = mean(`Stride (in)`, na.rm = TRUE),
-        `Stride Angle (deg)` = mean(`Stride Angle (deg)`, na.rm = TRUE),
-        `Stride Ratio (%)` = mean(`Stride Ratio (%)`, na.rm = TRUE),
-        `Y Back (lb)` = mean(`Y Back (lb)`, na.rm = TRUE),
-        `Y Front (lb)` = mean(`Y Front (lb)`, na.rm = TRUE),
-        `Y Transfer (sec)` = mean(`Y Transfer (sec)`, na.rm = TRUE),
-        `Z Back (lb)` = mean(`Z Back (lb)`, na.rm = TRUE),
-        `Z Front (lb)` = mean(`Z Front (lb)`, na.rm = TRUE),
-        `Z Transfer (sec)` = mean(`Z Transfer (sec)`, na.rm = TRUE),
-        `X-Y Back (lb)` = mean(`X-Y Back (lb)`, na.rm = TRUE),
-        `X-Y Front (lb)` = mean(`X-Y Front (lb)`, na.rm = TRUE),
-        .groups = 'drop'
-      )
-    
-    avg_data <- bind_rows(all_row, avg_data)
+    avg_data <- build_newtforce_avg_by_pitch(data)
+    all_row <- build_newtforce_avg_all_row(data)
+    avg_data <- bind_rows(avg_data, all_row) %>%
+      order_newtforce_pitch_rows(pitch_col = "Pitch Type")
     
     dt <- DT::datatable(
       avg_data,
@@ -19223,37 +19324,10 @@ biomech_server <- function(input, output, session, app_id_fn) {
       return(DT::datatable(data.frame(Message = "No data available.")))
     }
     
-    # Calculate normalized averages by pitch type
-    norm_data <- data %>%
-      group_by(`Pitch Type`) %>%
-      summarise(
-        Count = n(),
-        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
-        `Accel Impulse (Norm)` = mean(`Accel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
-        `Decel Impulse (Norm)` = mean(`Decel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
-        `Y Back (Norm)` = mean(`Y Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
-        `Y Front (Norm)` = mean(`Y Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
-        `Z Back (Norm)` = mean(`Z Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
-        `Z Front (Norm)` = mean(`Z Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
-        .groups = 'drop'
-      )
-    
-    # Add "All" row
-    all_row <- data %>%
-      summarise(
-        `Pitch Type` = "All",
-        Count = n(),
-        `Player Weight (lb)` = mean(`Player Weight (lb)`, na.rm = TRUE),
-        `Accel Impulse (Norm)` = mean(`Accel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
-        `Decel Impulse (Norm)` = mean(`Decel Impulse (lb*s)` / `Player Weight (lb)`, na.rm = TRUE),
-        `Y Back (Norm)` = mean(`Y Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
-        `Y Front (Norm)` = mean(`Y Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
-        `Z Back (Norm)` = mean(`Z Back (lb)` / `Player Weight (lb)`, na.rm = TRUE),
-        `Z Front (Norm)` = mean(`Z Front (lb)` / `Player Weight (lb)`, na.rm = TRUE),
-        .groups = 'drop'
-      )
-    
-    norm_data <- bind_rows(all_row, norm_data)
+    norm_data <- build_newtforce_norm_by_pitch(data)
+    all_row <- build_newtforce_norm_all_row(data)
+    norm_data <- bind_rows(norm_data, all_row) %>%
+      order_newtforce_pitch_rows(pitch_col = "Pitch Type")
     
     dt <- DT::datatable(
       norm_data,
@@ -19280,6 +19354,111 @@ biomech_server <- function(input, output, session, app_id_fn) {
     }
     
     dt
+  })
+  
+  newtforce_graph_data <- reactive({
+    data <- newtforce_filtered()
+    if (is.null(data) || nrow(data) == 0) return(NULL)
+    mode <- input$newtforce_graph_data_mode %||% "Averages by Pitch Type"
+    value_mode <- input$newtforce_graph_value_mode %||% "Raw Values"
+    
+    if (identical(mode, "Averages by Pitch Type")) {
+      out <- if (identical(value_mode, "Normalized by Weight")) {
+        bind_rows(build_newtforce_norm_by_pitch(data), build_newtforce_norm_all_row(data))
+      } else {
+        bind_rows(build_newtforce_avg_by_pitch(data), build_newtforce_avg_all_row(data))
+      }
+      return(order_newtforce_pitch_rows(out, pitch_col = "Pitch Type"))
+    }
+    
+    # Individual pitches
+    if (identical(value_mode, "Normalized by Weight")) {
+      return(build_newtforce_individual_norm(data))
+    }
+    data
+  })
+  
+  newtforce_graph_numeric_choices <- reactive({
+    df <- newtforce_graph_data()
+    if (is.null(df) || !nrow(df)) return(character(0))
+    nms <- names(df)[vapply(df, is.numeric, logical(1))]
+    setNames(nms, nms)
+  })
+  
+  output$newtforce_graph_x_ui <- renderUI({
+    ch <- newtforce_graph_numeric_choices()
+    selectInput(
+      "newtforce_graph_x",
+      "X Axis",
+      choices = ch,
+      selected = if (length(ch)) ch[[1]] else character(0)
+    )
+  })
+  
+  output$newtforce_graph_y_ui <- renderUI({
+    ch <- newtforce_graph_numeric_choices()
+    sel <- if (length(ch) >= 2) ch[[2]] else if (length(ch)) ch[[1]] else character(0)
+    selectInput(
+      "newtforce_graph_y",
+      "Y Axis",
+      choices = ch,
+      selected = sel
+    )
+  })
+  
+  output$newtforce_graph_plot <- renderPlot({
+    df <- newtforce_graph_data()
+    req(!is.null(df), nrow(df) > 0)
+    x_var <- input$newtforce_graph_x
+    y_var <- input$newtforce_graph_y
+    
+    validate(
+      need(!is.null(x_var) && nzchar(x_var) && x_var %in% names(df), "Select a valid X-axis variable."),
+      need(!is.null(y_var) && nzchar(y_var) && y_var %in% names(df), "Select a valid Y-axis variable.")
+    )
+    
+    df <- df %>%
+      dplyr::filter(is.finite(.data[[x_var]]), is.finite(.data[[y_var]]))
+    validate(need(nrow(df) > 0, "No rows available after applying filters and variable selection."))
+    
+    if (!("Pitch Type" %in% names(df))) {
+      df$`Pitch Type` <- "All"
+    }
+    
+    pitch_levels <- c("Fastball", "Sinker", "Cutter", "Slider", "Sweeper", "Curveball", "ChangeUp", "Splitter", "All")
+    present_levels <- c(intersect(pitch_levels, unique(df$`Pitch Type`)), setdiff(unique(df$`Pitch Type`), pitch_levels))
+    df$`Pitch Type` <- factor(df$`Pitch Type`, levels = present_levels)
+    
+    pal <- if (exists("all_colors")) unlist(all_colors) else c()
+    pal <- c(pal, "All" = "#111827")
+    pal <- pal[names(pal) %in% present_levels]
+    
+    mode <- input$newtforce_graph_data_mode %||% "Averages by Pitch Type"
+    p <- ggplot(df, aes(x = .data[[x_var]], y = .data[[y_var]], color = .data[["Pitch Type"]])) +
+      {
+        if (identical(mode, "Averages by Pitch Type")) {
+          geom_point(size = 4.2, alpha = 0.95)
+        } else {
+          geom_point(size = 2.8, alpha = 0.75)
+        }
+      } +
+      labs(
+        x = x_var,
+        y = y_var,
+        color = "Pitch Type",
+        title = paste(mode, "-", (input$newtforce_graph_value_mode %||% "Raw Values"))
+      ) +
+      theme_minimal(base_size = 13) +
+      theme(
+        plot.title = element_text(face = "bold"),
+        axis.title = element_text(face = "bold")
+      )
+    
+    if (length(pal) > 0) {
+      p <- p + scale_color_manual(values = pal, drop = FALSE)
+    }
+    
+    p
   })
 }
 
