@@ -19411,8 +19411,8 @@ biomech_server <- function(input, output, session, app_id_fn) {
     req(!is.null(df), nrow(df) > 0)
     dark_on <- isTRUE(input$dark_mode)
     axis_col <- if (dark_on) "#ffffff" else "#111827"
-    grid_col_major <- if (dark_on) "rgba(255,255,255,0.55)" else "#d1d5db"
-    grid_col_minor <- if (dark_on) "rgba(255,255,255,0.28)" else "#e5e7eb"
+    grid_col_major <- if (dark_on) "#FFFFFF8C" else "#d1d5db"
+    grid_col_minor <- if (dark_on) "#FFFFFF47" else "#e5e7eb"
     zero_line_col <- if (dark_on) "#ffffff" else "#000000"
     x_var <- input$newtforce_graph_x
     y_var <- input$newtforce_graph_y
@@ -19431,7 +19431,9 @@ biomech_server <- function(input, output, session, app_id_fn) {
     }
     
     pitch_levels <- c("Fastball", "Sinker", "Cutter", "Slider", "Sweeper", "Curveball", "ChangeUp", "Splitter", "All")
-    present_levels <- c(intersect(pitch_levels, unique(df$`Pitch Type`)), setdiff(unique(df$`Pitch Type`), pitch_levels))
+    present_levels <- unique(as.character(df$`Pitch Type`))
+    present_levels <- present_levels[!is.na(present_levels) & nzchar(present_levels)]
+    present_levels <- c(intersect(pitch_levels, present_levels), setdiff(present_levels, pitch_levels))
     df$`Pitch Type` <- factor(df$`Pitch Type`, levels = present_levels)
     
     pal <- if (exists("all_colors")) unlist(all_colors) else c()
