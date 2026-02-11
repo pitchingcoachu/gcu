@@ -3437,6 +3437,8 @@ hit_shape_map <- c(
 
 compute_result <- function(pitch_call, play_result) {
   dplyr::case_when(
+    # Display HBP as Ball icon (hollow circle) on location charts.
+    pitch_call == "HitByPitch" | play_result == "HitByPitch" ~ "Ball",
     pitch_call == "StrikeCalled" ~ "Called Strike",
     pitch_call == "BallCalled"   ~ "Ball",
     pitch_call %in% c("FoulBallNotFieldable","FoulBallFieldable") ~ "Foul",
