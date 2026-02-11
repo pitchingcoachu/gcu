@@ -646,3 +646,61 @@
 20260207-JimReevesField-2.csv
 # Auto-pruned non-team data
 20260207-OdessaCollege-1.csv
+# Auto-pruned non-team data
+20260206-CypressCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260210-AndersonUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260210-FriersonField-1_unverified.csv
+# Auto-pruned non-team data
+20260210-GrierField-1_unverified.csv
+# Auto-pruned non-team data
+20260210-GulfCoastState-1_unverified.csv
+# Auto-pruned non-team data
+20260210-JimReevesField-2_unverified.csv
+# Auto-pruned non-team data
+20260210-JohnAltobelliPark-1_unverified.csv
+# Auto-pruned non-team data
+20260210-LamarHennonField-1_unverified.csv
+# Auto-pruned non-team data
+20260210-PershingPark-1_unverified.csv
+# Auto-pruned non-team data
+20260210-PioneerPark-1_unverified.csv
+# Auto-pruned non-team data
+20260210-SusanKSmithBaseballComplex-1_unverified.csv
+# Auto-pruned non-team data
+20260210-TIGERBALLPARK-1_unverified.csv
+# Auto-pruned non-team data
+20260210-DicksonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260210-StephenBDolnyStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260210-StephenBDolnyStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260210-TheZellB.MillerField-1_unverified.csv
+# Auto-pruned non-team data
+20260129-BenMeyerDiamond-1_unverified.csv
+# Auto-pruned non-team data
+20260207-AndersonUniversity-1.csv
+# Auto-pruned non-team data
+20260210-AndersonUniversity-1.csv
+# Auto-pruned non-team data
+20260210-CypressCollege-1.csv
+# Auto-pruned non-team data
+20260210-FriersonField-1.csv
+# Auto-pruned non-team data
+20260210-GrierField-1.csv
+# Auto-pruned non-team data
+20260210-GulfCoastState-1.csv
+# Auto-pruned non-team data
+20260210-JimReevesField-2.csv
+# Auto-pruned non-team data
+20260210-JohnAltobelliPark-1.csv
+# Auto-pruned non-team data
+20260210-LamarHennonField-1.csv
+# Auto-pruned non-team data
+20260210-PioneerPark-1.csv
+# Auto-pruned non-team data
+20260210-SusanKSmithBaseballComplex-1.csv
+# Auto-pruned non-team data
+20260210-TIGERBALLPARK-1.csv
