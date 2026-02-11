@@ -668,3 +668,13 @@
 20260210-PioneerPark-1_unverified.csv
 # Auto-pruned non-team data
 20260210-SusanKSmithBaseballComplex-1_unverified.csv
+# Auto-pruned non-team data
+20260210-TIGERBALLPARK-1_unverified.csv
+# Auto-pruned non-team data
+20260210-DicksonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260210-StephenBDolnyStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260210-StephenBDolnyStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260210-TheZellB.MillerField-1_unverified.csv
