@@ -15983,9 +15983,18 @@ custom_reports_ui <- function(id) {
                )
         ),
         column(9, id = ns("main_column"),
-               uiOutput(ns("report_header")),
-               div(id = ns("report_canvas_wrapper"),
-                   uiOutput(ns("report_canvas"))
+               div(class = "creport-actions",
+                   actionButton(
+                     ns("download_report_pdf"),
+                     label = tagList(icon("file-pdf"), "Download as PDF"),
+                     class = "btn-primary"
+                   )
+               ),
+               div(id = ns("report_pdf_content"),
+                   uiOutput(ns("report_header")),
+                   div(id = ns("report_canvas_wrapper"),
+                       uiOutput(ns("report_canvas"))
+                   )
                )
         )
       )
@@ -16325,6 +16334,30 @@ custom_reports_server <- function(id) {
         }
       )
     })
+
+    observeEvent(input$download_report_pdf, {
+      title_txt <- trimws(input$report_title %||% "")
+      if (!nzchar(title_txt)) title_txt <- "custom_report"
+      safe_title <- gsub("[^A-Za-z0-9_-]+", "_", tolower(title_txt))
+      safe_title <- gsub("_+", "_", safe_title)
+      safe_title <- gsub("^_|_$", "", safe_title)
+      if (!nzchar(safe_title)) safe_title <- "custom_report"
+      file_name <- sprintf("%s_%s.pdf", safe_title, format(Sys.Date(), "%Y%m%d"))
+
+      session$sendCustomMessage("creports_download_pdf", list(
+        targetId = ns("report_pdf_content"),
+        buttonId = ns("download_report_pdf"),
+        errorInputId = ns("pdf_error"),
+        filename = file_name
+      ))
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$pdf_error, {
+      msg <- trimws(input$pdf_error %||% "")
+      if (nzchar(msg)) {
+        showNotification(paste("PDF download failed:", msg), type = "error", duration = 6)
+      }
+    }, ignoreInit = TRUE)
     
     # Save report
     observeEvent(input$save_report, {
@@ -19846,6 +19879,117 @@ ui <- tagList(
         });
         document.addEventListener('shiny:recalculating', function() { setTimeout(init, 200); });
       });
+    ")),
+    tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"),
+    tags$script(src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"),
+    tags$script(HTML("
+      Shiny.addCustomMessageHandler('creports_download_pdf', async function(message) {
+        var target = document.getElementById(message.targetId || '');
+        if (!target) return;
+
+        var btn = document.getElementById(message.buttonId || '');
+        if (btn) btn.disabled = true;
+
+        try {
+          if (!window.html2canvas || !window.jspdf || !window.jspdf.jsPDF) {
+            throw new Error('PDF dependencies are not available.');
+          }
+
+          await new Promise(function(resolve) { setTimeout(resolve, 350); });
+
+          var clone = target.cloneNode(true);
+          clone.classList.add('creport-pdf-clone');
+
+          clone.querySelectorAll('[id*=\"cell_controls_container_\"]').forEach(function(el) {
+            el.remove();
+          });
+          clone.querySelectorAll('.shiny-input-container').forEach(function(el) {
+            el.remove();
+          });
+          clone.querySelectorAll('.dataTables_filter, .dataTables_length, .dataTables_paginate, .dataTables_info').forEach(function(el) {
+            el.remove();
+          });
+          clone.querySelectorAll('script').forEach(function(el) {
+            el.remove();
+          });
+
+          var sandbox = document.createElement('div');
+          sandbox.className = 'creport-pdf-sandbox';
+          sandbox.appendChild(clone);
+          document.body.appendChild(sandbox);
+
+          var canvas = await window.html2canvas(clone, {
+            scale: 2,
+            useCORS: true,
+            allowTaint: true,
+            backgroundColor: '#ffffff',
+            windowWidth: clone.scrollWidth,
+            windowHeight: clone.scrollHeight
+          });
+
+          document.body.removeChild(sandbox);
+
+          var jsPDF = window.jspdf.jsPDF;
+          var orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+          var pdf = new jsPDF({
+            orientation: orientation,
+            unit: 'pt',
+            format: 'letter',
+            compress: true
+          });
+
+          var pageW = pdf.internal.pageSize.getWidth();
+          var pageH = pdf.internal.pageSize.getHeight();
+          var margin = 24;
+          var availW = pageW - (margin * 2);
+          var availH = pageH - (margin * 2);
+          var ratio = Math.min(availW / canvas.width, availH / canvas.height);
+          var drawW = canvas.width * ratio;
+          var drawH = canvas.height * ratio;
+          var x = (pageW - drawW) / 2;
+          var y = (pageH - drawH) / 2;
+
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, drawW, drawH, '', 'FAST');
+          pdf.save(message.filename || 'custom_report.pdf');
+        } catch (err) {
+          if (window.Shiny && Shiny.setInputValue) {
+            Shiny.setInputValue(message.errorInputId || 'creports_pdf_error', String(err && err.message ? err.message : err), {priority: 'event'});
+          }
+        } finally {
+          if (btn) btn.disabled = false;
+        }
+      });
+    ")),
+    tags$style(HTML("
+      .creport-actions {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 10px;
+      }
+      .creport-pdf-sandbox {
+        position: fixed;
+        left: -100000px;
+        top: 0;
+        width: 1600px;
+        background: #ffffff;
+        padding: 24px;
+        z-index: -1;
+      }
+      .creport-pdf-clone {
+        width: 100%;
+        background: #ffffff;
+        color: #111111;
+      }
+      .creport-pdf-clone .creport-cell {
+        border: 1px solid #d5d9e0 !important;
+        border-radius: 8px !important;
+        box-shadow: none !important;
+        background: #ffffff !important;
+      }
+      .creport-pdf-clone table {
+        width: 100% !important;
+        font-size: 11px !important;
+      }
     ")),
     # Custom authentication disabled - no need for token persistence
     tags$style(HTML(colorize_css("
