@@ -15991,6 +15991,10 @@ custom_reports_ui <- function(id) {
                    )
                ),
                div(id = ns("report_pdf_content"),
+                   div(class = "creport-brandbar",
+                       tags$img(src = "PCUlogo.png", class = "creport-brand-logo", alt = "PCU"),
+                       tags$img(src = school_logo, class = "creport-brand-logo", alt = school_display_name)
+                   ),
                    uiOutput(ns("report_header")),
                    div(id = ns("report_canvas_wrapper"),
                        uiOutput(ns("report_canvas"))
@@ -19966,6 +19970,17 @@ ui <- tagList(
         justify-content: flex-end;
         margin-bottom: 10px;
       }
+      .creport-brandbar {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        margin-bottom: 8px;
+      }
+      .creport-brand-logo {
+        max-height: 56px;
+        width: auto;
+        object-fit: contain;
+      }
       .creport-pdf-sandbox {
         position: fixed;
         left: -100000px;
@@ -19989,6 +20004,9 @@ ui <- tagList(
       .creport-pdf-clone table {
         width: 100% !important;
         font-size: 11px !important;
+      }
+      .creport-pdf-clone .creport-brand-logo {
+        max-height: 52px;
       }
     ")),
     # Custom authentication disabled - no need for token persistence
