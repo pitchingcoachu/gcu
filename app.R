@@ -20192,6 +20192,7 @@ ui <- tagList(
           var clone = target.cloneNode(true);
           clone.classList.add('creport-pdf-clone');
           clone.classList.add(isDark ? 'creport-pdf-dark' : 'creport-pdf-light');
+          clone.style.width = Math.ceil(target.scrollWidth || target.getBoundingClientRect().width) + 'px';
 
           clone.querySelectorAll('[id*=\"cell_controls_container_\"]').forEach(function(el) {
             el.remove();
@@ -20217,6 +20218,8 @@ ui <- tagList(
             useCORS: true,
             allowTaint: true,
             backgroundColor: isDark ? '#0b0f14' : '#ffffff',
+            width: clone.scrollWidth,
+            height: clone.scrollHeight,
             windowWidth: clone.scrollWidth,
             windowHeight: clone.scrollHeight
           });
@@ -20224,26 +20227,13 @@ ui <- tagList(
           document.body.removeChild(sandbox);
 
           var jsPDF = window.jspdf.jsPDF;
-          var orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
           var pdf = new jsPDF({
-            orientation: orientation,
-            unit: 'pt',
-            format: 'letter',
+            unit: 'px',
+            format: [canvas.width, canvas.height],
             compress: true
           });
 
-          var pageW = pdf.internal.pageSize.getWidth();
-          var pageH = pdf.internal.pageSize.getHeight();
-          var margin = 24;
-          var availW = pageW - (margin * 2);
-          var availH = pageH - (margin * 2);
-          var ratio = Math.min(availW / canvas.width, availH / canvas.height);
-          var drawW = canvas.width * ratio;
-          var drawH = canvas.height * ratio;
-          var x = (pageW - drawW) / 2;
-          var y = (pageH - drawH) / 2;
-
-          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, drawW, drawH, '', 'FAST');
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, canvas.width, canvas.height, '', 'FAST');
           pdf.save(message.filename || 'custom_report.pdf');
         } catch (err) {
           if (window.Shiny && Shiny.setInputValue) {
@@ -20281,9 +20271,9 @@ ui <- tagList(
         position: fixed;
         left: -100000px;
         top: 0;
-        width: 1600px;
-        background: #ffffff;
-        padding: 24px;
+        width: auto;
+        background: transparent;
+        padding: 0;
         z-index: -1;
       }
       .creport-pdf-sandbox.creport-pdf-sandbox-dark {
