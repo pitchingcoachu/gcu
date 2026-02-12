@@ -704,3 +704,11 @@
 20260210-SusanKSmithBaseballComplex-1.csv
 # Auto-pruned non-team data
 20260210-TIGERBALLPARK-1.csv
+# Auto-pruned non-team data
+20260211-BurchellStallard-1_unverified.csv
+# Auto-pruned non-team data
+20260211-ClevelandCommunityCollegeBaseballField-1_unverified.csv
+# Auto-pruned non-team data
+20260211-GrierField-1_unverified.csv
+# Auto-pruned non-team data
+20260211-TommyCareyField-1_unverified.csv
