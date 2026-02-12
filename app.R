@@ -15992,8 +15992,8 @@ custom_reports_ui <- function(id) {
                ),
                div(id = ns("report_pdf_content"),
                    div(class = "creport-brandbar",
-                       tags$img(src = "PCUlogo.png", class = "creport-brand-logo", alt = "PCU"),
-                       tags$img(src = school_logo, class = "creport-brand-logo", alt = school_display_name)
+                       tags$img(src = "PCUlogo.png", class = "creport-brand-logo creport-brand-logo-left", alt = "PCU"),
+                       tags$img(src = school_logo, class = "creport-brand-logo creport-brand-logo-right", alt = school_display_name)
                    ),
                    uiOutput(ns("report_header")),
                    div(id = ns("report_canvas_wrapper"),
@@ -16189,6 +16189,9 @@ custom_reports_server <- function(id) {
             if (!is.null(saved_cell$heat_stat)) {
               updateSelectInput(session, paste0("cell_heat_stat_", cell_id), selected = saved_cell$heat_stat)
             }
+            if (!is.null(saved_cell$velocity_chart)) {
+              updateSelectInput(session, paste0("cell_velocity_chart_", cell_id), selected = saved_cell$velocity_chart)
+            }
             if (!is.null(saved_cell$filter_select)) {
               updateSelectizeInput(session, paste0("cell_filter_select_", cell_id), selected = saved_cell$filter_select)
             }
@@ -16342,11 +16345,30 @@ custom_reports_server <- function(id) {
     observeEvent(input$download_report_pdf, {
       title_txt <- trimws(input$report_title %||% "")
       if (!nzchar(title_txt)) title_txt <- "custom_report"
-      safe_title <- gsub("[^A-Za-z0-9_-]+", "_", tolower(title_txt))
+      default_name <- sprintf("%s_%s", title_txt, format(Sys.Date(), "%Y%m%d"))
+      showModal(modalDialog(
+        title = "Download Custom Report PDF",
+        textInput(ns("report_pdf_filename"), "File name:", value = default_name),
+        footer = tagList(
+          modalButton("Cancel"),
+          actionButton(ns("confirm_download_report_pdf"), "Download PDF", class = "btn-primary")
+        ),
+        easyClose = TRUE
+      ))
+    }, ignoreInit = TRUE)
+
+    observeEvent(input$confirm_download_report_pdf, {
+      title_txt <- trimws(input$report_pdf_filename %||% "")
+      if (!nzchar(title_txt)) {
+        showNotification("Please enter a file name.", type = "warning")
+        return()
+      }
+      safe_title <- gsub("[^A-Za-z0-9 _-]+", "", title_txt)
+      safe_title <- gsub("\\s+", "_", safe_title)
       safe_title <- gsub("_+", "_", safe_title)
       safe_title <- gsub("^_|_$", "", safe_title)
       if (!nzchar(safe_title)) safe_title <- "custom_report"
-      file_name <- sprintf("%s_%s.pdf", safe_title, format(Sys.Date(), "%Y%m%d"))
+      file_name <- sprintf("%s.pdf", safe_title)
 
       session$sendCustomMessage("creports_download_pdf", list(
         targetId = ns("report_pdf_content"),
@@ -16354,6 +16376,7 @@ custom_reports_server <- function(id) {
         errorInputId = ns("pdf_error"),
         filename = file_name
       ))
+      removeModal()
     }, ignoreInit = TRUE)
 
     observeEvent(input$pdf_error, {
@@ -16691,6 +16714,7 @@ custom_reports_server <- function(id) {
             table_custom_cols = character(0),
             color = TRUE,
             heat_stat = "Frequency",
+            velocity_chart = "Velocity Chart (Game/Inning)",
             filter_select = c("Dates","Session Type","Pitch Types"),
             span = 1
           )
@@ -16773,7 +16797,11 @@ custom_reports_server <- function(id) {
                            ns(paste0("cell_title_pending_", info$cell_id)))))
                       ),
                       selectInput(ns(paste0("cell_type_", info$cell_id)), "Content:", 
-                                  choices = c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart"),
+                                  choices = if (identical(input$report_type, "Pitching")) {
+                                    c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Velocity Chart", "Summary Table", "Spray Chart")
+                                  } else {
+                                    c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart")
+                                  },
                                   selected = info$sel$type),
                       {
                         cols_total <- as.integer(input$report_cols)
@@ -16833,6 +16861,20 @@ custom_reports_server <- function(id) {
                         selectInput(ns(paste0("cell_heat_stat_", info$cell_id)), "Heatmap Type:",
                                     choices = c("Frequency","Whiff Rate","Exit Velocity","GB Rate","Contact Rate","Swing Rate","Run Values"),
                                     selected = info$sel$heat_stat %||% "Frequency")
+                      ),
+                      conditionalPanel(
+                        condition = sprintf("input['%s'] == 'Velocity Chart' && input['%s'] == 'Pitching'",
+                                            ns(paste0("cell_type_", info$cell_id)), ns("report_type")),
+                        selectInput(
+                          ns(paste0("cell_velocity_chart_", info$cell_id)),
+                          "Velocity Chart:",
+                          choices = c(
+                            "Velocity Chart (Game/Inning)",
+                            "Average Velocity by Game",
+                            "Average Velocity by Inning"
+                          ),
+                          selected = info$sel$velocity_chart %||% "Velocity Chart (Game/Inning)"
+                        )
                       ),
                       selectizeInput(
                         ns(paste0("cell_filter_select_", info$cell_id)),
@@ -16916,6 +16958,7 @@ custom_reports_server <- function(id) {
             table_custom_cols = update_if_exists(input[[paste0("cell_table_custom_cols_", id)]], existing_cell$table_custom_cols, character(0)),
             color = update_if_exists(input[[paste0("cell_color_", id)]], existing_cell$color, TRUE),
             heat_stat = update_if_exists(input[[paste0("cell_heat_stat_", id)]], existing_cell$heat_stat, "Frequency"),
+            velocity_chart = update_if_exists(input[[paste0("cell_velocity_chart_", id)]], existing_cell$velocity_chart, "Velocity Chart (Game/Inning)"),
             filter_select = update_if_exists(input[[paste0("cell_filter_select_", id)]], existing_cell$filter_select, c("Dates","Session Type","Pitch Types")),
             # Save all filter values - preserve existing if input doesn't exist
             dates = update_if_exists(input[[paste0("cell_dates_", id)]], existing_cell$dates),
@@ -17706,6 +17749,248 @@ custom_reports_server <- function(id) {
           ggplot() + theme_void()
         }, bg = "transparent")
         return(plotOutput(ns(out_id), height = "280px"))
+      } else if (tsel == "Velocity Chart") {
+        output[[out_id]] <- ggiraph::renderGirafe({
+          if (!identical(input$report_type, "Pitching")) return(NULL)
+          df_vel <- df %>% dplyr::filter(!is.na(RelSpeed), !is.na(TaggedPitchType))
+          if (!nrow(df_vel)) return(NULL)
+
+          velocity_choice <- input[[paste0("cell_velocity_chart_", settings_cell_id)]] %||%
+            (current_cells()[[settings_cell_id]]$velocity_chart %||% "Velocity Chart (Game/Inning)")
+
+          dark_on <- is_dark_mode_local()
+          axis_col <- if (dark_on) "#e5e7eb" else "black"
+          cols <- colors_for_mode(dark_on)
+          types_chr <- sort(unique(as.character(df_vel$TaggedPitchType)))
+          types_chr <- types_chr[!is.na(types_chr) & nzchar(types_chr)]
+          if (!length(types_chr)) return(NULL)
+          col_vals <- cols[types_chr]
+          if (length(col_vals)) {
+            missing_idx <- is.na(col_vals)
+            col_vals[missing_idx] <- "gray70"
+          }
+
+          pick_col_local <- function(df_local, candidates) {
+            nm <- intersect(candidates, names(df_local))
+            if (length(nm)) nm[[1]] else NA_character_
+          }
+          safe_mean_local <- function(x) {
+            x <- suppressWarnings(as.numeric(x))
+            if (all(is.na(x))) NA_real_ else mean(x, na.rm = TRUE)
+          }
+          hb_candidates <- c("HB","HorzBreak","HorizBreak","HorizontalBreak","HBreak","HB_in","HB_inches")
+          ivb_candidates <- c("IVB","InducedVertBreak","IVB_in","IVB_inches")
+
+          sp <- suppressWarnings(as.numeric(df_vel$RelSpeed))
+          if (all(is.na(sp))) {
+            y_min <- 0
+            y_max <- 100
+          } else {
+            y_min <- floor(min(sp, na.rm = TRUE) / 5) * 5
+            y_max <- ceiling(max(sp, na.rm = TRUE) / 5) * 5
+            if (y_min == y_max) y_max <- y_min + 5
+          }
+
+          if (identical(velocity_choice, "Velocity Chart (Game/Inning)")) {
+            df2 <- df_vel %>%
+              dplyr::arrange(Date, dplyr::row_number()) %>%
+              dplyr::mutate(
+                PitchCount = dplyr::row_number(),
+                tt = make_hover_tt(.),
+                rid = dplyr::row_number()
+              )
+            avg_velo <- df2 %>%
+              dplyr::group_by(TaggedPitchType) %>%
+              dplyr::summarise(avg_velo = mean(RelSpeed, na.rm = TRUE), .groups = "drop")
+            x_max <- ceiling(max(df2$PitchCount, na.rm = TRUE) / 5) * 5
+            if (!is.finite(x_max) || x_max <= 0) x_max <- 5
+
+            p <- ggplot(df2, aes(PitchCount, RelSpeed)) +
+              ggiraph::geom_point_interactive(
+                aes(color = TaggedPitchType, fill = TaggedPitchType, tooltip = tt, data_id = rid),
+                position = "identity",
+                size = 3, alpha = 0.9, shape = 21, stroke = 0.25
+              ) +
+              geom_hline(
+                data = avg_velo,
+                aes(yintercept = avg_velo, color = TaggedPitchType),
+                linewidth = 0.9, inherit.aes = FALSE, show.legend = FALSE
+              ) +
+              scale_x_continuous(limits = c(0, x_max), breaks = seq(0, x_max, 5)) +
+              scale_y_continuous(limits = c(y_min, y_max), breaks = seq(y_min, y_max, 5)) +
+              scale_color_manual(values = col_vals, limits = types_chr, name = NULL) +
+              scale_fill_manual(values  = col_vals, limits = types_chr, name = NULL) +
+              theme_minimal() + axis_theme + grid_theme(dark_on) +
+              theme(
+                legend.position = "bottom",
+                legend.text = element_text(size = 12, color = axis_col),
+                axis.text.x = element_text(color = axis_col),
+                axis.text.y = element_text(color = axis_col),
+                axis.title.x = element_text(color = axis_col),
+                axis.title.y = element_text(color = axis_col)
+              ) +
+              labs(title = "Velocity Chart (Game/Inning)", x = "Pitch Count", y = "Velocity (MPH)")
+
+            return(girafe_transparent(
+              ggobj = p,
+              options = list(
+                ggiraph::opts_sizing(rescale = TRUE),
+                ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css_local),
+                ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+                ggiraph::opts_hover_inv(css = "opacity:0.15;")
+              )
+            ))
+          }
+
+          if (identical(velocity_choice, "Average Velocity by Game")) {
+            ivb_nm <- pick_col_local(df_vel, ivb_candidates)
+            hb_nm  <- pick_col_local(df_vel, hb_candidates)
+
+            df_game <- df_vel %>%
+              dplyr::filter(!is.na(Date)) %>%
+              dplyr::mutate(
+                IVB_ = if (!is.na(ivb_nm)) .data[[ivb_nm]] else NA_real_,
+                HB_  = if (!is.na(hb_nm))  .data[[hb_nm]]  else NA_real_
+              ) %>%
+              dplyr::group_by(Date, TaggedPitchType, SessionType) %>%
+              dplyr::summarise(
+                Velo = safe_mean_local(RelSpeed),
+                IVB = safe_mean_local(IVB_),
+                HB = safe_mean_local(HB_),
+                n = dplyr::n(),
+                .groups = "drop"
+              ) %>%
+              dplyr::arrange(Date, TaggedPitchType) %>%
+              dplyr::mutate(
+                tt = paste0(
+                  "Session: ", dplyr::coalesce(as.character(SessionType), "Unknown"), "\n",
+                  TaggedPitchType, "\n",
+                  "Velo: ", sprintf("%.1f", Velo), " mph\n",
+                  "IVB: ", ifelse(is.finite(IVB), sprintf("%.1f", IVB), "—"), "\n",
+                  "HB: ", ifelse(is.finite(HB), sprintf("%.1f", HB), "—"), "\n",
+                  "Pitches: ", n
+                ),
+                rid = paste0(format(Date, "%Y-%m-%d"), "_", TaggedPitchType, "_", dplyr::coalesce(as.character(SessionType), "U"))
+              )
+            if (!nrow(df_game)) return(NULL)
+
+            date_levels <- format(sort(unique(df_game$Date)), "%m/%d/%y")
+            df_game <- df_game %>%
+              dplyr::mutate(date_fac = factor(format(Date, "%m/%d/%y"), levels = date_levels))
+
+            p <- ggplot(df_game, aes(date_fac, Velo, group = TaggedPitchType, color = TaggedPitchType)) +
+              ggiraph::geom_line_interactive(linewidth = 0.7, alpha = 0.85) +
+              ggiraph::geom_point_interactive(
+                aes(tooltip = tt, data_id = rid, fill = TaggedPitchType),
+                size = 3, shape = 21, stroke = 0.25
+              ) +
+              scale_x_discrete(expand = c(0.02, 0.02)) +
+              scale_y_continuous(limits = c(y_min, y_max), breaks = seq(y_min, y_max, 5)) +
+              scale_color_manual(values = col_vals, limits = types_chr, name = NULL) +
+              scale_fill_manual(values  = col_vals, limits = types_chr, name = NULL) +
+              theme_minimal() + axis_theme + grid_theme(dark_on) +
+              theme(
+                legend.position = "bottom",
+                legend.text = element_text(size = 12, color = axis_col),
+                axis.text.x = element_text(angle = 45, hjust = 1, color = axis_col),
+                axis.text.y = element_text(color = axis_col),
+                axis.title.x = element_text(color = axis_col),
+                axis.title.y = element_text(color = axis_col)
+              ) +
+              labs(title = "Average Velocity by Game", x = "Game Date", y = "Velocity (MPH)")
+
+            return(girafe_transparent(
+              ggobj = p,
+              options = list(
+                ggiraph::opts_sizing(rescale = TRUE),
+                ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css_local),
+                ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+                ggiraph::opts_hover_inv(css = "opacity:0.15;")
+              )
+            ))
+          }
+
+          if (!("Inning" %in% names(df_vel)) || !("SessionType" %in% names(df_vel))) return(NULL)
+          df_live <- df_vel %>% dplyr::filter(SessionType == "Live", !is.na(Inning))
+          if (!nrow(df_live)) return(NULL)
+
+          ivb_nm <- pick_col_local(df_live, ivb_candidates)
+          hb_nm  <- pick_col_local(df_live, hb_candidates)
+
+          df_live <- df_live %>%
+            dplyr::mutate(
+              GameKey = dplyr::case_when(
+                "GameID" %in% names(df_live) ~ as.character(.data[["GameID"]]),
+                TRUE ~ format(as.Date(Date), "%Y-%m-%d")
+              )
+            ) %>%
+            dplyr::arrange(GameKey, dplyr::row_number()) %>%
+            dplyr::group_by(GameKey) %>%
+            dplyr::mutate(InningOrd = match(Inning, unique(Inning))) %>%
+            dplyr::ungroup()
+
+          df_inning <- df_live %>%
+            dplyr::mutate(
+              IVB_ = if (!is.na(ivb_nm)) .data[[ivb_nm]] else NA_real_,
+              HB_ = if (!is.na(hb_nm)) .data[[hb_nm]] else NA_real_
+            ) %>%
+            dplyr::group_by(InningOrd, TaggedPitchType) %>%
+            dplyr::summarise(
+              Velo = safe_mean_local(RelSpeed),
+              IVB = safe_mean_local(IVB_),
+              HB = safe_mean_local(HB_),
+              n = dplyr::n(),
+              games = dplyr::n_distinct(GameKey),
+              .groups = "drop"
+            ) %>%
+            dplyr::arrange(InningOrd, TaggedPitchType) %>%
+            dplyr::mutate(
+              tt = paste0(
+                "Session: Live\n",
+                "Inning #: ", InningOrd, "\n",
+                TaggedPitchType, "\n",
+                "Velo: ", sprintf("%.1f", Velo), " mph\n",
+                "IVB: ", ifelse(is.finite(IVB), sprintf("%.1f", IVB), "—"), "\n",
+                "HB: ", ifelse(is.finite(HB), sprintf("%.1f", HB), "—"), "\n",
+                "Games: ", games, " | Pitches: ", n
+              ),
+              rid = paste0(TaggedPitchType, "_", InningOrd)
+            )
+          if (!nrow(df_inning)) return(NULL)
+
+          xmax <- max(df_inning$InningOrd, na.rm = TRUE)
+          p <- ggplot(df_inning, aes(InningOrd, Velo, group = TaggedPitchType, color = TaggedPitchType)) +
+            ggiraph::geom_line_interactive(linewidth = 0.7, alpha = 0.85) +
+            ggiraph::geom_point_interactive(
+              aes(tooltip = tt, data_id = rid, fill = TaggedPitchType),
+              size = 3, shape = 21, stroke = 0.25
+            ) +
+            scale_x_continuous(breaks = seq_len(xmax)) +
+            scale_y_continuous(limits = c(y_min, y_max), breaks = seq(y_min, y_max, 5)) +
+            scale_color_manual(values = col_vals, limits = types_chr, name = NULL) +
+            scale_fill_manual(values  = col_vals, limits = types_chr, name = NULL) +
+            theme_minimal() + axis_theme + grid_theme(dark_on) +
+            theme(
+              legend.position = "bottom",
+              legend.text = element_text(size = 12, color = axis_col),
+              axis.text.x = element_text(color = axis_col),
+              axis.text.y = element_text(color = axis_col),
+              axis.title.x = element_text(color = axis_col),
+              axis.title.y = element_text(color = axis_col)
+            ) +
+            labs(title = "Average Velocity by Inning", x = "Inning of Appearance", y = "Velocity (MPH)")
+
+          girafe_transparent(
+            ggobj = p,
+            options = list(
+              ggiraph::opts_sizing(rescale = TRUE),
+              ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css_local),
+              ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+              ggiraph::opts_hover_inv(css = "opacity:0.15;")
+            )
+          )
+        })
+        return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Summary Table") {
         output[[out_id]] <- DT::renderDataTable({
           tryCatch({
@@ -17934,6 +18219,7 @@ custom_reports_server <- function(id) {
                 input[[paste0("cell_table_mode_", settings_id)]]
                 input[[paste0("cell_color_", settings_id)]]
                 input[[paste0("cell_heat_stat_", settings_id)]]
+                input[[paste0("cell_velocity_chart_", settings_id)]]
                 input[[paste0("cell_table_custom_cols_", settings_id)]]
                 
                 # Also monitor filter values to trigger data updates
@@ -17966,6 +18252,7 @@ custom_reports_server <- function(id) {
                   mode = input[[paste0("cell_table_mode_", settings_id)]],
                   color = input[[paste0("cell_color_", settings_id)]],
                   heat_stat = input[[paste0("cell_heat_stat_", settings_id)]],
+                  velocity_chart = input[[paste0("cell_velocity_chart_", settings_id)]],
                   custom_cols = input[[paste0("cell_table_custom_cols_", settings_id)]]
                 )
               }) %>% debounce(300)  # Slightly increased for stability
@@ -19890,6 +20177,7 @@ ui <- tagList(
       Shiny.addCustomMessageHandler('creports_download_pdf', async function(message) {
         var target = document.getElementById(message.targetId || '');
         if (!target) return;
+        var isDark = document.body.classList.contains('theme-dark');
 
         var btn = document.getElementById(message.buttonId || '');
         if (btn) btn.disabled = true;
@@ -19903,6 +20191,7 @@ ui <- tagList(
 
           var clone = target.cloneNode(true);
           clone.classList.add('creport-pdf-clone');
+          clone.classList.add(isDark ? 'creport-pdf-dark' : 'creport-pdf-light');
 
           clone.querySelectorAll('[id*=\"cell_controls_container_\"]').forEach(function(el) {
             el.remove();
@@ -19919,6 +20208,7 @@ ui <- tagList(
 
           var sandbox = document.createElement('div');
           sandbox.className = 'creport-pdf-sandbox';
+          if (isDark) sandbox.classList.add('creport-pdf-sandbox-dark');
           sandbox.appendChild(clone);
           document.body.appendChild(sandbox);
 
@@ -19926,7 +20216,7 @@ ui <- tagList(
             scale: 2,
             useCORS: true,
             allowTaint: true,
-            backgroundColor: '#ffffff',
+            backgroundColor: isDark ? '#0b0f14' : '#ffffff',
             windowWidth: clone.scrollWidth,
             windowHeight: clone.scrollHeight
           });
@@ -19981,6 +20271,12 @@ ui <- tagList(
         width: auto;
         object-fit: contain;
       }
+      .creport-brand-logo-left {
+        max-height: 90px;
+      }
+      .creport-brand-logo-right {
+        max-height: 56px;
+      }
       .creport-pdf-sandbox {
         position: fixed;
         left: -100000px;
@@ -19990,22 +20286,65 @@ ui <- tagList(
         padding: 24px;
         z-index: -1;
       }
+      .creport-pdf-sandbox.creport-pdf-sandbox-dark {
+        background: #0b0f14;
+      }
       .creport-pdf-clone {
         width: 100%;
+      }
+      .creport-pdf-clone.creport-pdf-light {
         background: #ffffff;
         color: #111111;
       }
-      .creport-pdf-clone .creport-cell {
+      .creport-pdf-clone.creport-pdf-dark {
+        background: #0b0f14;
+        color: #f3f4f6;
+      }
+      .creport-pdf-clone.creport-pdf-light .creport-cell {
         border: 1px solid #d5d9e0 !important;
         border-radius: 8px !important;
         box-shadow: none !important;
         background: #ffffff !important;
       }
+      .creport-pdf-clone.creport-pdf-dark .creport-cell {
+        border: 1px solid #2b3340 !important;
+        border-radius: 8px !important;
+        box-shadow: none !important;
+        background: #111827 !important;
+        color: #f3f4f6 !important;
+      }
       .creport-pdf-clone table {
         width: 100% !important;
         font-size: 11px !important;
       }
+      .creport-pdf-clone.creport-pdf-dark h1,
+      .creport-pdf-clone.creport-pdf-dark h2,
+      .creport-pdf-clone.creport-pdf-dark h3,
+      .creport-pdf-clone.creport-pdf-dark h4,
+      .creport-pdf-clone.creport-pdf-dark h5,
+      .creport-pdf-clone.creport-pdf-dark div,
+      .creport-pdf-clone.creport-pdf-dark span,
+      .creport-pdf-clone.creport-pdf-dark p,
+      .creport-pdf-clone.creport-pdf-dark th,
+      .creport-pdf-clone.creport-pdf-dark td {
+        color: #f3f4f6 !important;
+      }
+      .creport-pdf-clone.creport-pdf-dark .dataTables_wrapper,
+      .creport-pdf-clone.creport-pdf-dark .table,
+      .creport-pdf-clone.creport-pdf-dark table.dataTable,
+      .creport-pdf-clone.creport-pdf-dark table.dataTable tbody tr,
+      .creport-pdf-clone.creport-pdf-dark table.dataTable thead th {
+        background: #111827 !important;
+        color: #f3f4f6 !important;
+        border-color: #2b3340 !important;
+      }
       .creport-pdf-clone .creport-brand-logo {
+        max-height: 52px;
+      }
+      .creport-pdf-clone .creport-brand-logo-left {
+        max-height: 86px;
+      }
+      .creport-pdf-clone .creport-brand-logo-right {
         max-height: 52px;
       }
     ")),
