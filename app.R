@@ -18073,7 +18073,13 @@ custom_reports_server <- function(id) {
             )
           )
         })
-        return(ggiraph::girafeOutput(ns(out_id), height = "300px"))
+        return(tagList(
+          tags$style(HTML(sprintf(
+            "body.theme-dark #%s text { fill: #000000 !important; }",
+            ns(out_id)
+          ))),
+          ggiraph::girafeOutput(ns(out_id), height = "300px")
+        ))
       } else if (tsel == "Velocity Distribution") {
         output[[out_id]] <- ggiraph::renderGirafe({
           if (!identical(input$report_type, "Pitching")) return(NULL)
@@ -18143,7 +18149,7 @@ custom_reports_server <- function(id) {
               axis.text.x = element_text(color = axis_col),
               axis.text.y = element_blank(),
               axis.ticks.y = element_blank(),
-              strip.text.y.left = element_text(color = axis_col, face = "bold"),
+              strip.text.y.left = element_text(color = axis_col, face = "bold", angle = 0),
               strip.background = element_rect(fill = "transparent", color = NA),
               panel.grid.major.x = element_line(color = grid_col),
               panel.grid.major.y = element_blank(),
