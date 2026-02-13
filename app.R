@@ -18041,12 +18041,15 @@ custom_reports_server <- function(id) {
           ) +
             ggiraph::geom_col_interactive(width = 1, color = if (dark_on) "#0b0f14" else "white", linewidth = 0.4) +
             geom_text(
-              aes(label = sprintf("%.1f%%", pct)),
+              aes(
+                label = sprintf("%.1f%%", pct),
+                color = ifelse(dark_on & as.character(TaggedPitchType) == "Fastball", "black", "white")
+              ),
               position = position_stack(vjust = 0.5),
               size = 3.8,
-              color = if (dark_on) "#000000" else "#111111",
               fontface = "bold"
             ) +
+            scale_color_identity() +
             coord_polar(theta = "y") +
             scale_fill_manual(values = col_vals, limits = names(col_vals), name = NULL) +
             theme_void() +
@@ -18072,16 +18075,17 @@ custom_reports_server <- function(id) {
         })
         return(ggiraph::girafeOutput(ns(out_id), height = "300px"))
       } else if (tsel == "Velocity Distribution") {
-        output[[out_id]] <- renderPlot({
+        output[[out_id]] <- ggiraph::renderGirafe({
           if (!identical(input$report_type, "Pitching")) return(NULL)
           df_vel <- df %>%
             dplyr::filter(!is.na(TaggedPitchType), nzchar(as.character(TaggedPitchType)), is.finite(RelSpeed))
           if (!nrow(df_vel)) {
-            return(
+            p_empty <- (
               ggplot() +
                 theme_void() +
                 annotate("text", x = 0, y = 0, label = "No velocity data for current filters", size = 5)
             )
+            return(girafe_transparent(ggobj = p_empty))
           }
 
           dark_on <- is_dark_mode_local()
@@ -18093,11 +18097,12 @@ custom_reports_server <- function(id) {
           seen_types <- unique(as.character(df_vel$TaggedPitchType))
           ordered_types_local <- c(base_order[base_order %in% seen_types], setdiff(seen_types, base_order))
           if (!length(ordered_types_local)) {
-            return(
+            p_empty <- (
               ggplot() +
                 theme_void() +
                 annotate("text", x = 0, y = 0, label = "No pitch types available", size = 5)
             )
+            return(girafe_transparent(ggobj = p_empty))
           }
 
           col_vals <- cols[ordered_types_local]
@@ -18109,7 +18114,7 @@ custom_reports_server <- function(id) {
               TaggedPitchType = factor(as.character(TaggedPitchType), levels = ordered_types_local)
             )
 
-          ggplot(df_vel, aes(x = RelSpeed, fill = TaggedPitchType, color = TaggedPitchType)) +
+          p <- ggplot(df_vel, aes(x = RelSpeed, fill = TaggedPitchType, color = TaggedPitchType)) +
             geom_density(alpha = 0.92, linewidth = 0.4, adjust = 1) +
             facet_grid(TaggedPitchType ~ ., scales = "free_y", switch = "y") +
             scale_fill_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
@@ -18133,8 +18138,12 @@ custom_reports_server <- function(id) {
               x = "Velocity (MPH)",
               y = NULL
             )
-        }, bg = "transparent")
-        return(plotOutput(ns(out_id), height = "320px"))
+          girafe_transparent(
+            ggobj = p,
+            options = list(ggiraph::opts_sizing(rescale = TRUE))
+          )
+        })
+        return(ggiraph::girafeOutput(ns(out_id), height = "320px"))
       } else if (tsel == "Summary Table") {
         output[[out_id]] <- DT::renderDataTable({
           tryCatch({
