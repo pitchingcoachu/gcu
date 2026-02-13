@@ -16334,11 +16334,14 @@ custom_reports_server <- function(id) {
       }
       
       tagList(
-        h3(style = "margin-top:-8px; margin-bottom:2px; text-align:center;", 
-           if (nzchar(title_txt)) title_txt else "Custom Report"),
-        if (!is.null(player_lbl)) {
-          div(style = "font-weight:600; margin-bottom:8px; text-align:center;", player_lbl)
-        }
+        div(
+          style = "margin-top:-22px; margin-bottom:14px;",
+          h3(style = "margin-top:0; margin-bottom:2px; text-align:center;",
+             if (nzchar(title_txt)) title_txt else "Custom Report"),
+          if (!is.null(player_lbl)) {
+            div(style = "font-weight:600; margin-bottom:0; text-align:center;", player_lbl)
+          }
+        )
       )
     })
 
@@ -20327,22 +20330,15 @@ ui <- tagList(
       .creport-pdf-clone.creport-pdf-dark h3,
       .creport-pdf-clone.creport-pdf-dark h4,
       .creport-pdf-clone.creport-pdf-dark h5,
-      .creport-pdf-clone.creport-pdf-dark div,
-      .creport-pdf-clone.creport-pdf-dark span,
       .creport-pdf-clone.creport-pdf-dark p {
         color: #f3f4f6 !important;
       }
       .creport-pdf-clone.creport-pdf-dark .dataTables_wrapper,
       .creport-pdf-clone.creport-pdf-dark .table,
       .creport-pdf-clone.creport-pdf-dark table.dataTable,
-      .creport-pdf-clone.creport-pdf-dark table.dataTable tbody tr,
       .creport-pdf-clone.creport-pdf-dark table.dataTable thead th {
         background: #111827 !important;
-        color: #f3f4f6 !important;
         border-color: #2b3340 !important;
-      }
-      .creport-pdf-clone.creport-pdf-dark table.dataTable tbody td:not([style*='color']) {
-        color: #f3f4f6 !important;
       }
       .creport-pdf-clone .creport-brand-logo {
         max-height: 52px;
