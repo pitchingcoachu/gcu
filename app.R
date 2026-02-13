@@ -20188,52 +20188,69 @@ ui <- tagList(
           }
 
           await new Promise(function(resolve) { setTimeout(resolve, 350); });
-          target.classList.add('creport-exporting');
-          target.classList.toggle('creport-pdf-dark', isDark);
-          target.classList.toggle('creport-pdf-light', !isDark);
-          await new Promise(function(resolve) { setTimeout(resolve, 120); });
 
-          var captureWidth = Math.ceil(Math.max(
-            target.getBoundingClientRect().width || 0,
-            target.scrollWidth || 0
-          ));
-          var captureHeight = Math.ceil(Math.max(
-            target.getBoundingClientRect().height || 0,
-            target.scrollHeight || 0
-          ));
-          if (!captureWidth || !captureHeight) {
-            throw new Error('Unable to determine report dimensions for PDF export.');
-          }
+          var clone = target.cloneNode(true);
+          clone.classList.add('creport-pdf-clone');
+          clone.classList.add(isDark ? 'creport-pdf-dark' : 'creport-pdf-light');
 
-          var captureScale = 2;
-          var canvas = await window.html2canvas(target, {
-            scale: captureScale,
+          clone.querySelectorAll('[id*=\"cell_controls_container_\"]').forEach(function(el) {
+            el.remove();
+          });
+          clone.querySelectorAll('.shiny-input-container').forEach(function(el) {
+            el.remove();
+          });
+          clone.querySelectorAll('.dataTables_filter, .dataTables_length, .dataTables_paginate, .dataTables_info').forEach(function(el) {
+            el.remove();
+          });
+          clone.querySelectorAll('script').forEach(function(el) {
+            el.remove();
+          });
+
+          var sandbox = document.createElement('div');
+          sandbox.className = 'creport-pdf-sandbox';
+          if (isDark) sandbox.classList.add('creport-pdf-sandbox-dark');
+          sandbox.appendChild(clone);
+          document.body.appendChild(sandbox);
+
+          var canvas = await window.html2canvas(clone, {
+            scale: 2,
             useCORS: true,
             allowTaint: true,
             backgroundColor: isDark ? '#0b0f14' : '#ffffff',
-            width: captureWidth,
-            height: captureHeight,
-            windowWidth: captureWidth,
-            windowHeight: captureHeight,
-            scrollX: 0,
-            scrollY: -window.scrollY
+            windowWidth: clone.scrollWidth,
+            windowHeight: clone.scrollHeight
           });
-          target.classList.remove('creport-exporting', 'creport-pdf-dark', 'creport-pdf-light');
+
+          document.body.removeChild(sandbox);
 
           var jsPDF = window.jspdf.jsPDF;
-          var pxToPt = 72 / 96;
-          var pageWidthPt = (canvas.width / captureScale) * pxToPt;
-          var pageHeightPt = (canvas.height / captureScale) * pxToPt;
+          var orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
           var pdf = new jsPDF({
+            orientation: orientation,
             unit: 'pt',
-            format: [pageWidthPt, pageHeightPt],
+            format: 'letter',
             compress: true
           });
 
-          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pageWidthPt, pageHeightPt, '', 'FAST');
+          var pageW = pdf.internal.pageSize.getWidth();
+          var pageH = pdf.internal.pageSize.getHeight();
+          var margin = 24;
+          var availW = pageW - (margin * 2);
+          var availH = pageH - (margin * 2);
+          var ratio = Math.min(availW / canvas.width, availH / canvas.height);
+          var drawW = canvas.width * ratio;
+          var drawH = canvas.height * ratio;
+          var x = (pageW - drawW) / 2;
+          var y = (pageH - drawH) / 2;
+
+          if (isDark) {
+            pdf.setFillColor(11, 15, 20);
+            pdf.rect(0, 0, pageW, pageH, 'F');
+          }
+
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, drawW, drawH, '', 'FAST');
           pdf.save(message.filename || 'custom_report.pdf');
         } catch (err) {
-          target.classList.remove('creport-exporting', 'creport-pdf-dark', 'creport-pdf-light');
           if (window.Shiny && Shiny.setInputValue) {
             Shiny.setInputValue(message.errorInputId || 'creports_pdf_error', String(err && err.message ? err.message : err), {priority: 'event'});
           }
@@ -20265,67 +20282,74 @@ ui <- tagList(
       .creport-brand-logo-right {
         max-height: 56px;
       }
-      #creports-report_pdf_content.creport-exporting [id*='cell_controls_container_'],
-      #creports-report_pdf_content.creport-exporting .shiny-input-container,
-      #creports-report_pdf_content.creport-exporting .dataTables_filter,
-      #creports-report_pdf_content.creport-exporting .dataTables_length,
-      #creports-report_pdf_content.creport-exporting .dataTables_paginate,
-      #creports-report_pdf_content.creport-exporting .dataTables_info {
-        display: none !important;
+      .creport-pdf-sandbox {
+        position: fixed;
+        left: -100000px;
+        top: 0;
+        width: 1600px;
+        background: #ffffff;
+        padding: 24px;
+        z-index: -1;
       }
-      #creports-report_pdf_content.creport-pdf-light {
+      .creport-pdf-sandbox.creport-pdf-sandbox-dark {
+        background: #0b0f14;
+      }
+      .creport-pdf-clone {
+        width: 100%;
+      }
+      .creport-pdf-clone.creport-pdf-light {
         background: #ffffff;
         color: #111111;
       }
-      #creports-report_pdf_content.creport-pdf-dark {
+      .creport-pdf-clone.creport-pdf-dark {
         background: #0b0f14;
         color: #f3f4f6;
       }
-      #creports-report_pdf_content.creport-pdf-light .creport-cell {
+      .creport-pdf-clone.creport-pdf-light .creport-cell {
         border: 1px solid #d5d9e0 !important;
         border-radius: 8px !important;
         box-shadow: none !important;
         background: #ffffff !important;
       }
-      #creports-report_pdf_content.creport-pdf-dark .creport-cell {
+      .creport-pdf-clone.creport-pdf-dark .creport-cell {
         border: 1px solid #2b3340 !important;
         border-radius: 8px !important;
         box-shadow: none !important;
         background: #111827 !important;
         color: #f3f4f6 !important;
       }
-      #creports-report_pdf_content.creport-exporting table {
+      .creport-pdf-clone table {
         width: 100% !important;
         font-size: 11px !important;
       }
-      #creports-report_pdf_content.creport-pdf-dark h1,
-      #creports-report_pdf_content.creport-pdf-dark h2,
-      #creports-report_pdf_content.creport-pdf-dark h3,
-      #creports-report_pdf_content.creport-pdf-dark h4,
-      #creports-report_pdf_content.creport-pdf-dark h5,
-      #creports-report_pdf_content.creport-pdf-dark div,
-      #creports-report_pdf_content.creport-pdf-dark span,
-      #creports-report_pdf_content.creport-pdf-dark p,
-      #creports-report_pdf_content.creport-pdf-dark th,
-      #creports-report_pdf_content.creport-pdf-dark td {
+      .creport-pdf-clone.creport-pdf-dark h1,
+      .creport-pdf-clone.creport-pdf-dark h2,
+      .creport-pdf-clone.creport-pdf-dark h3,
+      .creport-pdf-clone.creport-pdf-dark h4,
+      .creport-pdf-clone.creport-pdf-dark h5,
+      .creport-pdf-clone.creport-pdf-dark div,
+      .creport-pdf-clone.creport-pdf-dark span,
+      .creport-pdf-clone.creport-pdf-dark p,
+      .creport-pdf-clone.creport-pdf-dark th,
+      .creport-pdf-clone.creport-pdf-dark td {
         color: #f3f4f6 !important;
       }
-      #creports-report_pdf_content.creport-pdf-dark .dataTables_wrapper,
-      #creports-report_pdf_content.creport-pdf-dark .table,
-      #creports-report_pdf_content.creport-pdf-dark table.dataTable,
-      #creports-report_pdf_content.creport-pdf-dark table.dataTable tbody tr,
-      #creports-report_pdf_content.creport-pdf-dark table.dataTable thead th {
+      .creport-pdf-clone.creport-pdf-dark .dataTables_wrapper,
+      .creport-pdf-clone.creport-pdf-dark .table,
+      .creport-pdf-clone.creport-pdf-dark table.dataTable,
+      .creport-pdf-clone.creport-pdf-dark table.dataTable tbody tr,
+      .creport-pdf-clone.creport-pdf-dark table.dataTable thead th {
         background: #111827 !important;
         color: #f3f4f6 !important;
         border-color: #2b3340 !important;
       }
-      #creports-report_pdf_content.creport-exporting .creport-brand-logo {
+      .creport-pdf-clone .creport-brand-logo {
         max-height: 52px;
       }
-      #creports-report_pdf_content.creport-exporting .creport-brand-logo-left {
+      .creport-pdf-clone .creport-brand-logo-left {
         max-height: 86px;
       }
-      #creports-report_pdf_content.creport-exporting .creport-brand-logo-right {
+      .creport-pdf-clone .creport-brand-logo-right {
         max-height: 52px;
       }
     ")),
