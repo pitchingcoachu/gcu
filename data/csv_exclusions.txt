@@ -712,3 +712,21 @@
 20260211-GrierField-1_unverified.csv
 # Auto-pruned non-team data
 20260211-TommyCareyField-1_unverified.csv
+# Auto-pruned non-team data
+20260206-OdessaCollege-2.csv
+# Auto-pruned non-team data
+20260206-OdessaCollege-3.csv
+# Auto-pruned non-team data
+20260211-BurchellStallard-1.csv
+# Auto-pruned non-team data
+20260211-GrierField-1.csv
+# Auto-pruned non-team data
+20260211-TommyCareyField-1.csv
+# Auto-pruned non-team data
+20260212-JackBowlingField-1_unverified.csv
+# Auto-pruned non-team data
+20260212-JimReevesField-1_unverified.csv
+# Auto-pruned non-team data
+20260212-PaulDemieMainieriField-1_unverified.csv
+# Auto-pruned non-team data
+20260212-WilliamCarey-1_unverified.csv
