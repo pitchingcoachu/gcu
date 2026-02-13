@@ -18028,7 +18028,8 @@ custom_reports_server <- function(id) {
               pct = 100 * n / sum(n),
               lbl = paste0(as.character(TaggedPitchType), " ", sprintf("%.1f%%", pct)),
               rid = as.character(TaggedPitchType),
-              pct_data_id = paste0("pie_pct_", rid)
+              pct_data_id = paste0("pie_pct_", rid),
+              ymid = cumsum(pct) - (pct / 2)
             )
           if (!nrow(usage)) return(NULL)
 
@@ -18038,21 +18039,34 @@ custom_reports_server <- function(id) {
 
           p <- ggplot(
             usage,
-            aes(x = "", y = pct, fill = TaggedPitchType, tooltip = lbl, data_id = rid)
+            aes(x = 1, y = pct, fill = TaggedPitchType, tooltip = lbl, data_id = rid)
           ) +
             ggiraph::geom_col_interactive(width = 1, color = if (dark_on) "#0b0f14" else "white", linewidth = 0.4) +
-            ggiraph::geom_text_interactive(
-              aes(
-                label = sprintf("%.1f%%", pct),
-                color = ifelse(dark_on, "black", "white"),
-                data_id = pct_data_id
-              ),
-              position = position_stack(vjust = 0.5),
+            geom_text(
+              data = usage %>% dplyr::filter(pct >= 5),
+              aes(x = 1, y = ymid, label = sprintf("%.1f%%", pct)),
               size = 3.8,
-              fontface = "bold"
+              fontface = "bold",
+              color = if (dark_on) "black" else "white"
             ) +
-            scale_color_identity() +
+            geom_segment(
+              data = usage %>% dplyr::filter(pct < 5),
+              aes(x = 1.0, xend = 1.10, y = ymid, yend = ymid),
+              inherit.aes = FALSE,
+              color = if (dark_on) "#d1d5db" else "#4b5563",
+              linewidth = 0.4
+            ) +
+            geom_text(
+              data = usage %>% dplyr::filter(pct < 5),
+              aes(x = 1.16, y = ymid, label = sprintf("%.1f%%", pct)),
+              inherit.aes = FALSE,
+              hjust = 0,
+              size = 3.1,
+              fontface = "bold",
+              color = if (dark_on) "#e5e7eb" else "#111827"
+            ) +
             coord_polar(theta = "y") +
+            scale_x_continuous(limits = c(0.5, 1.35)) +
             scale_fill_manual(values = col_vals, limits = names(col_vals), name = NULL) +
             theme_void() +
             theme(
@@ -18078,12 +18092,11 @@ custom_reports_server <- function(id) {
         return(tagList(
           tags$style(HTML(sprintf(
             paste0(
-              "body.theme-dark #%s svg text[data-id^='pie_pct_'] { fill: #000000 !important; }",
               "body.theme-dark #%s svg g.legend text, ",
               "body.theme-dark #%s svg g.guide-box text, ",
               "body.theme-dark #%s svg [class*='guide'] text { fill: #ffffff !important; }"
             ),
-            ns(out_id), ns(out_id), ns(out_id), ns(out_id)
+            ns(out_id), ns(out_id), ns(out_id)
           ))),
           ggiraph::girafeOutput(ns(out_id), height = "300px")
         ))
@@ -18127,10 +18140,17 @@ custom_reports_server <- function(id) {
               linewidth = 2,
               lineend = "round"
             ) +
-            geom_col(aes(x = pct, fill = fill_col), width = 0.66, show.legend = FALSE) +
+            geom_segment(
+              aes(x = 0, xend = pct, y = TaggedPitchType, yend = TaggedPitchType, color = fill_col),
+              inherit.aes = FALSE,
+              linewidth = 8,
+              lineend = "round",
+              show.legend = FALSE
+            ) +
             geom_point(aes(x = pct, fill = fill_col), shape = 21, size = 9.2, color = "white", stroke = 1.4, show.legend = FALSE) +
             geom_text(aes(x = pct, label = label_val, color = I(text_col)), fontface = "bold", size = 3.4, vjust = 0.38) +
             scale_fill_identity() +
+            scale_color_identity() +
             scale_x_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 20)) +
             coord_cartesian(xlim = c(0, 105), clip = "off") +
             theme_minimal() +
@@ -18191,10 +18211,17 @@ custom_reports_server <- function(id) {
               linewidth = 2,
               lineend = "round"
             ) +
-            geom_col(aes(x = avg_velo, fill = fill_col), width = 0.66, show.legend = FALSE) +
+            geom_segment(
+              aes(x = 0, xend = avg_velo, y = TaggedPitchType, yend = TaggedPitchType, color = fill_col),
+              inherit.aes = FALSE,
+              linewidth = 8,
+              lineend = "round",
+              show.legend = FALSE
+            ) +
             geom_point(aes(x = avg_velo, fill = fill_col), shape = 21, size = 9.2, color = "white", stroke = 1.4, show.legend = FALSE) +
             geom_text(aes(x = avg_velo, label = label_val, color = I(text_col)), fontface = "bold", size = 3.4, vjust = 0.38) +
             scale_fill_identity() +
+            scale_color_identity() +
             scale_x_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 10)) +
             coord_cartesian(xlim = c(0, 105), clip = "off") +
             theme_minimal() +
@@ -18206,7 +18233,7 @@ custom_reports_server <- function(id) {
               axis.text.y = element_text(color = axis_col, face = "bold", hjust = 0.5),
               panel.grid.major.y = element_blank(),
               panel.grid.minor = element_blank(),
-              panel.grid.major.x = element_line(color = adjustcolor(axis_col, alpha.f = 0.18)),
+              panel.grid.major.x = element_blank(),
               plot.background = element_rect(fill = "transparent", color = NA),
               panel.background = element_rect(fill = "transparent", color = NA),
               plot.margin = margin(5.5, 16, 5.5, 5.5)
