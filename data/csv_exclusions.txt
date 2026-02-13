@@ -786,3 +786,7 @@
 20260213-PomonaPitzer-1_unverified.csv
 # Auto-pruned non-team data
 20260213-PresbyterianCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260213-EastTennesseeState-1_unverified.csv
+# Auto-pruned non-team data
+20260213-GrierField-1_unverified.csv
