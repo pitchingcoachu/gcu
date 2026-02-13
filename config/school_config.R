@@ -146,7 +146,8 @@ school_config <- list(
     "adam.racine@aol.com",
     "Njcbaseball08@gmail.com",
     "ahalverson@pitchingcoachu.com",
-    "jdabisch05@gmail.com"
+    "jdabisch05@gmail.com",
+    "jchipman@pitchingcoachu.com"
   ),
   notes_api = list(
     base_url = "https://script.google.com/macros/s/AKfycbwuftWhRZGV7f1lWFJnC5mBcxaXh7P7Xhlc7_Lvr5r6ZO_GYKbv6YxCp7B0AXsvCKY0/exec",
