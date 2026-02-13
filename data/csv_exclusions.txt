@@ -732,3 +732,21 @@
 20260212-WilliamCarey-1_unverified.csv
 # Auto-pruned non-team data
 20260212-DicksonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260207-RonChrisStad-1.csv
+# Auto-pruned non-team data
+20260207-RonChrisStad-2.csv
+# Auto-pruned non-team data
+20260208-RonChrisStad-1.csv
+# Auto-pruned non-team data
+20260210-RonChrisStad-1.csv
+# Auto-pruned non-team data
+20260211-ClevelandCommunityCollegeBaseballField-1.csv
+# Auto-pruned non-team data
+20260212-JackBowlingField-1.csv
+# Auto-pruned non-team data
+20260212-PaulDemieMainieriField-1.csv
+# Auto-pruned non-team data
+20260212-Peninsula-1.csv
+# Auto-pruned non-team data
+20260212-WilliamCarey-1.csv
