@@ -782,3 +782,7 @@
 20260213-UofSouthCarolina-1_unverified.csv
 # Auto-pruned non-team data
 20260213-RussellCarrField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-PomonaPitzer-1_unverified.csv
+# Auto-pruned non-team data
+20260213-PresbyterianCollege-1_unverified.csv
