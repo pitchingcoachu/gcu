@@ -18027,7 +18027,8 @@ custom_reports_server <- function(id) {
             dplyr::mutate(
               pct = 100 * n / sum(n),
               lbl = paste0(as.character(TaggedPitchType), " ", sprintf("%.1f%%", pct)),
-              rid = as.character(TaggedPitchType)
+              rid = as.character(TaggedPitchType),
+              pct_data_id = paste0("pie_pct_", rid)
             )
           if (!nrow(usage)) return(NULL)
 
@@ -18040,10 +18041,11 @@ custom_reports_server <- function(id) {
             aes(x = "", y = pct, fill = TaggedPitchType, tooltip = lbl, data_id = rid)
           ) +
             ggiraph::geom_col_interactive(width = 1, color = if (dark_on) "#0b0f14" else "white", linewidth = 0.4) +
-            geom_text(
+            ggiraph::geom_text_interactive(
               aes(
                 label = sprintf("%.1f%%", pct),
-                color = ifelse(dark_on, "black", "white")
+                color = ifelse(dark_on, "black", "white"),
+                data_id = pct_data_id
               ),
               position = position_stack(vjust = 0.5),
               size = 3.8,
@@ -18076,10 +18078,12 @@ custom_reports_server <- function(id) {
         return(tagList(
           tags$style(HTML(sprintf(
             paste0(
-              "body.theme-dark #%s text { fill: #000000 !important; }",
-              "body.theme-dark #%s g.legend text { fill: #ffffff !important; }"
+              "body.theme-dark #%s svg text[data-id^='pie_pct_'] { fill: #000000 !important; }",
+              "body.theme-dark #%s svg g.legend text, ",
+              "body.theme-dark #%s svg g.guide-box text, ",
+              "body.theme-dark #%s svg [class*='guide'] text { fill: #ffffff !important; }"
             ),
-            ns(out_id), ns(out_id)
+            ns(out_id), ns(out_id), ns(out_id), ns(out_id)
           ))),
           ggiraph::girafeOutput(ns(out_id), height = "300px")
         ))
@@ -18110,27 +18114,38 @@ custom_reports_server <- function(id) {
           col_vals <- cols[as.character(usage$TaggedPitchType)]
           col_vals[is.na(col_vals)] <- "gray70"
           usage$fill_col <- unname(col_vals)
+          usage$fill_col[dark_on & usage$pitch_chr == "Fastball"] <- "#ffffff"
           usage$text_col <- ifelse(dark_on & usage$pitch_chr == "Fastball", "#000000", "#ffffff")
+          usage$label_val <- sprintf("%.0f", round(usage$pct))
+          track_col <- if (dark_on) "#7b8794" else "#c7d3d8"
 
           p <- ggplot(usage, aes(y = TaggedPitchType)) +
-            geom_col(aes(x = 100), fill = if (dark_on) "#334155" else "#d9e3e6", width = 0.72) +
-            geom_col(aes(x = pct, fill = TaggedPitchType), width = 0.72, show.legend = FALSE) +
-            geom_point(aes(x = pct, fill = TaggedPitchType), shape = 21, size = 11, color = "white", stroke = 1.4, show.legend = FALSE) +
-            geom_text(aes(x = pct, label = sprintf("%.0f%%", round(pct)), color = I(text_col)), fontface = "bold", size = 4.2) +
-            scale_fill_manual(values = setNames(unname(col_vals), as.character(usage$TaggedPitchType))) +
+            geom_segment(
+              aes(x = 0, xend = 100, y = TaggedPitchType, yend = TaggedPitchType),
+              inherit.aes = FALSE,
+              color = track_col,
+              linewidth = 2,
+              lineend = "round"
+            ) +
+            geom_col(aes(x = pct, fill = fill_col), width = 0.66, show.legend = FALSE) +
+            geom_point(aes(x = pct, fill = fill_col), shape = 21, size = 9.2, color = "white", stroke = 1.4, show.legend = FALSE) +
+            geom_text(aes(x = pct, label = label_val, color = I(text_col)), fontface = "bold", size = 3.4, vjust = 0.38) +
+            scale_fill_identity() +
             scale_x_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 20)) +
+            coord_cartesian(xlim = c(0, 105), clip = "off") +
             theme_minimal() +
             theme(
               legend.position = "none",
               axis.title.x = element_blank(),
               axis.title.y = element_blank(),
               axis.text.x = element_text(color = axis_col),
-              axis.text.y = element_text(color = axis_col, face = "bold"),
+              axis.text.y = element_text(color = axis_col, face = "bold", hjust = 0.5),
               panel.grid.major.y = element_blank(),
               panel.grid.minor = element_blank(),
               panel.grid.major.x = element_line(color = adjustcolor(axis_col, alpha.f = 0.18)),
               plot.background = element_rect(fill = "transparent", color = NA),
-              panel.background = element_rect(fill = "transparent", color = NA)
+              panel.background = element_rect(fill = "transparent", color = NA),
+              plot.margin = margin(5.5, 16, 5.5, 5.5)
             )
 
           girafe_transparent(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE)))
@@ -18162,27 +18177,39 @@ custom_reports_server <- function(id) {
 
           col_vals <- cols[as.character(vel_bar$TaggedPitchType)]
           col_vals[is.na(col_vals)] <- "gray70"
+          vel_bar$fill_col <- unname(col_vals)
+          vel_bar$fill_col[dark_on & vel_bar$pitch_chr == "Fastball"] <- "#ffffff"
           vel_bar$text_col <- ifelse(dark_on & vel_bar$pitch_chr == "Fastball", "#000000", "#ffffff")
+          vel_bar$label_val <- as.character(as.integer(floor(vel_bar$avg_velo + 0.5)))
+          track_col <- if (dark_on) "#7b8794" else "#c7d3d8"
 
           p <- ggplot(vel_bar, aes(y = TaggedPitchType)) +
-            geom_col(aes(x = 100), fill = if (dark_on) "#334155" else "#d9e3e6", width = 0.72) +
-            geom_col(aes(x = avg_velo, fill = TaggedPitchType), width = 0.72, show.legend = FALSE) +
-            geom_point(aes(x = avg_velo, fill = TaggedPitchType), shape = 21, size = 11, color = "white", stroke = 1.4, show.legend = FALSE) +
-            geom_text(aes(x = avg_velo, label = sprintf("%.1f", avg_velo), color = I(text_col)), fontface = "bold", size = 4.2) +
-            scale_fill_manual(values = setNames(unname(col_vals), as.character(vel_bar$TaggedPitchType))) +
+            geom_segment(
+              aes(x = 0, xend = 100, y = TaggedPitchType, yend = TaggedPitchType),
+              inherit.aes = FALSE,
+              color = track_col,
+              linewidth = 2,
+              lineend = "round"
+            ) +
+            geom_col(aes(x = avg_velo, fill = fill_col), width = 0.66, show.legend = FALSE) +
+            geom_point(aes(x = avg_velo, fill = fill_col), shape = 21, size = 9.2, color = "white", stroke = 1.4, show.legend = FALSE) +
+            geom_text(aes(x = avg_velo, label = label_val, color = I(text_col)), fontface = "bold", size = 3.4, vjust = 0.38) +
+            scale_fill_identity() +
             scale_x_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 10)) +
+            coord_cartesian(xlim = c(0, 105), clip = "off") +
             theme_minimal() +
             theme(
               legend.position = "none",
               axis.title.x = element_blank(),
               axis.title.y = element_blank(),
               axis.text.x = element_text(color = axis_col),
-              axis.text.y = element_text(color = axis_col, face = "bold"),
+              axis.text.y = element_text(color = axis_col, face = "bold", hjust = 0.5),
               panel.grid.major.y = element_blank(),
               panel.grid.minor = element_blank(),
               panel.grid.major.x = element_line(color = adjustcolor(axis_col, alpha.f = 0.18)),
               plot.background = element_rect(fill = "transparent", color = NA),
-              panel.background = element_rect(fill = "transparent", color = NA)
+              panel.background = element_rect(fill = "transparent", color = NA),
+              plot.margin = margin(5.5, 16, 5.5, 5.5)
             )
 
           girafe_transparent(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE)))
@@ -18244,7 +18271,14 @@ custom_reports_server <- function(id) {
               },
               .groups = "drop"
             ) %>%
-            dplyr::filter(is.finite(x_peak))
+            dplyr::filter(is.finite(x_peak)) %>%
+            dplyr::mutate(
+              line_col = dplyr::if_else(
+                as.character(TaggedPitchType) == "Fastball",
+                if (dark_on) "#000000" else "#ffffff",
+                adjustcolor(axis_col, alpha.f = 0.85)
+              )
+            )
 
           pitch_label_map <- c(
             "Fastball" = "FB",
@@ -18261,11 +18295,10 @@ custom_reports_server <- function(id) {
             geom_density(alpha = 0.92, linewidth = 0.4, adjust = 1) +
             geom_vline(
               data = peak_df,
-              aes(xintercept = x_peak),
+              aes(xintercept = x_peak, color = I(line_col)),
               inherit.aes = FALSE,
               linetype = "dashed",
-              linewidth = 0.6,
-              color = adjustcolor(axis_col, alpha.f = 0.85)
+              linewidth = 0.6
             ) +
             facet_grid(
               TaggedPitchType ~ .,
