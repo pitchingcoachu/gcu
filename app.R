@@ -18043,7 +18043,7 @@ custom_reports_server <- function(id) {
             geom_text(
               aes(
                 label = sprintf("%.1f%%", pct),
-                color = ifelse(dark_on & as.character(TaggedPitchType) == "Fastball", "black", "white")
+                color = ifelse(dark_on, "black", "white")
               ),
               position = position_stack(vjust = 0.5),
               size = 3.8,
@@ -18114,9 +18114,25 @@ custom_reports_server <- function(id) {
               TaggedPitchType = factor(as.character(TaggedPitchType), levels = ordered_types_local)
             )
 
+          pitch_label_map <- c(
+            "Fastball" = "FB",
+            "Sinker" = "SI",
+            "Cutter" = "CT",
+            "Slider" = "SL",
+            "Sweeper" = "SW",
+            "ChangeUp" = "CH",
+            "Splitter" = "SP",
+            "Curveball" = "CB"
+          )
+
           p <- ggplot(df_vel, aes(x = RelSpeed, fill = TaggedPitchType, color = TaggedPitchType)) +
             geom_density(alpha = 0.92, linewidth = 0.4, adjust = 1) +
-            facet_grid(TaggedPitchType ~ ., scales = "free_y", switch = "y") +
+            facet_grid(
+              TaggedPitchType ~ .,
+              scales = "free_y",
+              switch = "y",
+              labeller = ggplot2::as_labeller(pitch_label_map)
+            ) +
             scale_fill_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
             scale_color_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
             theme_minimal() +
@@ -18125,11 +18141,13 @@ custom_reports_server <- function(id) {
               axis.title.x = element_text(color = axis_col, face = "bold"),
               axis.title.y = element_blank(),
               axis.text.x = element_text(color = axis_col),
-              axis.text.y = element_text(color = axis_col, face = "bold"),
+              axis.text.y = element_blank(),
+              axis.ticks.y = element_blank(),
               strip.text.y.left = element_text(color = axis_col, face = "bold"),
               strip.background = element_rect(fill = "transparent", color = NA),
               panel.grid.major.x = element_line(color = grid_col),
-              panel.grid.major.y = element_line(color = adjustcolor(axis_col, alpha.f = 0.30)),
+              panel.grid.major.y = element_blank(),
+              panel.grid.minor.y = element_blank(),
               panel.grid.minor = element_blank(),
               plot.background = element_rect(fill = "transparent", color = NA),
               panel.background = element_rect(fill = "transparent", color = NA)
