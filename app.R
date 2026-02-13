@@ -20192,7 +20192,6 @@ ui <- tagList(
           var clone = target.cloneNode(true);
           clone.classList.add('creport-pdf-clone');
           clone.classList.add(isDark ? 'creport-pdf-dark' : 'creport-pdf-light');
-          clone.style.width = Math.ceil(target.scrollWidth || target.getBoundingClientRect().width) + 'px';
 
           clone.querySelectorAll('[id*=\"cell_controls_container_\"]').forEach(function(el) {
             el.remove();
@@ -20213,27 +20212,46 @@ ui <- tagList(
           sandbox.appendChild(clone);
           document.body.appendChild(sandbox);
 
+          var captureWidth = Math.ceil(Math.max(
+            target.getBoundingClientRect().width || 0,
+            target.scrollWidth || 0,
+            clone.getBoundingClientRect().width || 0,
+            clone.scrollWidth || 0
+          ));
+          var captureHeight = Math.ceil(Math.max(
+            target.getBoundingClientRect().height || 0,
+            target.scrollHeight || 0,
+            clone.getBoundingClientRect().height || 0,
+            clone.scrollHeight || 0
+          ));
+          if (!captureWidth || !captureHeight) {
+            throw new Error('Unable to determine report dimensions for PDF export.');
+          }
+
           var canvas = await window.html2canvas(clone, {
             scale: 2,
             useCORS: true,
             allowTaint: true,
             backgroundColor: isDark ? '#0b0f14' : '#ffffff',
-            width: clone.scrollWidth,
-            height: clone.scrollHeight,
-            windowWidth: clone.scrollWidth,
-            windowHeight: clone.scrollHeight
+            width: captureWidth,
+            height: captureHeight,
+            windowWidth: captureWidth,
+            windowHeight: captureHeight
           });
 
           document.body.removeChild(sandbox);
 
           var jsPDF = window.jspdf.jsPDF;
+          var pxToPt = 72 / 96;
+          var pageWidthPt = captureWidth * pxToPt;
+          var pageHeightPt = captureHeight * pxToPt;
           var pdf = new jsPDF({
-            unit: 'px',
-            format: [canvas.width, canvas.height],
+            unit: 'pt',
+            format: [pageWidthPt, pageHeightPt],
             compress: true
           });
 
-          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, canvas.width, canvas.height, '', 'FAST');
+          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', 0, 0, pageWidthPt, pageHeightPt, '', 'FAST');
           pdf.save(message.filename || 'custom_report.pdf');
         } catch (err) {
           if (window.Shiny && Shiny.setInputValue) {
@@ -20280,7 +20298,8 @@ ui <- tagList(
         background: #0b0f14;
       }
       .creport-pdf-clone {
-        width: 100%;
+        width: auto;
+        display: inline-block;
       }
       .creport-pdf-clone.creport-pdf-light {
         background: #ffffff;
