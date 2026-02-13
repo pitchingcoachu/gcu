@@ -18040,6 +18040,13 @@ custom_reports_server <- function(id) {
             aes(x = "", y = pct, fill = TaggedPitchType, tooltip = lbl, data_id = rid)
           ) +
             ggiraph::geom_col_interactive(width = 1, color = if (dark_on) "#0b0f14" else "white", linewidth = 0.4) +
+            geom_text(
+              aes(label = sprintf("%.1f%%", pct)),
+              position = position_stack(vjust = 0.5),
+              size = 3.8,
+              color = if (dark_on) "#f3f4f6" else "#111111",
+              fontface = "bold"
+            ) +
             coord_polar(theta = "y") +
             scale_fill_manual(values = col_vals, limits = names(col_vals), name = NULL) +
             theme_void() +
@@ -18073,7 +18080,7 @@ custom_reports_server <- function(id) {
 
           dark_on <- is_dark_mode_local()
           axis_col <- if (dark_on) "#e5e7eb" else "black"
-          grid_col <- adjustcolor(if (dark_on) "white" else "black", alpha.f = if (dark_on) 0.15 else 0.10)
+          grid_col <- adjustcolor(if (dark_on) "white" else "black", alpha.f = if (dark_on) 0.12 else 0.10)
           cols <- colors_for_mode(dark_on)
 
           base_order <- names(all_colors)
@@ -18081,25 +18088,51 @@ custom_reports_server <- function(id) {
           ordered_types_local <- c(base_order[base_order %in% seen_types], setdiff(seen_types, base_order))
           if (!length(ordered_types_local)) return(NULL)
 
-          df_vel <- df_vel %>%
-            dplyr::mutate(
-              TaggedPitchType = factor(as.character(TaggedPitchType), levels = rev(ordered_types_local))
-            )
-
           col_vals <- cols[ordered_types_local]
           col_vals[is.na(col_vals)] <- "gray70"
           names(col_vals) <- ordered_types_local
 
-          ggplot(df_vel, aes(x = RelSpeed, y = TaggedPitchType, fill = TaggedPitchType, color = TaggedPitchType)) +
-            geom_violin(scale = "width", trim = FALSE, alpha = 0.35, linewidth = 0.5) +
-            geom_boxplot(width = 0.10, outlier.alpha = 0.15, fill = if (dark_on) "#0f172a" else "white", color = axis_col) +
+          ridge_data <- lapply(seq_along(ordered_types_local), function(idx) {
+            pt <- ordered_types_local[[idx]]
+            x <- suppressWarnings(as.numeric(df_vel$RelSpeed[df_vel$TaggedPitchType == pt]))
+            x <- x[is.finite(x)]
+            if (!length(x)) return(NULL)
+            if (length(unique(x)) < 2) x <- c(x, x + c(-0.05, 0.05))
+            den <- tryCatch(stats::density(x, na.rm = TRUE, adjust = 1), error = function(e) NULL)
+            if (is.null(den)) return(NULL)
+            base_y <- length(ordered_types_local) - idx + 1  # Fastball at top
+            scaled <- den$y
+            mx <- max(scaled, na.rm = TRUE)
+            if (!is.finite(mx) || mx <= 0) return(NULL)
+            scaled <- scaled / mx
+            data.frame(
+              TaggedPitchType = pt,
+              x = den$x,
+              y_base = base_y,
+              y_top = base_y + scaled * 0.85,
+              stringsAsFactors = FALSE
+            )
+          })
+          ridge_df <- dplyr::bind_rows(ridge_data)
+          if (!nrow(ridge_df)) return(NULL)
+
+          y_breaks <- rev(seq_along(ordered_types_local))
+          y_labels <- ordered_types_local
+
+          ggplot() +
+            geom_hline(yintercept = y_breaks, color = adjustcolor(axis_col, alpha.f = 0.35), linewidth = 0.5) +
+            geom_ribbon(
+              data = ridge_df,
+              aes(x = x, ymin = y_base, ymax = y_top, fill = TaggedPitchType),
+              alpha = 0.92, color = NA
+            ) +
             scale_fill_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
-            scale_color_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
+            scale_y_continuous(breaks = y_breaks, labels = y_labels, expand = expansion(mult = c(0.02, 0.02))) +
             theme_minimal() +
             theme(
               legend.position = "none",
               axis.title.x = element_text(color = axis_col, face = "bold"),
-              axis.title.y = element_blank(),
+              axis.title.y = element_text(color = axis_col, face = "bold"),
               axis.text.x = element_text(color = axis_col),
               axis.text.y = element_text(color = axis_col, face = "bold"),
               panel.grid.major.x = element_line(color = grid_col),
@@ -18108,7 +18141,10 @@ custom_reports_server <- function(id) {
               plot.background = element_rect(fill = "transparent", color = NA),
               panel.background = element_rect(fill = "transparent", color = NA)
             ) +
-            labs(x = "Velocity (MPH)")
+            labs(
+              x = "Velocity (MPH)",
+              y = "Pitch Type"
+            )
         }, bg = "transparent")
         return(plotOutput(ns(out_id), height = "320px"))
       } else if (tsel == "Summary Table") {
@@ -18128,9 +18164,14 @@ custom_reports_server <- function(id) {
               enable_colors = isTRUE(input[[paste0("cell_color_", settings_cell_id)]])
             )
 
-            # Custom Reports only: color Pitch cells by pitch type.
+            # Custom Reports only: color pitch-type column cells by pitch type.
             # Dark mode special rule: Fastball is white background with black text.
-            if ("Pitch" %in% names(df_tbl)) {
+            dt_col_names <- tryCatch(names(dt_tbl$x$data), error = function(...) character(0))
+            pitch_col <- c("Pitch", "Pitch Type", "PitchType")
+            pitch_col <- pitch_col[pitch_col %in% dt_col_names]
+            if (!length(pitch_col) && "Pitch" %in% names(df_tbl)) pitch_col <- "Pitch"
+            if (length(pitch_col)) {
+              pitch_col <- pitch_col[[1]]
               pitch_values <- names(all_colors)
               bg_values <- unname(all_colors[pitch_values])
               text_values <- rep("#ffffff", length(pitch_values))
@@ -18141,7 +18182,7 @@ custom_reports_server <- function(id) {
                 text_values[idx] <- "#000000"
               }
               dt_tbl <- dt_tbl %>% DT::formatStyle(
-                "Pitch",
+                pitch_col,
                 target = "cell",
                 backgroundColor = DT::styleEqual(pitch_values, bg_values),
                 color = DT::styleEqual(pitch_values, text_values),
@@ -21565,10 +21606,19 @@ server <- function(input, output, session) {
   observeEvent(input$dark_mode, {
     if (isTRUE(input$dark_mode)) {
       shinyjs::addClass(selector = "body", class = "theme-dark")
+      if ("Fastball" %in% names(all_colors)) all_colors["Fastball"] <<- "#ffffff"
     } else {
       shinyjs::removeClass(selector = "body", class = "theme-dark")
+      if ("Fastball" %in% names(all_colors)) all_colors["Fastball"] <<- "black"
     }
   }, ignoreInit = TRUE)
+
+  observe({
+    dm <- isTRUE(input$dark_mode)
+    if ("Fastball" %in% names(all_colors)) {
+      all_colors["Fastball"] <<- if (dm) "#ffffff" else "black"
+    }
+  })
   
   last_non_logout_tab <- reactiveVal("Pitching")
   observeEvent(input$top, {
