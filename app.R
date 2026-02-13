@@ -18044,7 +18044,7 @@ custom_reports_server <- function(id) {
               aes(label = sprintf("%.1f%%", pct)),
               position = position_stack(vjust = 0.5),
               size = 3.8,
-              color = if (dark_on) "#f3f4f6" else "#111111",
+              color = if (dark_on) "#000000" else "#111111",
               fontface = "bold"
             ) +
             coord_polar(theta = "y") +
@@ -18076,7 +18076,13 @@ custom_reports_server <- function(id) {
           if (!identical(input$report_type, "Pitching")) return(NULL)
           df_vel <- df %>%
             dplyr::filter(!is.na(TaggedPitchType), nzchar(as.character(TaggedPitchType)), is.finite(RelSpeed))
-          if (!nrow(df_vel)) return(NULL)
+          if (!nrow(df_vel)) {
+            return(
+              ggplot() +
+                theme_void() +
+                annotate("text", x = 0, y = 0, label = "No velocity data for current filters", size = 5)
+            )
+          }
 
           dark_on <- is_dark_mode_local()
           axis_col <- if (dark_on) "#e5e7eb" else "black"
@@ -18086,64 +18092,46 @@ custom_reports_server <- function(id) {
           base_order <- names(all_colors)
           seen_types <- unique(as.character(df_vel$TaggedPitchType))
           ordered_types_local <- c(base_order[base_order %in% seen_types], setdiff(seen_types, base_order))
-          if (!length(ordered_types_local)) return(NULL)
+          if (!length(ordered_types_local)) {
+            return(
+              ggplot() +
+                theme_void() +
+                annotate("text", x = 0, y = 0, label = "No pitch types available", size = 5)
+            )
+          }
 
           col_vals <- cols[ordered_types_local]
           col_vals[is.na(col_vals)] <- "gray70"
           names(col_vals) <- ordered_types_local
 
-          ridge_data <- lapply(seq_along(ordered_types_local), function(idx) {
-            pt <- ordered_types_local[[idx]]
-            x <- suppressWarnings(as.numeric(df_vel$RelSpeed[df_vel$TaggedPitchType == pt]))
-            x <- x[is.finite(x)]
-            if (!length(x)) return(NULL)
-            if (length(unique(x)) < 2) x <- c(x, x + c(-0.05, 0.05))
-            den <- tryCatch(stats::density(x, na.rm = TRUE, adjust = 1), error = function(e) NULL)
-            if (is.null(den)) return(NULL)
-            base_y <- length(ordered_types_local) - idx + 1  # Fastball at top
-            scaled <- den$y
-            mx <- max(scaled, na.rm = TRUE)
-            if (!is.finite(mx) || mx <= 0) return(NULL)
-            scaled <- scaled / mx
-            data.frame(
-              TaggedPitchType = pt,
-              x = den$x,
-              y_base = base_y,
-              y_top = base_y + scaled * 0.85,
-              stringsAsFactors = FALSE
+          df_vel <- df_vel %>%
+            dplyr::mutate(
+              TaggedPitchType = factor(as.character(TaggedPitchType), levels = ordered_types_local)
             )
-          })
-          ridge_df <- dplyr::bind_rows(ridge_data)
-          if (!nrow(ridge_df)) return(NULL)
 
-          y_breaks <- rev(seq_along(ordered_types_local))
-          y_labels <- ordered_types_local
-
-          ggplot() +
-            geom_hline(yintercept = y_breaks, color = adjustcolor(axis_col, alpha.f = 0.35), linewidth = 0.5) +
-            geom_ribbon(
-              data = ridge_df,
-              aes(x = x, ymin = y_base, ymax = y_top, fill = TaggedPitchType),
-              alpha = 0.92, color = NA
-            ) +
+          ggplot(df_vel, aes(x = RelSpeed, fill = TaggedPitchType, color = TaggedPitchType)) +
+            geom_density(alpha = 0.92, linewidth = 0.4, adjust = 1) +
+            facet_grid(TaggedPitchType ~ ., scales = "free_y", switch = "y") +
             scale_fill_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
-            scale_y_continuous(breaks = y_breaks, labels = y_labels, expand = expansion(mult = c(0.02, 0.02))) +
+            scale_color_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
             theme_minimal() +
             theme(
               legend.position = "none",
               axis.title.x = element_text(color = axis_col, face = "bold"),
-              axis.title.y = element_text(color = axis_col, face = "bold"),
+              axis.title.y = element_blank(),
               axis.text.x = element_text(color = axis_col),
               axis.text.y = element_text(color = axis_col, face = "bold"),
+              strip.text.y.left = element_text(color = axis_col, face = "bold"),
+              strip.background = element_rect(fill = "transparent", color = NA),
               panel.grid.major.x = element_line(color = grid_col),
+              panel.grid.major.y = element_line(color = adjustcolor(axis_col, alpha.f = 0.30)),
               panel.grid.minor = element_blank(),
-              panel.grid.major.y = element_blank(),
               plot.background = element_rect(fill = "transparent", color = NA),
               panel.background = element_rect(fill = "transparent", color = NA)
             ) +
             labs(
               x = "Velocity (MPH)",
-              y = "Pitch Type"
+              y = NULL
             )
         }, bg = "transparent")
         return(plotOutput(ns(out_id), height = "320px"))
