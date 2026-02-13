@@ -16334,10 +16334,10 @@ custom_reports_server <- function(id) {
       }
       
       tagList(
-        h3(style = "margin-top:0; margin-bottom:4px; text-align:center;", 
+        h3(style = "margin-top:-8px; margin-bottom:2px; text-align:center;", 
            if (nzchar(title_txt)) title_txt else "Custom Report"),
         if (!is.null(player_lbl)) {
-          div(style = "font-weight:600; margin-bottom:10px; text-align:center;", player_lbl)
+          div(style = "font-weight:600; margin-bottom:8px; text-align:center;", player_lbl)
         }
       )
     })
@@ -20329,9 +20329,7 @@ ui <- tagList(
       .creport-pdf-clone.creport-pdf-dark h5,
       .creport-pdf-clone.creport-pdf-dark div,
       .creport-pdf-clone.creport-pdf-dark span,
-      .creport-pdf-clone.creport-pdf-dark p,
-      .creport-pdf-clone.creport-pdf-dark th,
-      .creport-pdf-clone.creport-pdf-dark td {
+      .creport-pdf-clone.creport-pdf-dark p {
         color: #f3f4f6 !important;
       }
       .creport-pdf-clone.creport-pdf-dark .dataTables_wrapper,
@@ -20342,6 +20340,9 @@ ui <- tagList(
         background: #111827 !important;
         color: #f3f4f6 !important;
         border-color: #2b3340 !important;
+      }
+      .creport-pdf-clone.creport-pdf-dark table.dataTable tbody td:not([style*='color']) {
+        color: #f3f4f6 !important;
       }
       .creport-pdf-clone .creport-brand-logo {
         max-height: 52px;
