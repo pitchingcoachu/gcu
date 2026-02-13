@@ -16811,7 +16811,7 @@ custom_reports_server <- function(id) {
                       ),
                       selectInput(ns(paste0("cell_type_", info$cell_id)), "Content:", 
                                   choices = if (identical(input$report_type, "Pitching")) {
-                                    c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Velocity Chart", "Pitch Usage Pie Chart", "Velocity Distribution", "Summary Table", "Spray Chart")
+                                    c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Velocity Chart", "Pitch Usage Pie Chart", "Pitch Usage Bar Chart", "Velocity Bar Chart", "Velocity Distribution", "Summary Table", "Spray Chart")
                                   } else {
                                     c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart")
                                   },
@@ -18075,11 +18075,119 @@ custom_reports_server <- function(id) {
         })
         return(tagList(
           tags$style(HTML(sprintf(
-            "body.theme-dark #%s text { fill: #000000 !important; }",
-            ns(out_id)
+            paste0(
+              "body.theme-dark #%s text { fill: #000000 !important; }",
+              "body.theme-dark #%s g.legend text { fill: #ffffff !important; }"
+            ),
+            ns(out_id), ns(out_id)
           ))),
           ggiraph::girafeOutput(ns(out_id), height = "300px")
         ))
+      } else if (tsel == "Pitch Usage Bar Chart") {
+        output[[out_id]] <- ggiraph::renderGirafe({
+          if (!identical(input$report_type, "Pitching")) return(NULL)
+          df_use <- df %>% dplyr::filter(!is.na(TaggedPitchType), nzchar(as.character(TaggedPitchType)))
+          if (!nrow(df_use)) return(NULL)
+
+          dark_on <- is_dark_mode_local()
+          axis_col <- if (dark_on) "#e5e7eb" else "black"
+          cols <- colors_for_mode(dark_on)
+          base_order <- names(all_colors)
+          seen_types <- unique(as.character(df_use$TaggedPitchType))
+          ordered_types_local <- c(base_order[base_order %in% seen_types], setdiff(seen_types, base_order))
+          if (!length(ordered_types_local)) return(NULL)
+
+          usage <- df_use %>%
+            dplyr::mutate(TaggedPitchType = factor(as.character(TaggedPitchType), levels = rev(ordered_types_local))) %>%
+            dplyr::count(TaggedPitchType, name = "n", .drop = FALSE) %>%
+            dplyr::filter(!is.na(TaggedPitchType), n > 0) %>%
+            dplyr::mutate(
+              pct = 100 * n / sum(n),
+              pitch_chr = as.character(TaggedPitchType)
+            )
+          if (!nrow(usage)) return(NULL)
+
+          col_vals <- cols[as.character(usage$TaggedPitchType)]
+          col_vals[is.na(col_vals)] <- "gray70"
+          usage$fill_col <- unname(col_vals)
+          usage$text_col <- ifelse(dark_on & usage$pitch_chr == "Fastball", "#000000", "#ffffff")
+
+          p <- ggplot(usage, aes(y = TaggedPitchType)) +
+            geom_col(aes(x = 100), fill = if (dark_on) "#334155" else "#d9e3e6", width = 0.72) +
+            geom_col(aes(x = pct, fill = TaggedPitchType), width = 0.72, show.legend = FALSE) +
+            geom_point(aes(x = pct, fill = TaggedPitchType), shape = 21, size = 11, color = "white", stroke = 1.4, show.legend = FALSE) +
+            geom_text(aes(x = pct, label = sprintf("%.0f%%", round(pct)), color = I(text_col)), fontface = "bold", size = 4.2) +
+            scale_fill_manual(values = setNames(unname(col_vals), as.character(usage$TaggedPitchType))) +
+            scale_x_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 20)) +
+            theme_minimal() +
+            theme(
+              legend.position = "none",
+              axis.title.x = element_blank(),
+              axis.title.y = element_blank(),
+              axis.text.x = element_text(color = axis_col),
+              axis.text.y = element_text(color = axis_col, face = "bold"),
+              panel.grid.major.y = element_blank(),
+              panel.grid.minor = element_blank(),
+              panel.grid.major.x = element_line(color = adjustcolor(axis_col, alpha.f = 0.18)),
+              plot.background = element_rect(fill = "transparent", color = NA),
+              panel.background = element_rect(fill = "transparent", color = NA)
+            )
+
+          girafe_transparent(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE)))
+        })
+        return(ggiraph::girafeOutput(ns(out_id), height = "320px"))
+      } else if (tsel == "Velocity Bar Chart") {
+        output[[out_id]] <- ggiraph::renderGirafe({
+          if (!identical(input$report_type, "Pitching")) return(NULL)
+          df_vel <- df %>% dplyr::filter(!is.na(TaggedPitchType), nzchar(as.character(TaggedPitchType)), is.finite(RelSpeed))
+          if (!nrow(df_vel)) return(NULL)
+
+          dark_on <- is_dark_mode_local()
+          axis_col <- if (dark_on) "#e5e7eb" else "black"
+          cols <- colors_for_mode(dark_on)
+          base_order <- names(all_colors)
+          seen_types <- unique(as.character(df_vel$TaggedPitchType))
+          ordered_types_local <- c(base_order[base_order %in% seen_types], setdiff(seen_types, base_order))
+          if (!length(ordered_types_local)) return(NULL)
+
+          vel_bar <- df_vel %>%
+            dplyr::group_by(TaggedPitchType) %>%
+            dplyr::summarise(avg_velo = mean(RelSpeed, na.rm = TRUE), .groups = "drop") %>%
+            dplyr::filter(is.finite(avg_velo)) %>%
+            dplyr::mutate(
+              TaggedPitchType = factor(as.character(TaggedPitchType), levels = rev(ordered_types_local)),
+              pitch_chr = as.character(TaggedPitchType)
+            )
+          if (!nrow(vel_bar)) return(NULL)
+
+          col_vals <- cols[as.character(vel_bar$TaggedPitchType)]
+          col_vals[is.na(col_vals)] <- "gray70"
+          vel_bar$text_col <- ifelse(dark_on & vel_bar$pitch_chr == "Fastball", "#000000", "#ffffff")
+
+          p <- ggplot(vel_bar, aes(y = TaggedPitchType)) +
+            geom_col(aes(x = 100), fill = if (dark_on) "#334155" else "#d9e3e6", width = 0.72) +
+            geom_col(aes(x = avg_velo, fill = TaggedPitchType), width = 0.72, show.legend = FALSE) +
+            geom_point(aes(x = avg_velo, fill = TaggedPitchType), shape = 21, size = 11, color = "white", stroke = 1.4, show.legend = FALSE) +
+            geom_text(aes(x = avg_velo, label = sprintf("%.1f", avg_velo), color = I(text_col)), fontface = "bold", size = 4.2) +
+            scale_fill_manual(values = setNames(unname(col_vals), as.character(vel_bar$TaggedPitchType))) +
+            scale_x_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 10)) +
+            theme_minimal() +
+            theme(
+              legend.position = "none",
+              axis.title.x = element_blank(),
+              axis.title.y = element_blank(),
+              axis.text.x = element_text(color = axis_col),
+              axis.text.y = element_text(color = axis_col, face = "bold"),
+              panel.grid.major.y = element_blank(),
+              panel.grid.minor = element_blank(),
+              panel.grid.major.x = element_line(color = adjustcolor(axis_col, alpha.f = 0.18)),
+              plot.background = element_rect(fill = "transparent", color = NA),
+              panel.background = element_rect(fill = "transparent", color = NA)
+            )
+
+          girafe_transparent(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE)))
+        })
+        return(ggiraph::girafeOutput(ns(out_id), height = "320px"))
       } else if (tsel == "Velocity Distribution") {
         output[[out_id]] <- ggiraph::renderGirafe({
           if (!identical(input$report_type, "Pitching")) return(NULL)
@@ -18119,6 +18227,24 @@ custom_reports_server <- function(id) {
             dplyr::mutate(
               TaggedPitchType = factor(as.character(TaggedPitchType), levels = ordered_types_local)
             )
+          peak_df <- df_vel %>%
+            dplyr::group_by(TaggedPitchType) %>%
+            dplyr::summarise(
+              x_peak = {
+                x <- suppressWarnings(as.numeric(RelSpeed))
+                x <- x[is.finite(x)]
+                if (!length(x)) {
+                  NA_real_
+                } else if (length(unique(x)) < 2) {
+                  mean(x, na.rm = TRUE)
+                } else {
+                  den <- stats::density(x, na.rm = TRUE, adjust = 1)
+                  den$x[which.max(den$y)]
+                }
+              },
+              .groups = "drop"
+            ) %>%
+            dplyr::filter(is.finite(x_peak))
 
           pitch_label_map <- c(
             "Fastball" = "FB",
@@ -18133,6 +18259,14 @@ custom_reports_server <- function(id) {
 
           p <- ggplot(df_vel, aes(x = RelSpeed, fill = TaggedPitchType, color = TaggedPitchType)) +
             geom_density(alpha = 0.92, linewidth = 0.4, adjust = 1) +
+            geom_vline(
+              data = peak_df,
+              aes(xintercept = x_peak),
+              inherit.aes = FALSE,
+              linetype = "dashed",
+              linewidth = 0.6,
+              color = adjustcolor(axis_col, alpha.f = 0.85)
+            ) +
             facet_grid(
               TaggedPitchType ~ .,
               scales = "free_y",
@@ -18141,6 +18275,20 @@ custom_reports_server <- function(id) {
             ) +
             scale_fill_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
             scale_color_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
+            scale_x_continuous(
+              limits = {
+                max_vel <- suppressWarnings(max(df_vel$RelSpeed, na.rm = TRUE))
+                upper <- ceiling((max_vel + 5) / 5) * 5
+                lower <- floor(min(df_vel$RelSpeed, na.rm = TRUE) / 5) * 5
+                c(lower, upper)
+              },
+              breaks = {
+                max_vel <- suppressWarnings(max(df_vel$RelSpeed, na.rm = TRUE))
+                upper <- ceiling((max_vel + 5) / 5) * 5
+                lower <- floor(min(df_vel$RelSpeed, na.rm = TRUE) / 5) * 5
+                seq(lower, upper, by = 5)
+              }
+            ) +
             theme_minimal() +
             theme(
               legend.position = "none",
