@@ -6565,98 +6565,108 @@ pitch_ui <- function(show_header = FALSE) {
           id = "tabs",
           tabPanel(
             "Summary",
-            uiOutput("summaryHeader"), br(),
-            fluidRow(
-              column(
-                4,
-                div("Release",
-                    style = "font-weight:bold; font-size:15px; margin-bottom:5px; text-align:center;"),
-                div(
-                  style = "text-align:center; margin-bottom:5px;",
-                  selectInput("summaryReleaseDisplay", NULL,
-                              choices = c("Averages Only", "Averages and Pitches", "Pitches"),
-                              selected = "Averages Only",
-                              multiple = FALSE,
-                              width = "100%")
-                ),
-                ggiraph::girafeOutput("summary_releasePlot", height = "300px", width = "100%")
-              ),              
-              column(
-                4,
-                div("Movement",
-                    style = "font-weight:bold; font-size:15px; margin-bottom:5px; text-align:center;"),
-                div(
-                  style = "text-align:center; margin-bottom:5px;",
-                  selectInput("summaryMovementDisplay", NULL,
-                              choices = c("Averages Only", "Averages and Pitches", 
-                                          "Target Shapes Only", "Target Shapes and Pitches"),
-                              selected = c("Averages and Pitches"),
-                              multiple = TRUE,
-                              width = "100%"),
-                  actionButton("targetShapesSettings", "Target Settings", size = "xs", 
-                               style = "padding:2px 8px; font-size:11px; margin-top:-5px;")
-                ),
-                ggiraph::girafeOutput("summary_movementPlot", height = "300px", width = "100%")
-              ),
-              column(
-                4,
-                div(
-                  style = "text-align:center;",
+            div(class = "creport-actions",
+                actionButton(
+                  "download_summary_pdf",
+                  label = tagList(icon("file-pdf"), "Download as PDF"),
+                  class = "btn-primary"
+                )
+            ),
+            div(
+              id = "pitch_summary_pdf_content",
+              uiOutput("summaryHeader"), br(),
+              fluidRow(
+                column(
+                  4,
+                  div("Release",
+                      style = "font-weight:bold; font-size:15px; margin-bottom:5px; text-align:center;"),
                   div(
-                    "HeatMaps",
-                    style = "font-weight:bold; font-size:15px; margin-bottom:5px;"
+                    style = "text-align:center; margin-bottom:5px;",
+                    selectInput("summaryReleaseDisplay", NULL,
+                                choices = c("Averages Only", "Averages and Pitches", "Pitches"),
+                                selected = "Averages Only",
+                                multiple = FALSE,
+                                width = "100%")
                   ),
+                  ggiraph::girafeOutput("summary_releasePlot", height = "300px", width = "100%")
+                ),              
+                column(
+                  4,
+                  div("Movement",
+                      style = "font-weight:bold; font-size:15px; margin-bottom:5px; text-align:center;"),
                   div(
-                    style = "display:inline-block; width:80%;",
-                    selectInput(
-                      "summaryLocType",
-                      label    = NULL,
-                      choices  = c(
-                        "Pitch",
-                        "Frequency",
-                        "Whiff Rate",
-                        "GB Rate",
-                        "Contact Rate",
-                        "Swing Rate",
-                        "Exit Velocity",
-                        "Run Values"
-                      ),
-                      selected = "Pitch",
-                      width    = "100%"
+                    style = "text-align:center; margin-bottom:5px;",
+                    selectInput("summaryMovementDisplay", NULL,
+                                choices = c("Averages Only", "Averages and Pitches", 
+                                            "Target Shapes Only", "Target Shapes and Pitches"),
+                                selected = c("Averages and Pitches"),
+                                multiple = TRUE,
+                                width = "100%"),
+                    actionButton("targetShapesSettings", "Target Settings", size = "xs", 
+                                 style = "padding:2px 8px; font-size:11px; margin-top:-5px;")
+                  ),
+                  ggiraph::girafeOutput("summary_movementPlot", height = "300px", width = "100%")
+                ),
+                column(
+                  4,
+                  div(
+                    style = "text-align:center;",
+                    div(
+                      "HeatMaps",
+                      style = "font-weight:bold; font-size:15px; margin-bottom:5px;"
+                    ),
+                    div(
+                      style = "display:inline-block; width:80%;",
+                      selectInput(
+                        "summaryLocType",
+                        label    = NULL,
+                        choices  = c(
+                          "Pitch",
+                          "Frequency",
+                          "Whiff Rate",
+                          "GB Rate",
+                          "Contact Rate",
+                          "Swing Rate",
+                          "Exit Velocity",
+                          "Run Values"
+                        ),
+                        selected = "Pitch",
+                        width    = "100%"
+                      )
                     )
+                  ),
+                  conditionalPanel(
+                    "input.summaryLocType=='Pitch'",
+                    ggiraph::girafeOutput("summary_zonePlot", height = "300px", width = "100%")
+                  ),
+                  conditionalPanel(
+                    "input.summaryLocType!='Pitch'",
+                    plotOutput("summary_heatZonePlot", height = "300px")
                   )
-                ),
-                conditionalPanel(
-                  "input.summaryLocType=='Pitch'",
-                  ggiraph::girafeOutput("summary_zonePlot", height = "300px", width = "100%")
-                ),
-                conditionalPanel(
-                  "input.summaryLocType!='Pitch'",
-                  plotOutput("summary_heatZonePlot", height = "300px")
                 )
-              )
-            ),
-            fluidRow(
-              column(
-                12,
-                div(
-                  class = "legend-plot-wrap",
-                  style = "display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0px; min-height: 130px;",
-                  plotOutput("summary_legend", height = "70px", width = "100%"),
-                  plotOutput("summary_result_legend", height = "70px", width = "100%")
+              ),
+              fluidRow(
+                column(
+                  12,
+                  div(
+                    class = "legend-plot-wrap",
+                    style = "display:flex; flex-direction:column; align-items:center; justify-content:center; gap:0px; min-height: 130px;",
+                    plotOutput("summary_legend", height = "70px", width = "100%"),
+                    plotOutput("summary_result_legend", height = "70px", width = "100%")
+                  )
                 )
-              )
-            ),
-            tags$style(HTML("
-              #summary_legend, #summary_result_legend {
-                background: transparent !important;
-                border: none !important;
-                box-shadow: none !important;
-              }
-            ")),
-            br(),
-            div(style = "margin: 8px 0;", uiOutput("summaryTableButtons")),
-            DT::dataTableOutput("summaryTablePage")
+              ),
+              tags$style(HTML("
+                #summary_legend, #summary_result_legend {
+                  background: transparent !important;
+                  border: none !important;
+                  box-shadow: none !important;
+                }
+              ")),
+              br(),
+              div(style = "margin: 8px 0;", uiOutput("summaryTableButtons")),
+              DT::dataTableOutput("summaryTablePage")
+            )
           ),
           tabPanel(
             "Workload",
@@ -16335,7 +16345,7 @@ custom_reports_server <- function(id) {
       
       tagList(
         div(
-          style = "margin-top:-22px; margin-bottom:14px;",
+          style = "margin-top:-48px; margin-bottom:8px;",
           h3(style = "margin-top:0; margin-bottom:2px; text-align:center;",
              if (nzchar(title_txt)) title_txt else "Custom Report"),
           if (!is.null(player_lbl)) {
@@ -16801,7 +16811,7 @@ custom_reports_server <- function(id) {
                       ),
                       selectInput(ns(paste0("cell_type_", info$cell_id)), "Content:", 
                                   choices = if (identical(input$report_type, "Pitching")) {
-                                    c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Velocity Chart", "Summary Table", "Spray Chart")
+                                    c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Velocity Chart", "Pitch Usage Pie Chart", "Velocity Distribution", "Summary Table", "Spray Chart")
                                   } else {
                                     c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart")
                                   },
@@ -17596,8 +17606,8 @@ custom_reports_server <- function(id) {
                 position = "identity",
                 size = 4.0, alpha = 0.95, stroke = 0.8
               ) +
-              scale_color_manual(values = all_colors[types_chr], limits = types_chr, name = NULL) +
-              scale_fill_manual(values  = all_colors[types_chr], limits = types_chr, name = NULL) +
+              scale_color_manual(values = cols[types_chr], limits = types_chr, name = NULL) +
+              scale_fill_manual(values  = cols[types_chr], limits = types_chr, name = NULL) +
               scale_shape_manual(values = shape_map, drop = TRUE, name = NULL) +
               coord_fixed(ratio = 1, xlim = c(-3, 3), ylim = c(0.5, 5)) +
               theme_void() + theme(legend.position = "none") +
@@ -17994,6 +18004,113 @@ custom_reports_server <- function(id) {
           )
         })
         return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
+      } else if (tsel == "Pitch Usage Pie Chart") {
+        output[[out_id]] <- ggiraph::renderGirafe({
+          if (!identical(input$report_type, "Pitching")) return(NULL)
+          df_use <- df %>% dplyr::filter(!is.na(TaggedPitchType), nzchar(as.character(TaggedPitchType)))
+          if (!nrow(df_use)) return(NULL)
+
+          dark_on <- is_dark_mode_local()
+          text_col <- if (dark_on) "#e5e7eb" else "black"
+          cols <- colors_for_mode(dark_on)
+
+          base_order <- names(all_colors)
+          seen_types <- unique(as.character(df_use$TaggedPitchType))
+          ordered_types_local <- c(base_order[base_order %in% seen_types], setdiff(seen_types, base_order))
+          if (!length(ordered_types_local)) return(NULL)
+
+          usage <- df_use %>%
+            dplyr::mutate(TaggedPitchType = factor(as.character(TaggedPitchType), levels = ordered_types_local)) %>%
+            dplyr::count(TaggedPitchType, name = "n", .drop = FALSE) %>%
+            dplyr::filter(!is.na(TaggedPitchType), n > 0) %>%
+            dplyr::arrange(TaggedPitchType) %>%
+            dplyr::mutate(
+              pct = 100 * n / sum(n),
+              lbl = paste0(as.character(TaggedPitchType), " ", sprintf("%.1f%%", pct)),
+              rid = as.character(TaggedPitchType)
+            )
+          if (!nrow(usage)) return(NULL)
+
+          col_vals <- cols[as.character(usage$TaggedPitchType)]
+          col_vals[is.na(col_vals)] <- "gray70"
+          names(col_vals) <- as.character(usage$TaggedPitchType)
+
+          p <- ggplot(
+            usage,
+            aes(x = "", y = pct, fill = TaggedPitchType, tooltip = lbl, data_id = rid)
+          ) +
+            ggiraph::geom_col_interactive(width = 1, color = if (dark_on) "#0b0f14" else "white", linewidth = 0.4) +
+            coord_polar(theta = "y") +
+            scale_fill_manual(values = col_vals, limits = names(col_vals), name = NULL) +
+            theme_void() +
+            theme(
+              legend.position = "right",
+              legend.text = element_text(color = text_col, size = 11),
+              legend.title = element_blank(),
+              plot.title = element_text(color = text_col, hjust = 0.5, face = "bold"),
+              plot.background = element_rect(fill = "transparent", color = NA),
+              panel.background = element_rect(fill = "transparent", color = NA)
+            ) +
+            labs(title = "Pitch Usage (%)")
+
+          girafe_transparent(
+            ggobj = p,
+            options = list(
+              ggiraph::opts_sizing(rescale = TRUE),
+              ggiraph::opts_tooltip(use_fill = TRUE, css = tooltip_css_local),
+              ggiraph::opts_hover(css = "stroke:black;stroke-width:1.5px;"),
+              ggiraph::opts_hover_inv(css = "opacity:0.2;")
+            )
+          )
+        })
+        return(ggiraph::girafeOutput(ns(out_id), height = "300px"))
+      } else if (tsel == "Velocity Distribution") {
+        output[[out_id]] <- renderPlot({
+          if (!identical(input$report_type, "Pitching")) return(NULL)
+          df_vel <- df %>%
+            dplyr::filter(!is.na(TaggedPitchType), nzchar(as.character(TaggedPitchType)), is.finite(RelSpeed))
+          if (!nrow(df_vel)) return(NULL)
+
+          dark_on <- is_dark_mode_local()
+          axis_col <- if (dark_on) "#e5e7eb" else "black"
+          grid_col <- adjustcolor(if (dark_on) "white" else "black", alpha.f = if (dark_on) 0.15 else 0.10)
+          cols <- colors_for_mode(dark_on)
+
+          base_order <- names(all_colors)
+          seen_types <- unique(as.character(df_vel$TaggedPitchType))
+          ordered_types_local <- c(base_order[base_order %in% seen_types], setdiff(seen_types, base_order))
+          if (!length(ordered_types_local)) return(NULL)
+
+          df_vel <- df_vel %>%
+            dplyr::mutate(
+              TaggedPitchType = factor(as.character(TaggedPitchType), levels = rev(ordered_types_local))
+            )
+
+          col_vals <- cols[ordered_types_local]
+          col_vals[is.na(col_vals)] <- "gray70"
+          names(col_vals) <- ordered_types_local
+
+          ggplot(df_vel, aes(x = RelSpeed, y = TaggedPitchType, fill = TaggedPitchType, color = TaggedPitchType)) +
+            geom_violin(scale = "width", trim = FALSE, alpha = 0.35, linewidth = 0.5) +
+            geom_boxplot(width = 0.10, outlier.alpha = 0.15, fill = if (dark_on) "#0f172a" else "white", color = axis_col) +
+            scale_fill_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
+            scale_color_manual(values = col_vals, breaks = ordered_types_local, drop = FALSE) +
+            theme_minimal() +
+            theme(
+              legend.position = "none",
+              axis.title.x = element_text(color = axis_col, face = "bold"),
+              axis.title.y = element_blank(),
+              axis.text.x = element_text(color = axis_col),
+              axis.text.y = element_text(color = axis_col, face = "bold"),
+              panel.grid.major.x = element_line(color = grid_col),
+              panel.grid.minor = element_blank(),
+              panel.grid.major.y = element_blank(),
+              plot.background = element_rect(fill = "transparent", color = NA),
+              panel.background = element_rect(fill = "transparent", color = NA)
+            ) +
+            labs(x = "Velocity (MPH)")
+        }, bg = "transparent")
+        return(plotOutput(ns(out_id), height = "320px"))
       } else if (tsel == "Summary Table") {
         output[[out_id]] <- DT::renderDataTable({
           tryCatch({
@@ -18004,12 +18121,34 @@ custom_reports_server <- function(id) {
             df_tbl <- apply_split_by(df, fsel)
             attr(df_tbl, "domain") <- if (input$report_type == "Hitting") "Hitter" else "Pitcher"
             attr(df_tbl, "split_choice") <- fsel
-            .dp_like_table(
+            dt_tbl <- .dp_like_table(
               df_tbl,
               res_mode$mode,
               res_mode$cols,
               enable_colors = isTRUE(input[[paste0("cell_color_", settings_cell_id)]])
             )
+
+            # Custom Reports only: color Pitch cells by pitch type.
+            # Dark mode special rule: Fastball is white background with black text.
+            if ("Pitch" %in% names(df_tbl)) {
+              pitch_values <- names(all_colors)
+              bg_values <- unname(all_colors[pitch_values])
+              text_values <- rep("#ffffff", length(pitch_values))
+              dark_on <- is_dark_mode_local()
+              if (dark_on && "Fastball" %in% pitch_values) {
+                idx <- which(pitch_values == "Fastball")
+                bg_values[idx] <- "#ffffff"
+                text_values[idx] <- "#000000"
+              }
+              dt_tbl <- dt_tbl %>% DT::formatStyle(
+                "Pitch",
+                target = "cell",
+                backgroundColor = DT::styleEqual(pitch_values, bg_values),
+                color = DT::styleEqual(pitch_values, text_values),
+                fontWeight = "700"
+              )
+            }
+            dt_tbl
           }, error = function(e) {
             message("Error rendering custom reports table: ", e$message)
             DT::datatable(
@@ -25439,6 +25578,48 @@ deg_to_clock <- function(x) {
       }
     }
   )
+
+  observeEvent(input$download_summary_pdf, {
+    default_name <- paste0("pitching_summary_report_", format(Sys.Date(), "%Y%m%d"))
+    showModal(modalDialog(
+      title = "Download Summary PDF",
+      textInput("summary_pdf_filename", "File name:", value = default_name),
+      footer = tagList(
+        modalButton("Cancel"),
+        actionButton("confirm_download_summary_pdf", "Download PDF", class = "btn-primary")
+      ),
+      easyClose = TRUE
+    ))
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$confirm_download_summary_pdf, {
+    title_txt <- trimws(input$summary_pdf_filename %||% "")
+    if (!nzchar(title_txt)) {
+      showNotification("Please enter a file name.", type = "warning")
+      return()
+    }
+    safe_title <- gsub("[^A-Za-z0-9 _-]+", "", title_txt)
+    safe_title <- gsub("\\s+", "_", safe_title)
+    safe_title <- gsub("_+", "_", safe_title)
+    safe_title <- gsub("^_|_$", "", safe_title)
+    if (!nzchar(safe_title)) safe_title <- "pitching_summary_report"
+    file_name <- sprintf("%s.pdf", safe_title)
+
+    session$sendCustomMessage("creports_download_pdf", list(
+      targetId = "pitch_summary_pdf_content",
+      buttonId = "download_summary_pdf",
+      errorInputId = "summary_pdf_error",
+      filename = file_name
+    ))
+    removeModal()
+  }, ignoreInit = TRUE)
+
+  observeEvent(input$summary_pdf_error, {
+    msg <- trimws(input$summary_pdf_error %||% "")
+    if (nzchar(msg)) {
+      showNotification(paste("Summary PDF download failed:", msg), type = "error", duration = 6)
+    }
+  }, ignoreInit = TRUE)
   
   # Status text output
   output$modificationStatusText <- renderText({
