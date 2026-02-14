@@ -928,3 +928,27 @@
 20260213-NickDenesField-2_unverified.csv
 # Auto-pruned non-team data
 20260213-WoffordCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260213-JimPerry-1_unverified.csv
+# Auto-pruned non-team data
+20260213-KennesawState-2_unverified.csv
+# Auto-pruned non-team data
+20260213-MSST-1_unverified.csv
+# Auto-pruned non-team data
+20260213-OleMiss-1_unverified.csv
+# Auto-pruned non-team data
+20260213-RonaldGallagherStad-1_unverified.csv
+# Auto-pruned non-team data
+20260213-SEMissouriState-1_unverified.csv
+# Auto-pruned non-team data
+20260213-SEMissouriState-2_unverified.csv
+# Auto-pruned non-team data
+20260213-SwellThomasStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260213-UNCCharlotte-1_unverified.csv
+# Auto-pruned non-team data
+20260213-UofMontevallo-1_unverified.csv
+# Auto-pruned non-team data
+20260213-UofMontevallo-2_unverified.csv
+# Auto-pruned non-team data
+20260213-UofSouthCarolina-2_unverified.csv
