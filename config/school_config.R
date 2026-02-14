@@ -2,6 +2,9 @@
 # Copy this file to another repo and keep the same structure when you need to customize colors, logos, APIs, etc.
 school_config <- list(
   team_code = "GCU",
+  # Additional school-code markers used in TrackMan team columns (optional).
+  # These are checked alongside team_code during allowed-player verification.
+  team_code_markers = c("GRA_CAN", "GRAND CANYON", "GCU"),
   # Player filters
   allowed_pitchers = c(
     "Lee, Aidan",
@@ -27,7 +30,6 @@ school_config <- list(
     "Key, Chance",
     "Orr, Dillon",
     "Yates, Zach",
-    "New, Cody",
     "Boever, Cael",
     "Bianchina, Vince",
     "Matranga, Austin",
@@ -76,7 +78,6 @@ school_config <- list(
     "Key, Chance",
     "Orr, Dillon",
     "Yates, Zach",
-    "New, Cody",
     "Boever, Cael",
     "Bianchina, Vince",
     "Matranga, Austin",

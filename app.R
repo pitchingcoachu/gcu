@@ -196,7 +196,8 @@ resolve_dark_mode_from_domain <- function(dom = shiny::getDefaultReactiveDomain(
 draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
                       title = NULL, mark_max = TRUE, breaks = NULL,
                       show_scale = FALSE, scale_label = NULL, scale_limits = NULL,
-                      scale_breaks = NULL, scale_labels = NULL) {
+                      scale_breaks = NULL, scale_labels = NULL,
+                      xlim = c(-2.5, 2.5), ylim = c(0, 4.5)) {
   if (!nrow(grid)) return(ggplot() + theme_void())
   dark_on <- resolve_dark_mode_from_domain()
   line_col <- if (dark_on) "#ffffff" else "black"
@@ -238,7 +239,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
       geom_point(data = peak_df, aes(x = px, y = py), inherit.aes = FALSE,
                  size = 3.8, shape = 21, fill = "red", color = "black", stroke = 0.5)
     } +
-    coord_fixed(ratio = 1, xlim = c(-2.5, 2.5), ylim = c(0, 4.5)) +
+    coord_fixed(ratio = 1, xlim = xlim, ylim = ylim) +
     theme_void() + 
     theme(legend.position = "none",
           plot.title = element_text(face = "bold", hjust = 0.5),
@@ -538,7 +539,7 @@ make_kde_mean_grid <- function(x, y, values,
 }
 
 # Shared heatmap stat renderer (Pitching-style) used across suites
-render_heatmap_stat <- function(df, stat) {
+render_heatmap_stat <- function(df, stat, plot_xlim = c(-2.5, 2.5), plot_ylim = c(0, 4.5)) {
   if (!nrow(df)) return(ggplot() + theme_void())
   if (identical(stat, "Exit Velocity")) stat <- "EV"
   
@@ -549,7 +550,9 @@ render_heatmap_stat <- function(df, stat) {
     return(draw_heat(
       grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr, mark_max = FALSE,
       show_scale = TRUE, scale_label = "Pitch Frequency",
-      scale_limits = c(0, 80)
+      scale_limits = c(0, 80),
+      xlim = plot_xlim,
+      ylim = plot_ylim
     ))
   }
   
@@ -568,7 +571,9 @@ render_heatmap_stat <- function(df, stat) {
     return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
                      breaks = breaks, mark_max = FALSE,
                      show_scale = TRUE, scale_label = "Whiff Rate %",
-                     scale_limits = c(0, 50)))
+                     scale_limits = c(0, 50),
+                     xlim = plot_xlim,
+                     ylim = plot_ylim))
   }
   
   if (stat == "GB Rate") {
@@ -586,7 +591,9 @@ render_heatmap_stat <- function(df, stat) {
     return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
                      breaks = breaks, mark_max = FALSE,
                      show_scale = TRUE, scale_label = "GB Rate %",
-                     scale_limits = c(0, 70)))
+                     scale_limits = c(0, 70),
+                     xlim = plot_xlim,
+                     ylim = plot_ylim))
   }
   
   if (stat == "Contact Rate") {
@@ -601,7 +608,9 @@ render_heatmap_stat <- function(df, stat) {
     return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
                      breaks = breaks, mark_max = FALSE,
                      show_scale = TRUE, scale_label = "Contact Rate %",
-                     scale_limits = c(50, 100)))
+                     scale_limits = c(50, 100),
+                     xlim = plot_xlim,
+                     ylim = plot_ylim))
   }
   
   if (stat == "Swing Rate") {
@@ -615,7 +624,9 @@ render_heatmap_stat <- function(df, stat) {
     return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
                      breaks = breaks, mark_max = FALSE,
                      show_scale = TRUE, scale_label = "Swing Rate %",
-                     scale_limits = c(20, 80)))
+                     scale_limits = c(20, 80),
+                     xlim = plot_xlim,
+                     ylim = plot_ylim))
   }
   
   if (stat == "EV") {
@@ -632,7 +643,9 @@ render_heatmap_stat <- function(df, stat) {
     return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
                      breaks = breaks, mark_max = FALSE,
                      show_scale = TRUE, scale_label = "Exit Velocity (mph)",
-                     scale_limits = c(60, 110)))
+                     scale_limits = c(60, 110),
+                     xlim = plot_xlim,
+                     ylim = plot_ylim))
   }
   
   if (stat == "Run Values") {
@@ -682,7 +695,9 @@ render_heatmap_stat <- function(df, stat) {
     return(draw_heat(grid, bins = length(breaks) - 1, pal_fun = heat_pal_br_rv, 
                      breaks = breaks, mark_max = FALSE,
                      show_scale = TRUE, scale_label = "RV",
-                     scale_limits = c(-0.2, 0.2)))
+                     scale_limits = c(-0.2, 0.2),
+                     xlim = plot_xlim,
+                     ylim = plot_ylim))
   }
   
   ggplot() + theme_void()
@@ -1364,6 +1379,43 @@ ensure_pitch_keys <- function(df) {
     df$PitchKey[missing] <- compute_pitch_key(df[missing, , drop = FALSE])
   }
   df
+}
+
+deduplicate_pitch_rows <- function(df) {
+  if (!nrow(df)) return(df)
+  df <- ensure_pitch_keys(df)
+  if (!"PitchKey" %in% names(df)) return(df)
+  if (!any(!is.na(df$PitchKey) & nzchar(as.character(df$PitchKey)))) return(df)
+
+  # Keep the most complete row per PitchKey in case duplicate files differ slightly.
+  present_score <- function(x) {
+    if (is.numeric(x)) return(as.integer(is.finite(x)))
+    as.integer(!is.na(x) & nzchar(trimws(as.character(x))))
+  }
+
+  score_cols <- c(
+    "PlayID", "PitchCall", "PlayResult", "TaggedPitchType",
+    "RelSpeed", "InducedVertBreak", "HorzBreak", "PlateLocSide", "PlateLocHeight",
+    "VideoClip", "VideoClip2", "VideoClip3"
+  )
+  score_cols <- intersect(score_cols, names(df))
+  if (!length(score_cols)) score_cols <- names(df)
+
+  df$.row_id <- seq_len(nrow(df))
+  df$.dedupe_score <- 0L
+  for (col in score_cols) {
+    df$.dedupe_score <- df$.dedupe_score + present_score(df[[col]])
+  }
+
+  out <- df %>%
+    dplyr::group_by(PitchKey) %>%
+    dplyr::arrange(dplyr::desc(.dedupe_score), .row_id, .by_group = TRUE) %>%
+    dplyr::slice_head(n = 1) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(.row_id) %>%
+    dplyr::select(-.row_id, -.dedupe_score)
+
+  out
 }
 
 attach_pitch_keys_to_mods <- function(mods_df, base_data, tolerance = 0.5) {
@@ -5150,6 +5202,10 @@ if (length(video_maps) > 0) {
 }
 
 pitch_data <- ensure_pitch_keys(pitch_data)
+rows_before_dedupe <- nrow(pitch_data)
+pitch_data <- deduplicate_pitch_rows(pitch_data)
+rows_after_dedupe <- nrow(pitch_data)
+rows_removed_dedupe <- rows_before_dedupe - rows_after_dedupe
 
 # Friendly load message
 counts <- table(pitch_data$SessionType, useNA = "no")
@@ -5158,6 +5214,9 @@ lcount <- if ("Live"    %in% names(counts)) counts[["Live"]]    else 0
 message("Loaded ", nrow(pitch_data), " rows from ", length(all_csvs),
         " files | Bullpen: ", bcount, " | Live: ", lcount,
         " | root: ", data_parent)
+if (rows_removed_dedupe > 0) {
+  message("Removed ", rows_removed_dedupe, " duplicate pitch rows by PitchKey during load.")
+}
 
 
 # Read lookup table and keep Email in a separate column to avoid .x/.y
@@ -5341,6 +5400,77 @@ ALLOWED_CAMPERS <- school_setting("allowed_campers", c(
 
 # NEW: normalize for case, spaces, punctuation (so "D.J." == "DJ")
 norm_name_ci <- function(x) gsub("[^a-z]", "", tolower(trimws(as.character(x))))
+
+school_marker_tokens <- function() {
+  extra <- school_setting("team_code_markers", character(0))
+  toks <- unique(toupper(trimws(c(TEAM_CODE, school_display_name, extra))))
+  toks[nzchar(toks)]
+}
+
+verify_allowed_players_by_school <- function(df, player_col, allowed_names, label = "players") {
+  allowed_names <- unique(as.character(allowed_names))
+  allowed_names <- allowed_names[nzchar(trimws(allowed_names))]
+  if (!length(allowed_names)) return(allowed_names)
+  if (!player_col %in% names(df)) return(character(0))
+
+  marker_cols <- intersect(c(
+    "PitcherTeam", "BatterTeam", "CatcherTeam",
+    "HomeTeam", "AwayTeam",
+    "HomeTeamForeignID", "AwayTeamForeignID", "GameForeignID"
+  ), names(df))
+  if (!length(marker_cols)) {
+    message("No team marker columns found for ", label, " verification; keeping configured list as-is.")
+    return(allowed_names)
+  }
+
+  tokens <- school_marker_tokens()
+  if (!length(tokens)) {
+    message("No school marker tokens configured; keeping configured ", label, " list as-is.")
+    return(allowed_names)
+  }
+
+  allowed_norm <- unique(norm_name_ci(allowed_names))
+  dat <- df %>%
+    dplyr::mutate(.player_norm = norm_name_ci(.data[[player_col]])) %>%
+    dplyr::filter(.player_norm %in% allowed_norm)
+  if (!nrow(dat)) return(character(0))
+
+  row_has_school <- rep(FALSE, nrow(dat))
+  for (col in marker_cols) {
+    vals <- toupper(trimws(as.character(dat[[col]])))
+    col_has <- rep(FALSE, length(vals))
+    for (tok in tokens) {
+      col_has <- col_has | grepl(tok, vals, fixed = TRUE)
+    }
+    row_has_school <- row_has_school | col_has
+  }
+
+  verified_norm <- unique(dat$.player_norm[row_has_school])
+  verified <- allowed_names[norm_name_ci(allowed_names) %in% verified_norm]
+  verified <- unique(verified)
+
+  dropped <- setdiff(allowed_names, verified)
+  if (length(dropped)) {
+    message(
+      "School-code verification removed ", length(dropped),
+      " configured ", label, " with no matching school marker rows."
+    )
+  }
+  verified
+}
+
+# Enforce team-code evidence for configured school player lists.
+verification_pool_v3 <- pitch_data %>%
+  dplyr::filter(
+    SessionType == "Live" |
+      grepl("[/\\\\]v3[/\\\\]", tolower(as.character(SourceFile)))
+  )
+ALLOWED_PITCHERS <- verify_allowed_players_by_school(
+  verification_pool_v3, player_col = "Pitcher", allowed_names = ALLOWED_PITCHERS, label = "pitchers"
+)
+ALLOWED_HITTERS <- verify_allowed_players_by_school(
+  verification_pool_v3, player_col = "Batter", allowed_names = ALLOWED_HITTERS, label = "hitters"
+)
 
 # Keep the full dataset for Hitting & global refs
 # but build a PITCHING-ONLY copy that is filtered to the whitelist
@@ -16785,7 +16915,7 @@ custom_reports_server <- function(id) {
 
           column(
             width = width, offset = offset,
-            div(class = "creport-cell",
+            div(class = if (isTRUE(info$is_summary)) "creport-cell creport-cell-summary" else "creport-cell",
                 # Compact controls toggle in panel header.
                 div(
                   class = "creport-cell-toolbar",
@@ -16955,7 +17085,7 @@ custom_reports_server <- function(id) {
       })
       
       div(
-        class = "creport-grid",
+        class = paste("creport-grid", paste0("creport-rows-", rows)),
         style = sprintf("--creport-rows:%d; --creport-cols:%d;", rows, cols),
         tagList(grid)
       )
@@ -17693,7 +17823,11 @@ custom_reports_server <- function(id) {
           
           # Heatmap type selection
           hm_stat <- input[[paste0("cell_heat_stat_", settings_cell_id)]] %||% "Frequency"
-          plot_obj <- render_heatmap_stat(df_loc, hm_stat)
+          plot_obj <- render_heatmap_stat(
+            df_loc, hm_stat,
+            plot_xlim = c(-2.0, 2.0),
+            plot_ylim = c(0.6, 4.2)
+          )
           print(plot_obj)
           return(invisible())
           
@@ -18504,6 +18638,15 @@ custom_reports_server <- function(id) {
                 fontWeight = "700"
               )
             }
+            # Ensure the full summary table is visible (no inner paging/scroll clipping).
+            row_count <- tryCatch(nrow(dt_tbl$x$data), error = function(...) NA_integer_)
+            if (is.finite(row_count) && row_count > 0) {
+              dt_tbl$x$options$pageLength <- row_count
+              dt_tbl$x$options$paging <- FALSE
+            }
+            dt_tbl$x$options$scrollY <- NULL
+            dt_tbl$x$options$scrollX <- FALSE
+            dt_tbl$x$options$class <- "compact"
             dt_tbl
           }, error = function(e) {
             message("Error rendering custom reports table: ", e$message)
@@ -18514,7 +18657,7 @@ custom_reports_server <- function(id) {
             )
           })
         })
-        return(DT::dataTableOutput(ns(out_id)))
+        return(DT::dataTableOutput(ns(out_id), height = "auto"))
       } else if (tsel == "Spray Chart") {
         output[[out_id]] <- ggiraph::renderGirafe({
           # Different data filtering based on report type
@@ -20775,7 +20918,7 @@ ui <- tagList(
         object-fit: contain;
       }
       .creport-brand-logo-left {
-        max-height: 90px;
+        max-height: 110px;
       }
       .creport-brand-logo-right {
         max-height: 56px;
@@ -20854,7 +20997,7 @@ ui <- tagList(
         max-height: 52px;
       }
       .creport-pdf-clone .creport-brand-logo-left {
-        max-height: 86px;
+        max-height: 102px;
       }
       .creport-pdf-clone .creport-brand-logo-right {
         max-height: 52px;
@@ -21598,6 +21741,9 @@ ui <- tagList(
           820px
         );
       }
+      .creport-grid.creport-rows-1 {
+        --creport-cell-height: clamp(380px, 56vh, 520px);
+      }
       .creport-grid .row {
         margin-bottom: var(--creport-gap);
       }
@@ -21615,6 +21761,11 @@ ui <- tagList(
         display: flex;
         flex-direction: column;
         overflow: hidden;
+      }
+      .creport-cell.creport-cell-summary {
+        height: auto !important;
+        min-height: var(--creport-cell-height);
+        overflow: visible;
       }
       .creport-cell-toolbar {
         min-height: 26px;
@@ -21647,6 +21798,26 @@ ui <- tagList(
         display: flex;
         align-items: stretch;
         overflow: hidden;
+      }
+      .creport-cell.creport-cell-summary .creport-cell-content {
+        overflow: visible;
+      }
+      .creport-cell.creport-cell-summary .dataTables_wrapper {
+        font-size: 12px;
+      }
+      .creport-cell.creport-cell-summary table.dataTable.compact thead th,
+      .creport-cell.creport-cell-summary table.dataTable.compact tbody td,
+      .creport-cell.creport-cell-summary table.dataTable thead th,
+      .creport-cell.creport-cell-summary table.dataTable tbody td {
+        padding: 4px 6px !important;
+        line-height: 1.15 !important;
+        white-space: nowrap;
+      }
+      .creport-cell.creport-cell-summary table.dataTable thead th {
+        font-size: 11.5px;
+      }
+      .creport-cell.creport-cell-summary table.dataTable tbody td {
+        font-size: 11.5px;
       }
       .creport-controls-container {
         flex: 0 0 auto;
