@@ -4945,7 +4945,8 @@ smooth_mean_grid <- function(x, y, val, lims = c(-2.5,2.5,0,4.5), n = 160,
 draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
                       title = NULL, mark_max = TRUE, breaks = NULL,
                       show_scale = FALSE, scale_label = NULL, scale_limits = NULL,
-                      scale_breaks = NULL, scale_labels = NULL) {
+                      scale_breaks = NULL, scale_labels = NULL,
+                      xlim = c(-2.5, 2.5), ylim = c(0, 4.5)) {
   if (!nrow(grid)) return(ggplot() + theme_void())
   dark_on <- resolve_dark_mode_from_domain()
   line_col <- if (dark_on) "#ffffff" else "black"
@@ -4986,7 +4987,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
       geom_point(data = peak_df, aes(x = px, y = py), inherit.aes = FALSE,
                  size = 3.8, shape = 21, fill = "red", color = "black", stroke = 0.5)
     } +
-    coord_fixed(ratio = 1, xlim = c(-2.5, 2.5), ylim = c(0, 4.5)) +
+    coord_fixed(ratio = 1, xlim = xlim, ylim = ylim) +
     theme_void() + 
     theme(legend.position = "none",
           plot.title = element_text(face = "bold", hjust = 0.5),
@@ -16489,14 +16490,14 @@ custom_reports_server <- function(id) {
       
       tagList(
         div(
-          style = "margin-top:-48px; margin-bottom:8px;",
+          style = "margin-top:-88px; margin-bottom:24px;",
           h3(style = "margin-top:0; margin-bottom:2px; text-align:center; font-size:34px;",
              if (nzchar(title_txt)) title_txt else "Custom Report"),
           if (!is.null(player_lbl)) {
-            div(style = "font-weight:600; margin-bottom:0; text-align:center;", player_lbl)
+            div(style = "font-weight:600; font-size:19px; margin-bottom:0; text-align:center;", player_lbl)
           },
           if (nzchar(subtitle_txt)) {
-            div(style = "font-weight:500; font-size:18px; margin-top:4px; margin-bottom:0; text-align:center;", subtitle_txt)
+            div(style = "font-weight:500; font-size:19px; margin-top:6px; margin-bottom:0; text-align:center;", subtitle_txt)
           }
         )
       )
