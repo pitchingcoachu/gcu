@@ -1056,3 +1056,5 @@
 20260213-CalBerkeley-1_unverified.csv
 # Auto-pruned non-team data
 20260213-DedeauxField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-EarlEWilsonStadium-1_unverified.csv
