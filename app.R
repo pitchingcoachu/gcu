@@ -21733,17 +21733,9 @@ ui <- tagList(
       
       /* Custom Reports cell container */
       .creport-grid {
-        --creport-rows: 1;
-        --creport-cols: 1;
         --creport-gap: 15px;
-        --creport-cell-height: clamp(
-          250px,
-          calc((86vh - ((var(--creport-rows) - 1) * var(--creport-gap))) / var(--creport-rows)),
-          820px
-        );
-      }
-      .creport-grid.creport-rows-1 {
-        --creport-cell-height: clamp(380px, 56vh, 520px);
+        /* Lock panel height to the 2-row feel so extra rows extend the page instead of shrinking panels. */
+        --creport-cell-height: clamp(320px, calc((86vh - var(--creport-gap)) / 2), 520px);
       }
       .creport-grid .row {
         margin-bottom: var(--creport-gap);
