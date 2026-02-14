@@ -18043,6 +18043,9 @@ custom_reports_server <- function(id) {
 
           col_vals <- cols[usage$pitch_chr]
           col_vals[is.na(col_vals)] <- "gray70"
+          if (dark_on) {
+            col_vals[tolower(trimws(usage$pitch_chr)) == "fastball"] <- "#ffffff"
+          }
           usage <- usage %>%
             dplyr::mutate(legend_lbl = factor(legend_lbl, levels = legend_lbl))
           legend_cols <- setNames(unname(col_vals), as.character(usage$legend_lbl))
