@@ -1290,3 +1290,27 @@
 20260213-MercerUniversity-1.csv
 # Auto-pruned non-team data
 20260213-UofMontevallo-1.csv
+# Auto-pruned non-team data
+20260213-HardtField-1.csv
+# Auto-pruned non-team data
+20260213-McBean-1.csv
+# Auto-pruned non-team data
+20260213-MikeDLaneField-1.csv
+# Auto-pruned non-team data
+20260213-PittFieldUOR-1.csv
+# Auto-pruned non-team data
+20260213-RileyPark-1.csv
+# Auto-pruned non-team data
+20260213-SusanKSmithBaseballComplex-1_unverified.csv
+# Auto-pruned non-team data
+20260213-SusanKSmithBaseballComplex-2_unverified.csv
+# Auto-pruned non-team data
+20260213-UofMontevallo-2.csv
+# Auto-pruned non-team data
+20260214-GrierField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-MelchingFielda-1_unverified.csv
+# Auto-pruned non-team data
+20260214-PittFieldUOR-1_unverified.csv
+# Auto-pruned non-team data
+20260214-TheDiamond-1_unverified.csv
