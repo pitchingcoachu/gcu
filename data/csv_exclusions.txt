@@ -1326,3 +1326,15 @@
 20260214-HendersonFieldMarsHill-1_unverified.csv
 # Auto-pruned non-team data
 20260214-LamarUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260210-MarichFieldLaptop-1_unverified.csv
+# Auto-pruned non-team data
+20260213-FranciscoMontaner-11.csv
+# Auto-pruned non-team data
+20260213-LathamPark-2.csv
+# Auto-pruned non-team data
+20260214-HighPointUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260214-StickWilliamsField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-TommyCareyField-1_unverified.csv
