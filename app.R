@@ -18066,7 +18066,6 @@ custom_reports_server <- function(id) {
               color = if (dark_on) "#e5e7eb" else "#111827"
             ) +
             coord_polar(theta = "y") +
-            scale_x_continuous(limits = c(0.5, 1.35)) +
             scale_fill_manual(values = col_vals, limits = names(col_vals), name = NULL) +
             theme_void() +
             theme(
@@ -18107,7 +18106,7 @@ custom_reports_server <- function(id) {
           if (!nrow(df_use)) return(NULL)
 
           dark_on <- is_dark_mode_local()
-          axis_col <- if (dark_on) "#e5e7eb" else "black"
+          axis_col <- if (dark_on) "#ffffff" else "black"
           cols <- colors_for_mode(dark_on)
           base_order <- names(all_colors)
           seen_types <- unique(as.character(df_use$TaggedPitchType))
@@ -18148,7 +18147,7 @@ custom_reports_server <- function(id) {
               show.legend = FALSE
             ) +
             geom_point(aes(x = pct, fill = fill_col), shape = 21, size = 9.2, color = "white", stroke = 1.4, show.legend = FALSE) +
-            geom_text(aes(x = pct, label = label_val, color = I(text_col)), fontface = "bold", size = 3.4, vjust = 0.38) +
+            geom_text(aes(x = pct, label = label_val, color = text_col), fontface = "bold", size = 3.4, vjust = 0.38) +
             scale_fill_identity() +
             scale_color_identity() +
             scale_x_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 20)) +
@@ -18156,17 +18155,18 @@ custom_reports_server <- function(id) {
             theme_minimal() +
             theme(
               legend.position = "none",
-              axis.title.x = element_blank(),
+              axis.title.x = element_text(color = axis_col, face = "bold"),
               axis.title.y = element_blank(),
               axis.text.x = element_text(color = axis_col),
               axis.text.y = element_text(color = axis_col, face = "bold", hjust = 0.5),
               panel.grid.major.y = element_blank(),
               panel.grid.minor = element_blank(),
-              panel.grid.major.x = element_line(color = adjustcolor(axis_col, alpha.f = 0.18)),
+              panel.grid.major.x = element_blank(),
               plot.background = element_rect(fill = "transparent", color = NA),
               panel.background = element_rect(fill = "transparent", color = NA),
               plot.margin = margin(5.5, 16, 5.5, 5.5)
-            )
+            ) +
+            labs(x = "Usage")
 
           girafe_transparent(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE)))
         })
@@ -18178,7 +18178,7 @@ custom_reports_server <- function(id) {
           if (!nrow(df_vel)) return(NULL)
 
           dark_on <- is_dark_mode_local()
-          axis_col <- if (dark_on) "#e5e7eb" else "black"
+          axis_col <- if (dark_on) "#ffffff" else "black"
           cols <- colors_for_mode(dark_on)
           base_order <- names(all_colors)
           seen_types <- unique(as.character(df_vel$TaggedPitchType))
@@ -18219,7 +18219,7 @@ custom_reports_server <- function(id) {
               show.legend = FALSE
             ) +
             geom_point(aes(x = avg_velo, fill = fill_col), shape = 21, size = 9.2, color = "white", stroke = 1.4, show.legend = FALSE) +
-            geom_text(aes(x = avg_velo, label = label_val, color = I(text_col)), fontface = "bold", size = 3.4, vjust = 0.38) +
+            geom_text(aes(x = avg_velo, label = label_val, color = text_col), fontface = "bold", size = 3.4, vjust = 0.38) +
             scale_fill_identity() +
             scale_color_identity() +
             scale_x_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 10)) +
