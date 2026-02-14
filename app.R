@@ -18086,6 +18086,8 @@ custom_reports_server <- function(id) {
               "body.theme-dark #%s svg g.legend rect[fill='black'], ",
               "body.theme-dark #%s svg g.legend rect[fill='#000'], ",
               "body.theme-dark #%s svg g.legend rect[fill='#000000'], ",
+              "body.theme-dark #%s svg g.legend rect[fill='rgb(0,0,0)'], ",
+              "body.theme-dark #%s svg g.legend rect[fill='rgb(0, 0, 0)'], ",
               "body.theme-dark #%s svg g.legend rect[fill='white'], ",
               "body.theme-dark #%s svg g.legend rect[fill='#fff'], ",
               "body.theme-dark #%s svg g.legend rect[fill='#ffffff'], ",
@@ -18096,12 +18098,15 @@ custom_reports_server <- function(id) {
               "body.theme-dark #%s svg g.legend rect[style*='fill: #FFFFFF'] { fill: #ffffff !important; stroke: #ffffff !important; }",
               "body.theme-dark #%s svg g.legend rect[style*='fill: black'], ",
               "body.theme-dark #%s svg g.legend rect[style*='fill:#000'], ",
-              "body.theme-dark #%s svg g.legend rect[style*='fill: #000000'] { fill: #ffffff !important; }"
+              "body.theme-dark #%s svg g.legend rect[style*='fill: #000000'], ",
+              "body.theme-dark #%s svg g.legend rect[style*='fill:rgb(0,0,0)'], ",
+              "body.theme-dark #%s svg g.legend rect[style*='fill: rgb(0,0,0)'], ",
+              "body.theme-dark #%s svg g.legend rect[style*='fill: rgb(0, 0, 0)'] { fill: #ffffff !important; }"
             ),
             ns(out_id), ns(out_id), ns(out_id),
-            ns(out_id), ns(out_id), ns(out_id), ns(out_id),
-            ns(out_id), ns(out_id), ns(out_id), ns(out_id),
-            ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id)
+            ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id),
+            ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id),
+            ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id)
           ))),
           ggiraph::girafeOutput(ns(out_id), height = "300px")
         ))
