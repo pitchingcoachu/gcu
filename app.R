@@ -18027,7 +18027,11 @@ custom_reports_server <- function(id) {
             dplyr::mutate(
               pct = 100 * n / sum(n),
               lbl = paste0(as.character(TaggedPitchType), " ", sprintf("%.1f%%", pct)),
-              rid = as.character(TaggedPitchType)
+              rid = as.character(TaggedPitchType),
+              pct_data_id = paste0("pie_pct_", rid),
+              ymid = cumsum(pct) - (pct / 2),
+              small_rank = cumsum(pct < 5),
+              x_txt = ifelse(pct < 5, 1.16 + 0.05 * ((small_rank - 1) %% 2), 1.00)
             )
           if (!nrow(usage)) return(NULL)
 
@@ -18040,18 +18044,26 @@ custom_reports_server <- function(id) {
             aes(x = 1, y = pct, fill = TaggedPitchType, tooltip = lbl, data_id = rid)
           ) +
             ggiraph::geom_col_interactive(width = 1, color = if (dark_on) "#0b0f14" else "white", linewidth = 0.4) +
-            geom_text(
+            ggiraph::geom_text_interactive(
               data = usage %>% dplyr::filter(pct >= 5),
-              aes(label = sprintf("%.1f%%", pct)),
-              position = position_stack(vjust = 0.5),
+              aes(x = 1.00, y = ymid, label = sprintf("%.1f%%", pct), data_id = pct_data_id),
+              inherit.aes = FALSE,
               size = 3.8,
               fontface = "bold",
               color = if (dark_on) "black" else "white"
             ) +
-            geom_text(
+            geom_segment(
               data = usage %>% dplyr::filter(pct < 5),
-              aes(x = 1.16, label = sprintf("%.1f%%", pct)),
-              position = position_stack(vjust = 0.5),
+              aes(x = 1.00, xend = x_txt - 0.02, y = ymid, yend = ymid),
+              inherit.aes = FALSE,
+              color = if (dark_on) "#d1d5db" else "#4b5563",
+              linewidth = 0.4,
+              arrow = grid::arrow(type = "closed", length = grid::unit(0.05, "inches"))
+            ) +
+            ggiraph::geom_text_interactive(
+              data = usage %>% dplyr::filter(pct < 5),
+              aes(x = x_txt, y = ymid, label = sprintf("%.1f%%", pct), data_id = pct_data_id),
+              inherit.aes = FALSE,
               size = 3.0,
               fontface = "bold",
               color = if (dark_on) "black" else "#111827"
@@ -18081,7 +18093,7 @@ custom_reports_server <- function(id) {
         return(tagList(
           tags$style(HTML(sprintf(
             paste0(
-              "body.theme-dark #%s svg text { fill: #000000 !important; }",
+              "body.theme-dark #%s svg [data-id^='pie_pct_'] { fill: #000000 !important; }",
               "body.theme-dark #%s svg g.legend text, ",
               "body.theme-dark #%s svg g.guide-box text, ",
               "body.theme-dark #%s svg [class*='guide'] text { fill: #ffffff !important; }"
@@ -18121,6 +18133,9 @@ custom_reports_server <- function(id) {
           usage$fill_col[dark_on & fastball_mask] <- "#ffffff"
           usage$text_col <- ifelse(dark_on & fastball_mask, "#000000", "#ffffff")
           usage$label_val <- sprintf("%.0f", round(usage$pct))
+          usage$label_id <- ifelse(dark_on & fastball_mask,
+                                   paste0("bar_fb_", usage$pitch_chr),
+                                   paste0("bar_lbl_", usage$pitch_chr))
           track_col <- if (dark_on) "#7b8794" else "#c7d3d8"
 
           p <- ggplot(usage, aes(y = TaggedPitchType)) +
@@ -18139,7 +18154,10 @@ custom_reports_server <- function(id) {
               show.legend = FALSE
             ) +
             geom_point(aes(x = pct, fill = fill_col), shape = 21, size = 9.2, color = "white", stroke = 1.4, show.legend = FALSE) +
-            geom_text(aes(x = pct, label = label_val, color = text_col), fontface = "bold", size = 3.4, vjust = 0.38) +
+            ggiraph::geom_text_interactive(
+              aes(x = pct, label = label_val, color = text_col, data_id = label_id),
+              fontface = "bold", size = 3.4, vjust = 0.38
+            ) +
             scale_fill_identity() +
             scale_color_identity() +
             scale_x_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 20)) +
@@ -18165,15 +18183,9 @@ custom_reports_server <- function(id) {
         return(tagList(
           tags$style(HTML(sprintf(
             paste0(
-              "body.theme-dark #%s svg text { fill: #ffffff !important; }",
-              "body.theme-dark #%s svg text[fill='black'], ",
-              "body.theme-dark #%s svg text[fill='#000'], ",
-              "body.theme-dark #%s svg text[fill='#000000'], ",
-              "body.theme-dark #%s svg text[style*='fill: black'], ",
-              "body.theme-dark #%s svg text[style*='fill:#000'], ",
-              "body.theme-dark #%s svg text[style*='fill: #000000'] { fill: #000000 !important; }"
+              "body.theme-dark #%s svg [data-id^='bar_fb_'] { fill: #000000 !important; }"
             ),
-            ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id)
+            ns(out_id)
           ))),
           ggiraph::girafeOutput(ns(out_id), height = "320px")
         ))
@@ -18208,6 +18220,9 @@ custom_reports_server <- function(id) {
           vel_bar$fill_col[dark_on & fastball_mask] <- "#ffffff"
           vel_bar$text_col <- ifelse(dark_on & fastball_mask, "#000000", "#ffffff")
           vel_bar$label_val <- as.character(as.integer(floor(vel_bar$avg_velo + 0.5)))
+          vel_bar$label_id <- ifelse(dark_on & fastball_mask,
+                                     paste0("vbar_fb_", vel_bar$pitch_chr),
+                                     paste0("vbar_lbl_", vel_bar$pitch_chr))
           track_col <- if (dark_on) "#7b8794" else "#c7d3d8"
 
           p <- ggplot(vel_bar, aes(y = TaggedPitchType)) +
@@ -18226,7 +18241,10 @@ custom_reports_server <- function(id) {
               show.legend = FALSE
             ) +
             geom_point(aes(x = avg_velo, fill = fill_col), shape = 21, size = 9.2, color = "white", stroke = 1.4, show.legend = FALSE) +
-            geom_text(aes(x = avg_velo, label = label_val, color = text_col), fontface = "bold", size = 3.4, vjust = 0.38) +
+            ggiraph::geom_text_interactive(
+              aes(x = avg_velo, label = label_val, color = text_col, data_id = label_id),
+              fontface = "bold", size = 3.4, vjust = 0.38
+            ) +
             scale_fill_identity() +
             scale_color_identity() +
             scale_x_continuous(limits = c(0, 105), breaks = seq(0, 100, by = 10)) +
@@ -18251,15 +18269,9 @@ custom_reports_server <- function(id) {
         return(tagList(
           tags$style(HTML(sprintf(
             paste0(
-              "body.theme-dark #%s svg text { fill: #ffffff !important; }",
-              "body.theme-dark #%s svg text[fill='black'], ",
-              "body.theme-dark #%s svg text[fill='#000'], ",
-              "body.theme-dark #%s svg text[fill='#000000'], ",
-              "body.theme-dark #%s svg text[style*='fill: black'], ",
-              "body.theme-dark #%s svg text[style*='fill:#000'], ",
-              "body.theme-dark #%s svg text[style*='fill: #000000'] { fill: #000000 !important; }"
+              "body.theme-dark #%s svg [data-id^='vbar_fb_'] { fill: #000000 !important; }"
             ),
-            ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id)
+            ns(out_id)
           ))),
           ggiraph::girafeOutput(ns(out_id), height = "320px")
         ))
