@@ -1018,3 +1018,37 @@
 20260213-IrwinField-3_unverified.csv
 # Auto-pruned non-team data
 20260213-Texas-1_unverified.csv
+# Auto-pruned non-team data
+20260213-AlumniField-2_unverified.csv
+# Auto-pruned non-team data
+20260213-FranciscoMontaner-8_unverified.csv
+# Auto-pruned non-team data
+20260213-FresnoPacificUniversity-2_unverified.csv
+# Auto-pruned non-team data
+20260213-GeorgiaSouthern-1_unverified.csv
+# Auto-pruned non-team data
+20260213-JackCoombs-2_unverified.csv
+# Auto-pruned non-team data
+20260213-JoeMillerBallpark-1_unverified.csv
+# Auto-pruned non-team data
+20260213-MelchingFielda-2_unverified.csv
+# Auto-pruned non-team data
+20260213-Olsen-1_unverified.csv
+# Auto-pruned non-team data
+20260213-PhoenixMunicipal-1_unverified.csv
+# Auto-pruned non-team data
+20260213-RiceUniversity-2_unverified.csv
+# Auto-pruned non-team data
+20260213-TexasStateUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260213-UCLA-1_unverified.csv
+# Auto-pruned non-team data
+20260213-UofMiami-1_unverified.csv
+# Auto-pruned non-team data
+20260213-UofMountOlive-1_unverified.csv
+# Auto-pruned non-team data
+20260213-USouthAlabama-2_unverified.csv
+# Auto-pruned non-team data
+20260213-UTRGVStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260213-WilliamCarey-2_unverified.csv
