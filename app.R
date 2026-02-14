@@ -18027,9 +18027,7 @@ custom_reports_server <- function(id) {
             dplyr::mutate(
               pct = 100 * n / sum(n),
               lbl = paste0(as.character(TaggedPitchType), " ", sprintf("%.1f%%", pct)),
-              rid = as.character(TaggedPitchType),
-              pct_data_id = paste0("pie_pct_", rid),
-              ymid = cumsum(pct) - (pct / 2)
+              rid = as.character(TaggedPitchType)
             )
           if (!nrow(usage)) return(NULL)
 
@@ -18044,26 +18042,11 @@ custom_reports_server <- function(id) {
             ggiraph::geom_col_interactive(width = 1, color = if (dark_on) "#0b0f14" else "white", linewidth = 0.4) +
             geom_text(
               data = usage %>% dplyr::filter(pct >= 5),
-              aes(x = 1, y = ymid, label = sprintf("%.1f%%", pct)),
+              aes(label = sprintf("%.1f%%", pct)),
+              position = position_stack(vjust = 0.5),
               size = 3.8,
               fontface = "bold",
               color = if (dark_on) "black" else "white"
-            ) +
-            geom_segment(
-              data = usage %>% dplyr::filter(pct < 5),
-              aes(x = 1.0, xend = 1.10, y = ymid, yend = ymid),
-              inherit.aes = FALSE,
-              color = if (dark_on) "#d1d5db" else "#4b5563",
-              linewidth = 0.4
-            ) +
-            geom_text(
-              data = usage %>% dplyr::filter(pct < 5),
-              aes(x = 1.16, y = ymid, label = sprintf("%.1f%%", pct)),
-              inherit.aes = FALSE,
-              hjust = 0,
-              size = 3.1,
-              fontface = "bold",
-              color = if (dark_on) "#e5e7eb" else "#111827"
             ) +
             coord_polar(theta = "y") +
             scale_fill_manual(values = col_vals, limits = names(col_vals), name = NULL) +
@@ -18075,8 +18058,7 @@ custom_reports_server <- function(id) {
               plot.title = element_text(color = text_col, hjust = 0.5, face = "bold"),
               plot.background = element_rect(fill = "transparent", color = NA),
               panel.background = element_rect(fill = "transparent", color = NA)
-            ) +
-            labs(title = "Pitch Usage (%)")
+            )
 
           girafe_transparent(
             ggobj = p,
@@ -18126,8 +18108,9 @@ custom_reports_server <- function(id) {
           col_vals <- cols[as.character(usage$TaggedPitchType)]
           col_vals[is.na(col_vals)] <- "gray70"
           usage$fill_col <- unname(col_vals)
-          usage$fill_col[dark_on & usage$pitch_chr == "Fastball"] <- "#ffffff"
-          usage$text_col <- ifelse(dark_on & usage$pitch_chr == "Fastball", "#000000", "#ffffff")
+          fastball_mask <- tolower(trimws(usage$pitch_chr)) == "fastball"
+          usage$fill_col[dark_on & fastball_mask] <- "#ffffff"
+          usage$text_col <- ifelse(dark_on & fastball_mask, "#000000", "#ffffff")
           usage$label_val <- sprintf("%.0f", round(usage$pct))
           track_col <- if (dark_on) "#7b8794" else "#c7d3d8"
 
@@ -18198,8 +18181,9 @@ custom_reports_server <- function(id) {
           col_vals <- cols[as.character(vel_bar$TaggedPitchType)]
           col_vals[is.na(col_vals)] <- "gray70"
           vel_bar$fill_col <- unname(col_vals)
-          vel_bar$fill_col[dark_on & vel_bar$pitch_chr == "Fastball"] <- "#ffffff"
-          vel_bar$text_col <- ifelse(dark_on & vel_bar$pitch_chr == "Fastball", "#000000", "#ffffff")
+          fastball_mask <- tolower(trimws(vel_bar$pitch_chr)) == "fastball"
+          vel_bar$fill_col[dark_on & fastball_mask] <- "#ffffff"
+          vel_bar$text_col <- ifelse(dark_on & fastball_mask, "#000000", "#ffffff")
           vel_bar$label_val <- as.character(as.integer(floor(vel_bar$avg_velo + 0.5)))
           track_col <- if (dark_on) "#7b8794" else "#c7d3d8"
 
