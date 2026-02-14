@@ -1064,3 +1064,33 @@
 20260213-KleinFamilyField-1_unverified.csv
 # Auto-pruned non-team data
 20260213-PeteBeidenField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-Arlington-1_unverified.csv
+# Auto-pruned non-team data
+20260213-Arlington-2.csv
+# Auto-pruned non-team data
+20260213-BrownStroudField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-CarterMemorial-1_unverified.csv
+# Auto-pruned non-team data
+20260213-DavenportField-2.csv
+# Auto-pruned non-team data
+20260213-DSSComplex-2_unverified.csv
+# Auto-pruned non-team data
+20260213-GrayMinorStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260213-HardtField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-LathamPark-2_unverified.csv
+# Auto-pruned non-team data
+20260213-LouisianaLafayette-1_unverified.csv
+# Auto-pruned non-team data
+20260213-LoyolaMarymount-1_unverified.csv
+# Auto-pruned non-team data
+20260213-TonyGwynnStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260213-UCLA-1.csv
+# Auto-pruned non-team data
+20260213-VATech-1.csv
+# Auto-pruned non-team data
+20260213-WarHawkField-1_unverified.csv
