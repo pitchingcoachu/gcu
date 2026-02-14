@@ -914,3 +914,17 @@
 20260213-WilliamCarey-1_unverified.csv
 # Auto-pruned non-team data
 20260213-WinthropUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260213-BenedettiDiamond-1_unverified.csv
+# Auto-pruned non-team data
+20260213-BurchellStallard-1_unverified.csv
+# Auto-pruned non-team data
+20260213-GeorgiaState-1_unverified.csv
+# Auto-pruned non-team data
+20260213-GeorgiaTech-1_unverified.csv
+# Auto-pruned non-team data
+20260213-JohnKurtzField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-NickDenesField-2_unverified.csv
+# Auto-pruned non-team data
+20260213-WoffordCollege-1_unverified.csv
