@@ -1004,3 +1004,17 @@
 20260213-UNorthFlorida-1_unverified.csv
 # Auto-pruned non-team data
 20260213-USFBaseballStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260213-AlabamaState-1_unverified.csv
+# Auto-pruned non-team data
+20260213-CondronBallpark-1_unverified.csv
+# Auto-pruned non-team data
+20260213-DallasBaptist-2_unverified.csv
+# Auto-pruned non-team data
+20260213-DubHerringPark-2_unverified.csv
+# Auto-pruned non-team data
+20260213-FAUBaseballStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260213-IrwinField-3_unverified.csv
+# Auto-pruned non-team data
+20260213-Texas-1_unverified.csv
