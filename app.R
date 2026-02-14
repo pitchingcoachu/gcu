@@ -18048,6 +18048,14 @@ custom_reports_server <- function(id) {
               fontface = "bold",
               color = if (dark_on) "black" else "white"
             ) +
+            geom_text(
+              data = usage %>% dplyr::filter(pct < 5),
+              aes(x = 1.16, label = sprintf("%.1f%%", pct)),
+              position = position_stack(vjust = 0.5),
+              size = 3.0,
+              fontface = "bold",
+              color = if (dark_on) "black" else "#111827"
+            ) +
             coord_polar(theta = "y") +
             scale_fill_manual(values = col_vals, limits = names(col_vals), name = NULL) +
             theme_void() +
@@ -18073,11 +18081,12 @@ custom_reports_server <- function(id) {
         return(tagList(
           tags$style(HTML(sprintf(
             paste0(
+              "body.theme-dark #%s svg text { fill: #000000 !important; }",
               "body.theme-dark #%s svg g.legend text, ",
               "body.theme-dark #%s svg g.guide-box text, ",
               "body.theme-dark #%s svg [class*='guide'] text { fill: #ffffff !important; }"
             ),
-            ns(out_id), ns(out_id), ns(out_id)
+            ns(out_id), ns(out_id), ns(out_id), ns(out_id)
           ))),
           ggiraph::girafeOutput(ns(out_id), height = "300px")
         ))
@@ -18153,7 +18162,21 @@ custom_reports_server <- function(id) {
 
           girafe_transparent(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE)))
         })
-        return(ggiraph::girafeOutput(ns(out_id), height = "320px"))
+        return(tagList(
+          tags$style(HTML(sprintf(
+            paste0(
+              "body.theme-dark #%s svg text { fill: #ffffff !important; }",
+              "body.theme-dark #%s svg text[fill='black'], ",
+              "body.theme-dark #%s svg text[fill='#000'], ",
+              "body.theme-dark #%s svg text[fill='#000000'], ",
+              "body.theme-dark #%s svg text[style*='fill: black'], ",
+              "body.theme-dark #%s svg text[style*='fill:#000'], ",
+              "body.theme-dark #%s svg text[style*='fill: #000000'] { fill: #000000 !important; }"
+            ),
+            ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id)
+          ))),
+          ggiraph::girafeOutput(ns(out_id), height = "320px")
+        ))
       } else if (tsel == "Velocity Bar Chart") {
         output[[out_id]] <- ggiraph::renderGirafe({
           if (!identical(input$report_type, "Pitching")) return(NULL)
@@ -18225,7 +18248,21 @@ custom_reports_server <- function(id) {
 
           girafe_transparent(ggobj = p, options = list(ggiraph::opts_sizing(rescale = TRUE)))
         })
-        return(ggiraph::girafeOutput(ns(out_id), height = "320px"))
+        return(tagList(
+          tags$style(HTML(sprintf(
+            paste0(
+              "body.theme-dark #%s svg text { fill: #ffffff !important; }",
+              "body.theme-dark #%s svg text[fill='black'], ",
+              "body.theme-dark #%s svg text[fill='#000'], ",
+              "body.theme-dark #%s svg text[fill='#000000'], ",
+              "body.theme-dark #%s svg text[style*='fill: black'], ",
+              "body.theme-dark #%s svg text[style*='fill:#000'], ",
+              "body.theme-dark #%s svg text[style*='fill: #000000'] { fill: #000000 !important; }"
+            ),
+            ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id)
+          ))),
+          ggiraph::girafeOutput(ns(out_id), height = "320px")
+        ))
       } else if (tsel == "Velocity Distribution") {
         output[[out_id]] <- ggiraph::renderGirafe({
           if (!identical(input$report_type, "Pitching")) return(NULL)
