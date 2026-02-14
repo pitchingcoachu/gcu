@@ -1278,3 +1278,9 @@
 20260213-GoodwinField-1_unverified.csv
 # Auto-pruned non-team data
 20260213-LoyolaMarymount-1.csv
+# Auto-pruned non-team data
+20260213-CarterMemorial-1.csv
+# Auto-pruned non-team data
+20260213-FedExPark-1.csv
+# Auto-pruned non-team data
+20260213-TreveccaNazareneBC-2.csv
