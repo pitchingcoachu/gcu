@@ -952,3 +952,15 @@
 20260213-UofMontevallo-2_unverified.csv
 # Auto-pruned non-team data
 20260213-UofSouthCarolina-2_unverified.csv
+# Auto-pruned non-team data
+20260213-FedExPark-1_unverified.csv
+# Auto-pruned non-team data
+20260213-HenleyField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-KennesawState-1.csv
+# Auto-pruned non-team data
+20260213-PresbyterianCollege-3_unverified.csv
+# Auto-pruned non-team data
+20260213-SamfordUniversity-3_unverified.csv
+# Auto-pruned non-team data
+20260213-UTSanAntonio-1_unverified.csv
