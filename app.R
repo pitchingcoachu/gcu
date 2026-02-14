@@ -64,6 +64,16 @@ school_setting <- function(name, default = NULL) {
 TEAM_CODE <- school_setting("team_code", TEAM_CODE)
 if (!nzchar(TEAM_CODE)) TEAM_CODE <- "OSU"
 school_logo <- school_setting("logo", "PCUlogo.png")
+custom_reports_light_logo_cfg <- school_setting("custom_reports_light_logo", NULL)
+custom_reports_light_logo <- if (
+  !is.null(custom_reports_light_logo_cfg) &&
+    nzchar(custom_reports_light_logo_cfg) &&
+    file.exists(file.path("www", custom_reports_light_logo_cfg))
+) {
+  custom_reports_light_logo_cfg
+} else {
+  school_logo
+}
 school_extra <- school_setting("extra", list())
 school_display_name <- school_extra$school_name
 if (is.null(school_display_name) || !nzchar(school_display_name)) {
@@ -16004,7 +16014,8 @@ custom_reports_ui <- function(id) {
                div(id = ns("report_pdf_content"),
                    div(class = "creport-brandbar",
                        tags$img(src = "PCUlogo.png", class = "creport-brand-logo creport-brand-logo-left", alt = "PCU"),
-                       tags$img(src = school_logo, class = "creport-brand-logo creport-brand-logo-right", alt = school_display_name)
+                       tags$img(src = school_logo, class = "creport-brand-logo creport-brand-logo-right creport-logo-default", alt = school_display_name),
+                       tags$img(src = custom_reports_light_logo, class = "creport-brand-logo creport-brand-logo-right creport-logo-light", alt = school_display_name)
                    ),
                    uiOutput(ns("report_header")),
                    div(id = ns("report_canvas_wrapper"),
@@ -20769,6 +20780,21 @@ ui <- tagList(
       .creport-brand-logo-right {
         max-height: 56px;
       }
+      .creport-logo-light {
+        display: none;
+      }
+      body:not(.theme-dark) .creports-root .creport-logo-default {
+        display: none !important;
+      }
+      body:not(.theme-dark) .creports-root .creport-logo-light {
+        display: block !important;
+      }
+      body.theme-dark .creports-root .creport-logo-default {
+        display: block !important;
+      }
+      body.theme-dark .creports-root .creport-logo-light {
+        display: none !important;
+      }
       .creport-pdf-sandbox {
         position: fixed;
         left: -100000px;
@@ -20832,6 +20858,21 @@ ui <- tagList(
       }
       .creport-pdf-clone .creport-brand-logo-right {
         max-height: 52px;
+      }
+      .creport-pdf-clone .creport-logo-light {
+        display: none;
+      }
+      .creport-pdf-clone.creport-pdf-light .creport-logo-default {
+        display: none !important;
+      }
+      .creport-pdf-clone.creport-pdf-light .creport-logo-light {
+        display: block !important;
+      }
+      .creport-pdf-clone.creport-pdf-dark .creport-logo-default {
+        display: block !important;
+      }
+      .creport-pdf-clone.creport-pdf-dark .creport-logo-light {
+        display: none !important;
       }
     ")),
     # Custom authentication disabled - no need for token persistence

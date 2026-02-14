@@ -141,6 +141,9 @@ school_config <- list(
     
   ),
   logo = "GCUlogo.png",
+  # Optional: Custom Reports page only (light mode + light PDF) alternate right-side logo.
+  # If omitted or file is missing in /www, app automatically falls back to `logo`.
+  custom_reports_light_logo = "GCUpurplelogo.png",
   coaches_emails = c(
     "banni17@yahoo.com",
     "adam.racine@aol.com",
