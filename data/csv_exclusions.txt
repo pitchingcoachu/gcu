@@ -1284,3 +1284,9 @@
 20260213-FedExPark-1.csv
 # Auto-pruned non-team data
 20260213-TreveccaNazareneBC-2.csv
+# Auto-pruned non-team data
+20260213-KleinFamilyField-1.csv
+# Auto-pruned non-team data
+20260213-MercerUniversity-1.csv
+# Auto-pruned non-team data
+20260213-UofMontevallo-1.csv
