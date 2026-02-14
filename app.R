@@ -16800,6 +16800,7 @@ custom_reports_server <- function(id) {
                 # Controls container - always render but hide with CSS for rows 2+
                 div(
                   id = ns(paste0("cell_controls_container_", info$cell_id)),
+                  class = "creport-controls-container",
                   style = if (info$is_controlled_row) "display:none;" else "",
                   conditionalPanel(
                     condition = if (info$is_controlled_row) "false" else sprintf("input['%s']", ns(paste0("cell_show_controls_", info$cell_id))),
@@ -21572,6 +21573,7 @@ ui <- tagList(
         height: var(--creport-cell-height);
         display: flex;
         flex-direction: column;
+        overflow: hidden;
       }
       .creport-cell-toolbar {
         min-height: 26px;
@@ -21603,13 +21605,24 @@ ui <- tagList(
         min-height: 0;
         display: flex;
         align-items: stretch;
+        overflow: auto;
+      }
+      .creport-controls-container {
+        flex: 0 0 auto;
+        min-height: 0;
+        max-height: 45%;
+        overflow: auto;
+        padding-right: 4px;
       }
       .creport-cell-content > .shiny-html-output,
       .creport-cell-content > .shiny-plot-output,
       .creport-cell-content .girafe_container,
       .creport-cell-content .html-widget {
+        flex: 1 1 auto;
+        min-height: 0;
         width: 100%;
         max-width: 100%;
+        overflow: auto;
       }
       body.theme-dark .creport-cell {
         background: rgba(0,0,0,0.92) !important;
