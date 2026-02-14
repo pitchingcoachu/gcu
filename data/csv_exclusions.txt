@@ -1274,3 +1274,7 @@
 20260213-WilsonField-1.csv
 # Auto-pruned non-team data
 20260213-WoffordCollege-1.csv
+# Auto-pruned non-team data
+20260213-GoodwinField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-LoyolaMarymount-1.csv
