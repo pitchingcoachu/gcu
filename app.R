@@ -5757,10 +5757,38 @@ compute_process_results <- function(df, mode = "All") {
       
       pitch_n   <- nrow(dfi)
       dfi_live  <- dfi %>% dplyr::filter(SessionType == "Live")
-      # Use the shared completed-PA BF calc (same as Leaderboard), Live only
-      BF_live   <- calculate_bf(dfi_live)
-      K_ct      <- sum(dfi_live$KorBB == "Strikeout", na.rm = TRUE)
-      BB_ct     <- sum(dfi_live$KorBB == "Walk",      na.rm = TRUE)
+      # Use PA-ending outcomes so K%/BB% numerators align with BF denominator.
+      kbb_from_terminal_pa <- function(d) {
+        if (!nrow(d)) return(list(BF = 0L, K = 0L, BB = 0L))
+        balls   <- suppressWarnings(as.numeric(d$Balls))
+        strikes <- suppressWarnings(as.numeric(d$Strikes))
+        valid   <- is.finite(balls) & is.finite(strikes)
+        if (!any(valid)) return(list(BF = 0L, K = 0L, BB = 0L))
+        prev_valid <- c(FALSE, head(valid, -1))
+        new_pa     <- valid & ((balls == 0 & strikes == 0) | !prev_valid)
+        pa_id      <- cumsum(ifelse(valid, new_pa, FALSE))
+        if (any(valid) && pa_id[valid][1] == 0) pa_id[valid] <- pa_id[valid] + 1L
+        if (all(pa_id[valid] == 0)) pa_id[valid] <- 1L
+        pa_id[!valid] <- NA_integer_
+
+        last_idx <- ave(seq_len(nrow(d)), pa_id, FUN = function(idx) rep(max(idx), length(idx)))
+        is_last  <- seq_len(nrow(d)) == last_idx
+        playres  <- as.character(d$PlayResult)
+        korbb    <- as.character(d$KorBB)
+        terminal_ok <- (!is.na(playres) & playres != "Undefined") |
+          (!is.na(korbb) & korbb %in% c("Strikeout", "Walk"))
+        term_last <- is_last & terminal_ok & !is.na(pa_id)
+
+        d_term <- d[term_last, , drop = FALSE]
+        bf <- length(unique(pa_id[term_last]))
+        k  <- sum(as.character(d_term$KorBB) == "Strikeout", na.rm = TRUE)
+        bb <- sum(as.character(d_term$KorBB) == "Walk", na.rm = TRUE)
+        list(BF = as.integer(bf), K = as.integer(k), BB = as.integer(bb))
+      }
+      pa_counts <- kbb_from_terminal_pa(dfi_live)
+      BF_live   <- pa_counts$BF
+      K_ct      <- pa_counts$K
+      BB_ct     <- pa_counts$BB
       
       # CSW% (prefer PitchResult if present)
       # --- CSW% (from PitchCall only) ---
@@ -20835,6 +20863,27 @@ ui <- tagList(
           clone.classList.add('creport-pdf-clone');
           clone.classList.add(isDark ? 'creport-pdf-dark' : 'creport-pdf-light');
 
+          // Keep PDF panel sizing identical to live dashboard sizing.
+          var liveGrid = target.querySelector('.creport-grid');
+          var liveCell = target.querySelector('.creport-cell');
+          var liveCellHeightPx = null;
+          if (liveCell && liveCell.getBoundingClientRect) {
+            var rect = liveCell.getBoundingClientRect();
+            if (rect && isFinite(rect.height) && rect.height > 0) {
+              liveCellHeightPx = Math.round(rect.height) + 'px';
+            }
+          }
+          if (liveGrid) {
+            var liveCellHeightVar = (getComputedStyle(liveGrid).getPropertyValue('--creport-cell-height') || '').trim();
+            clone.querySelectorAll('.creport-grid').forEach(function(g) {
+              if (liveCellHeightVar) {
+                g.style.setProperty('--creport-cell-height', liveCellHeightVar);
+              } else if (liveCellHeightPx) {
+                g.style.setProperty('--creport-cell-height', liveCellHeightPx);
+              }
+            });
+          }
+
           clone.querySelectorAll('[id*=\"cell_controls_container_\"]').forEach(function(el) {
             el.remove();
           });
@@ -20859,8 +20908,8 @@ ui <- tagList(
             useCORS: true,
             allowTaint: true,
             backgroundColor: isDark ? '#0b0f14' : '#ffffff',
-            windowWidth: clone.scrollWidth,
-            windowHeight: clone.scrollHeight
+            windowWidth: window.innerWidth,
+            windowHeight: window.innerHeight
           });
 
           document.body.removeChild(sandbox);
@@ -20963,8 +21012,8 @@ ui <- tagList(
         color: #f3f4f6;
       }
       .creport-pdf-clone.creport-pdf-light .creport-cell {
-        border: 1px solid #d5d9e0 !important;
-        border-radius: 8px !important;
+        border: 2px solid #000000 !important;
+        border-radius: 6px !important;
         box-shadow: none !important;
         background: #ffffff !important;
       }
