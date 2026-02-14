@@ -964,3 +964,19 @@
 20260213-SamfordUniversity-3_unverified.csv
 # Auto-pruned non-team data
 20260213-UTSanAntonio-1_unverified.csv
+# Auto-pruned non-team data
+20260213-JCLoveFieldatPatPattersonPark-1_unverified.csv
+# Auto-pruned non-team data
+20260213-KennesawState-2.csv
+# Auto-pruned non-team data
+20260213-MikeDLaneField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-MikeDLaneField-2_unverified.csv
+# Auto-pruned non-team data
+20260213-PaulDemieMainieriField-3_unverified.csv
+# Auto-pruned non-team data
+20260213-PKPark-1_unverified.csv
+# Auto-pruned non-team data
+20260213-RudyAbbottField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-WilsonField-1_unverified.csv
