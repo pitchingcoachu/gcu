@@ -980,3 +980,27 @@
 20260213-RudyAbbottField-1_unverified.csv
 # Auto-pruned non-team data
 20260213-WilsonField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-DickHowserStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260213-FIUBaseballStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260213-JayceesField-2_unverified.csv
+# Auto-pruned non-team data
+20260213-JohnEulianoPark-1_unverified.csv
+# Auto-pruned non-team data
+20260213-KellField-2_unverified.csv
+# Auto-pruned non-team data
+20260213-McBean-2_unverified.csv
+# Auto-pruned non-team data
+20260213-MercerUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260213-PlainsmanPark-1_unverified.csv
+# Auto-pruned non-team data
+20260213-TerryParkField1-1_unverified.csv
+# Auto-pruned non-team data
+20260213-TreveccaNazareneBC-2_unverified.csv
+# Auto-pruned non-team data
+20260213-UNorthFlorida-1_unverified.csv
+# Auto-pruned non-team data
+20260213-USFBaseballStadium-1_unverified.csv
