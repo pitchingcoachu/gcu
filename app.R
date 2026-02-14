@@ -16349,13 +16349,13 @@ custom_reports_server <- function(id) {
       tagList(
         div(
           style = "margin-top:-48px; margin-bottom:8px;",
-          h3(style = "margin-top:0; margin-bottom:2px; text-align:center;",
+          h3(style = "margin-top:0; margin-bottom:2px; text-align:center; font-size:34px;",
              if (nzchar(title_txt)) title_txt else "Custom Report"),
           if (!is.null(player_lbl)) {
             div(style = "font-weight:600; margin-bottom:0; text-align:center;", player_lbl)
           },
           if (nzchar(subtitle_txt)) {
-            div(style = "font-weight:500; margin-top:2px; margin-bottom:0; text-align:center;", subtitle_txt)
+            div(style = "font-weight:500; font-size:18px; margin-top:4px; margin-bottom:0; text-align:center;", subtitle_txt)
           }
         )
       )
@@ -21553,7 +21553,7 @@ ui <- tagList(
         --creport-gap: 15px;
         --creport-cell-height: clamp(
           250px,
-          calc((82vh - ((var(--creport-rows) - 1) * var(--creport-gap))) / var(--creport-rows)),
+          calc((86vh - ((var(--creport-rows) - 1) * var(--creport-gap))) / var(--creport-rows)),
           820px
         );
       }
@@ -21605,7 +21605,7 @@ ui <- tagList(
         min-height: 0;
         display: flex;
         align-items: stretch;
-        overflow: auto;
+        overflow: hidden;
       }
       .creport-controls-container {
         flex: 0 0 auto;
@@ -21617,12 +21617,17 @@ ui <- tagList(
       .creport-cell-content > .shiny-html-output,
       .creport-cell-content > .shiny-plot-output,
       .creport-cell-content .girafe_container,
-      .creport-cell-content .html-widget {
+      .creport-cell-content .html-widget,
+      .creport-cell-content .html-widget-output,
+      .creport-cell-content .girafe,
+      .creport-cell-content .plotly,
+      .creport-cell-content .js-plotly-plot {
         flex: 1 1 auto;
         min-height: 0;
+        height: 100% !important;
         width: 100%;
         max-width: 100%;
-        overflow: auto;
+        overflow: hidden;
       }
       body.theme-dark .creport-cell {
         background: rgba(0,0,0,0.92) !important;
