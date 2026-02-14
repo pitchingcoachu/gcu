@@ -5424,16 +5424,24 @@ row_matches_school_markers <- function(df, cols, tokens = school_marker_tokens()
 live_bp_mask <- function(df) {
   if (!nrow(df)) return(logical(0))
   is_live <- as.character(df$SessionType) == "Live"
-  p_mark <- row_matches_school_markers(df, c("PitcherTeam", "HomeTeam", "AwayTeam"))
-  b_mark <- row_matches_school_markers(df, c("BatterTeam", "HomeTeam", "AwayTeam"))
+  p_cols <- intersect(c("PitcherTeam", "PitcherTeamCode", "PitcherTeamForeignID"), names(df))
+  b_cols <- intersect(c("BatterTeam", "BatterTeamCode", "BatterTeamForeignID"), names(df))
+  if (!length(p_cols)) p_cols <- intersect(c("HomeTeam", "AwayTeam", "HomeTeamForeignID", "AwayTeamForeignID"), names(df))
+  if (!length(b_cols)) b_cols <- intersect(c("HomeTeam", "AwayTeam", "HomeTeamForeignID", "AwayTeamForeignID"), names(df))
+  p_mark <- row_matches_school_markers(df, p_cols)
+  b_mark <- row_matches_school_markers(df, b_cols)
   is_live & p_mark & b_mark
 }
 
 season_mask <- function(df) {
   if (!nrow(df)) return(logical(0))
   is_live <- as.character(df$SessionType) == "Live"
-  p_mark <- row_matches_school_markers(df, c("PitcherTeam", "HomeTeam", "AwayTeam"))
-  b_mark <- row_matches_school_markers(df, c("BatterTeam", "HomeTeam", "AwayTeam"))
+  p_cols <- intersect(c("PitcherTeam", "PitcherTeamCode", "PitcherTeamForeignID"), names(df))
+  b_cols <- intersect(c("BatterTeam", "BatterTeamCode", "BatterTeamForeignID"), names(df))
+  if (!length(p_cols)) p_cols <- intersect(c("HomeTeam", "AwayTeam", "HomeTeamForeignID", "AwayTeamForeignID"), names(df))
+  if (!length(b_cols)) b_cols <- intersect(c("HomeTeam", "AwayTeam", "HomeTeamForeignID", "AwayTeamForeignID"), names(df))
+  p_mark <- row_matches_school_markers(df, p_cols)
+  b_mark <- row_matches_school_markers(df, b_cols)
   is_live & xor(p_mark, b_mark)
 }
 
@@ -5449,7 +5457,7 @@ apply_session_type_filter <- function(df, session_value) {
 }
 
 session_type_choices <- function() {
-  c("Season", "All", "Bullpen", "Live BP" = "Live")
+  c("Season", "Bullpen", "Live BP" = "Live", "All")
 }
 
 verify_allowed_players_by_school <- function(df, player_col, allowed_names, label = "players") {
