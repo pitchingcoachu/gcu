@@ -15962,6 +15962,7 @@ custom_reports_ui <- function(id) {
                                 style = "position:absolute; right:5px; top:5px; z-index:1000;"),
                    h4("Report Setup"),
                    textInput(ns("report_title"), "Report Title", ""),
+                   textInput(ns("report_subtitle"), "Header Note (optional)", ""),
                    selectInput(ns("report_type"), "Report Type:", choices = c("Pitching","Hitting"), selected = "Pitching"),
                    selectInput(ns("report_team"), "Team:", choices = TEAM_CHOICES, selected = "All"),
                    selectInput(ns("report_scope"), "Scope:", choices = c("Single Player","Multi-Player"), selected = "Single Player"),
@@ -16147,6 +16148,7 @@ custom_reports_server <- function(id) {
       
       # THEN: Update all UI elements (this will trigger renderUI which reads from current_cells)
       updateTextInput(session, "report_title", value = rep$title %||% "")
+      updateTextInput(session, "report_subtitle", value = rep$subtitle %||% "")
       updateSelectInput(session, "report_team", selected = rep$team %||% "All")
       updateSelectInput(session, "report_type", selected = rep$type %||% "Pitching")
       updateSelectInput(session, "report_scope", selected = rep$scope %||% "Single Player")
@@ -16314,6 +16316,7 @@ custom_reports_server <- function(id) {
     # Header showing report title + players
     output$report_header <- renderUI({
       title_txt <- trimws(input$report_title)
+      subtitle_txt <- trimws(input$report_subtitle %||% "")
       
       # Helper function to format player names from "Last, First" to "First Last"
       format_player_name <- function(p) {
@@ -16350,6 +16353,9 @@ custom_reports_server <- function(id) {
              if (nzchar(title_txt)) title_txt else "Custom Report"),
           if (!is.null(player_lbl)) {
             div(style = "font-weight:600; margin-bottom:0; text-align:center;", player_lbl)
+          },
+          if (nzchar(subtitle_txt)) {
+            div(style = "font-weight:500; margin-top:2px; margin-bottom:0; text-align:center;", subtitle_txt)
           }
         )
       )
@@ -16421,6 +16427,7 @@ custom_reports_server <- function(id) {
       scope <- if (isTRUE(is_admin_local()) && isTRUE(input$report_global)) GLOBAL_SCOPE else current_school()
       rep <- list(
         title = nm,
+        subtitle = trimws(input$report_subtitle %||% ""),
         type = input$report_type,
         team = input$report_team %||% "All",
         scope = input$report_scope,
@@ -16459,6 +16466,7 @@ custom_reports_server <- function(id) {
       }
       loading_report(TRUE)
       updateTextInput(session, "report_title", value = "")
+      updateTextInput(session, "report_subtitle", value = "")
       updateSelectInput(session, "saved_report", selected = "")
       if (isTRUE(is_admin_local())) updateCheckboxInput(session, "report_global", value = FALSE)
 
@@ -18025,51 +18033,27 @@ custom_reports_server <- function(id) {
             dplyr::filter(!is.na(TaggedPitchType), n > 0) %>%
             dplyr::arrange(TaggedPitchType) %>%
             dplyr::mutate(
+              pitch_chr = as.character(TaggedPitchType),
               pct = 100 * n / sum(n),
               lbl = paste0(as.character(TaggedPitchType), " ", sprintf("%.1f%%", pct)),
               rid = as.character(TaggedPitchType),
-              pct_data_id = paste0("pie_pct_", rid),
-              ymid = cumsum(pct) - (pct / 2),
-              small_rank = cumsum(pct < 5),
-              x_txt = ifelse(pct < 5, 1.16 + 0.05 * ((small_rank - 1) %% 2), 1.00)
+              legend_lbl = paste0(pitch_chr, " (", sprintf("%.1f%%", pct), ")")
             )
           if (!nrow(usage)) return(NULL)
 
-          col_vals <- cols[as.character(usage$TaggedPitchType)]
+          col_vals <- cols[usage$pitch_chr]
           col_vals[is.na(col_vals)] <- "gray70"
-          names(col_vals) <- as.character(usage$TaggedPitchType)
+          usage <- usage %>%
+            dplyr::mutate(legend_lbl = factor(legend_lbl, levels = legend_lbl))
+          legend_cols <- setNames(unname(col_vals), as.character(usage$legend_lbl))
 
           p <- ggplot(
             usage,
-            aes(x = 1, y = pct, fill = TaggedPitchType, tooltip = lbl, data_id = rid)
+            aes(x = 1, y = pct, fill = legend_lbl, tooltip = lbl, data_id = rid)
           ) +
             ggiraph::geom_col_interactive(width = 1, color = if (dark_on) "#0b0f14" else "white", linewidth = 0.4) +
-            ggiraph::geom_text_interactive(
-              data = usage %>% dplyr::filter(pct >= 5),
-              aes(x = 1.00, y = ymid, label = sprintf("%.1f%%", pct), data_id = pct_data_id),
-              inherit.aes = FALSE,
-              size = 3.8,
-              fontface = "bold",
-              color = if (dark_on) "black" else "white"
-            ) +
-            geom_segment(
-              data = usage %>% dplyr::filter(pct < 5),
-              aes(x = 1.00, xend = x_txt - 0.02, y = ymid, yend = ymid),
-              inherit.aes = FALSE,
-              color = if (dark_on) "#d1d5db" else "#4b5563",
-              linewidth = 0.4,
-              arrow = grid::arrow(type = "closed", length = grid::unit(0.05, "inches"))
-            ) +
-            ggiraph::geom_text_interactive(
-              data = usage %>% dplyr::filter(pct < 5),
-              aes(x = x_txt, y = ymid, label = sprintf("%.1f%%", pct), data_id = pct_data_id),
-              inherit.aes = FALSE,
-              size = 3.0,
-              fontface = "bold",
-              color = if (dark_on) "black" else "#111827"
-            ) +
             coord_polar(theta = "y") +
-            scale_fill_manual(values = col_vals, limits = names(col_vals), name = NULL) +
+            scale_fill_manual(values = legend_cols, limits = levels(usage$legend_lbl), name = NULL) +
             theme_void() +
             theme(
               legend.position = "right",
@@ -18093,12 +18077,11 @@ custom_reports_server <- function(id) {
         return(tagList(
           tags$style(HTML(sprintf(
             paste0(
-              "body.theme-dark #%s svg [data-id^='pie_pct_'] { fill: #000000 !important; }",
               "body.theme-dark #%s svg g.legend text, ",
               "body.theme-dark #%s svg g.guide-box text, ",
               "body.theme-dark #%s svg [class*='guide'] text { fill: #ffffff !important; }"
             ),
-            ns(out_id), ns(out_id), ns(out_id), ns(out_id)
+            ns(out_id), ns(out_id), ns(out_id)
           ))),
           ggiraph::girafeOutput(ns(out_id), height = "300px")
         ))
@@ -18132,6 +18115,7 @@ custom_reports_server <- function(id) {
           fastball_mask <- tolower(trimws(usage$pitch_chr)) == "fastball"
           usage$fill_col[dark_on & fastball_mask] <- "#ffffff"
           usage$text_col <- ifelse(dark_on & fastball_mask, "#000000", "#ffffff")
+          usage$point_border_col <- ifelse(dark_on & fastball_mask, "#000000", "#ffffff")
           usage$label_val <- sprintf("%.0f", round(usage$pct))
           usage$label_id <- ifelse(dark_on & fastball_mask,
                                    paste0("bar_fb_", usage$pitch_chr),
@@ -18153,7 +18137,7 @@ custom_reports_server <- function(id) {
               lineend = "round",
               show.legend = FALSE
             ) +
-            geom_point(aes(x = pct, fill = fill_col), shape = 21, size = 9.2, color = "white", stroke = 1.4, show.legend = FALSE) +
+            geom_point(aes(x = pct, fill = fill_col, color = point_border_col), shape = 21, size = 9.2, stroke = 1.4, show.legend = FALSE) +
             ggiraph::geom_text_interactive(
               aes(x = pct, label = label_val, color = text_col, data_id = label_id),
               fontface = "bold", size = 3.4, vjust = 0.38
@@ -18219,6 +18203,7 @@ custom_reports_server <- function(id) {
           fastball_mask <- tolower(trimws(vel_bar$pitch_chr)) == "fastball"
           vel_bar$fill_col[dark_on & fastball_mask] <- "#ffffff"
           vel_bar$text_col <- ifelse(dark_on & fastball_mask, "#000000", "#ffffff")
+          vel_bar$point_border_col <- ifelse(dark_on & fastball_mask, "#000000", "#ffffff")
           vel_bar$label_val <- as.character(as.integer(floor(vel_bar$avg_velo + 0.5)))
           vel_bar$label_id <- ifelse(dark_on & fastball_mask,
                                      paste0("vbar_fb_", vel_bar$pitch_chr),
@@ -18240,7 +18225,7 @@ custom_reports_server <- function(id) {
               lineend = "round",
               show.legend = FALSE
             ) +
-            geom_point(aes(x = avg_velo, fill = fill_col), shape = 21, size = 9.2, color = "white", stroke = 1.4, show.legend = FALSE) +
+            geom_point(aes(x = avg_velo, fill = fill_col, color = point_border_col), shape = 21, size = 9.2, stroke = 1.4, show.legend = FALSE) +
             ggiraph::geom_text_interactive(
               aes(x = avg_velo, label = label_val, color = text_col, data_id = label_id),
               fontface = "bold", size = 3.4, vjust = 0.38
