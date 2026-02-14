@@ -1338,3 +1338,67 @@
 20260214-StickWilliamsField-1_unverified.csv
 # Auto-pruned non-team data
 20260214-TommyCareyField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-Lipscomb-1.csv
+# Auto-pruned non-team data
+20260213-USouthAlabama-2.csv
+# Auto-pruned non-team data
+20260214-Arlington-1_unverified.csv
+# Auto-pruned non-team data
+20260214-BudMethenyBBStad-1_unverified.csv
+# Auto-pruned non-team data
+20260214-ClarkLeClair-1_unverified.csv
+# Auto-pruned non-team data
+20260214-CondronBallpark-3_unverified.csv
+# Auto-pruned non-team data
+20260214-DubHerringPark-1_unverified.csv
+# Auto-pruned non-team data
+20260214-DurhamField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-EastTennesseeState-1_unverified.csv
+# Auto-pruned non-team data
+20260214-GaryHoganField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-GrayMinorStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-HenleyField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-HennonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-JackCoombs-1_unverified.csv
+# Auto-pruned non-team data
+20260214-JayceesField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-JohnEulianoPark-1_unverified.csv
+# Auto-pruned non-team data
+20260214-KingsmoreStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-LindseyNelsonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-LPFrans-1_unverified.csv
+# Auto-pruned non-team data
+20260214-OdessaCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260214-OleMiss-1_unverified.csv
+# Auto-pruned non-team data
+20260214-Olsen-1_unverified.csv
+# Auto-pruned non-team data
+20260214-PaulDemieMainieriField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-ReeseField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-RonaldGallagherStad-1_unverified.csv
+# Auto-pruned non-team data
+20260214-SouthernIdaho-1_unverified.csv
+# Auto-pruned non-team data
+20260214-SpringsBrooksStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260214-SusanKSmithBaseballComplex-1_unverified.csv
+# Auto-pruned non-team data
+20260214-SwellThomasStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-TreveccaNazareneBC-1_unverified.csv
+# Auto-pruned non-team data
+20260214-UNCCharlotte-1_unverified.csv
+# Auto-pruned non-team data
+20260214-WoffordCollege-1_unverified.csv
