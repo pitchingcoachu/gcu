@@ -16775,13 +16775,27 @@ custom_reports_server <- function(id) {
           column(
             width = width, offset = offset,
             div(class = "creport-cell",
-                # Always create controls to preserve state, but hide them for rows 2+ in Multi-Player mode
-                # Title and show controls toggle
-                div(style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;",
-                    if (!info$is_controlled_row) {
-                      checkboxInput(ns(paste0("cell_show_controls_", info$cell_id)), "Show controls", 
-                                    value = info$sel$show_controls %||% TRUE, width = "120px")
-                    }
+                # Compact controls toggle in panel header.
+                div(
+                  class = "creport-cell-toolbar",
+                  if (!info$is_controlled_row) {
+                    tagList(
+                      div(
+                        class = "creport-hidden-toggle",
+                        checkboxInput(
+                          ns(paste0("cell_show_controls_", info$cell_id)),
+                          label = NULL,
+                          value = info$sel$show_controls %||% TRUE,
+                          width = "1px"
+                        )
+                      ),
+                      actionButton(
+                        ns(paste0("cell_controls_toggle_", info$cell_id)),
+                        label = if (isTRUE(info$sel$show_controls %||% TRUE)) "\u25BC Controls" else "\u25B6 Controls",
+                        class = "btn btn-link btn-xs creport-controls-toggle"
+                      )
+                    )
+                  }
                 ),
                 # Controls container - always render but hide with CSS for rows 2+
                 div(
@@ -16915,7 +16929,10 @@ custom_reports_server <- function(id) {
                   style = "text-align:center; margin-bottom:10px; font-weight:bold;",
                   ""
                 ),
-                uiOutput(ns(paste0("cell_output_", info$cell_id)))
+                div(
+                  class = "creport-cell-content",
+                  uiOutput(ns(paste0("cell_output_", info$cell_id)))
+                )
             )
           )
         })
@@ -16925,7 +16942,11 @@ custom_reports_server <- function(id) {
         tagList(player_name_row, fluidRow(row_cells))
       })
       
-      tagList(grid)
+      div(
+        class = "creport-grid",
+        style = sprintf("--creport-rows:%d; --creport-cols:%d;", rows, cols),
+        tagList(grid)
+      )
     })
     
     # Observe cell selections and update stored state (throttle to prevent excessive updates)
@@ -17035,7 +17056,16 @@ custom_reports_server <- function(id) {
           created_title_flush_ids <<- c(created_title_flush_ids, cell_id)
           local({
             id <- cell_id
+            observeEvent(input[[paste0("cell_controls_toggle_", id)]], {
+              current_val <- isTRUE(isolate(input[[paste0("cell_show_controls_", id)]]))
+              updateCheckboxInput(session, paste0("cell_show_controls_", id), value = !current_val)
+            }, ignoreInit = TRUE)
             observeEvent(input[[paste0("cell_show_controls_", id)]], {
+              updateActionButton(
+                session,
+                paste0("cell_controls_toggle_", id),
+                label = if (isTRUE(input[[paste0("cell_show_controls_", id)]])) "\u25BC Controls" else "\u25B6 Controls"
+              )
               if (!isTRUE(isolate(input[[paste0("cell_show_controls_", id)]]))) {
                 flush_cell_title_now(id)
               }
@@ -21516,18 +21546,83 @@ ui <- tagList(
       }
       
       /* Custom Reports cell container */
+      .creport-grid {
+        --creport-rows: 1;
+        --creport-cols: 1;
+        --creport-gap: 15px;
+        --creport-cell-height: clamp(
+          250px,
+          calc((82vh - ((var(--creport-rows) - 1) * var(--creport-gap))) / var(--creport-rows)),
+          820px
+        );
+      }
+      .creport-grid .row {
+        margin-bottom: var(--creport-gap);
+      }
+      .creport-grid .row:last-child {
+        margin-bottom: 0;
+      }
       .creport-cell {
         background: #ffffff;
         border: 2px solid #000;
         padding: 15px;
-        margin-bottom: 15px;
+        margin-bottom: 0;
         border-radius: 6px;
+        min-height: var(--creport-cell-height);
+        height: var(--creport-cell-height);
+        display: flex;
+        flex-direction: column;
+      }
+      .creport-cell-toolbar {
+        min-height: 26px;
+        margin-bottom: 6px;
+        display: flex;
+        justify-content: flex-end;
+        align-items: center;
+      }
+      .creport-hidden-toggle {
+        position: absolute;
+        opacity: 0;
+        pointer-events: none;
+        width: 1px;
+        height: 1px;
+        overflow: hidden;
+      }
+      .creport-controls-toggle {
+        font-weight: 700;
+        text-decoration: none !important;
+        color: #111827 !important;
+        padding: 2px 6px !important;
+      }
+      .creport-controls-toggle:hover,
+      .creport-controls-toggle:focus {
+        color: #e35205 !important;
+      }
+      .creport-cell-content {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        align-items: stretch;
+      }
+      .creport-cell-content > .shiny-html-output,
+      .creport-cell-content > .shiny-plot-output,
+      .creport-cell-content .girafe_container,
+      .creport-cell-content .html-widget {
+        width: 100%;
+        max-width: 100%;
       }
       body.theme-dark .creport-cell {
         background: rgba(0,0,0,0.92) !important;
         border: 1px solid #2a2a2a !important;
         box-shadow: 0 4px 18px rgba(0,0,0,0.35);
         color: #e5e7eb;
+      }
+      body.theme-dark .creport-controls-toggle {
+        color: #e5e7eb !important;
+      }
+      body.theme-dark .creport-controls-toggle:hover,
+      body.theme-dark .creport-controls-toggle:focus {
+        color: #ff8c1a !important;
       }
       body.theme-dark .creport-cell h4,
       body.theme-dark .creport-cell h5,
