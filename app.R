@@ -18082,9 +18082,16 @@ custom_reports_server <- function(id) {
             paste0(
               "body.theme-dark #%s svg g.legend text, ",
               "body.theme-dark #%s svg g.guide-box text, ",
-              "body.theme-dark #%s svg [class*='guide'] text { fill: #ffffff !important; }"
+              "body.theme-dark #%s svg [class*='guide'] text { fill: #ffffff !important; }",
+              "body.theme-dark #%s svg g.legend rect[fill='black'], ",
+              "body.theme-dark #%s svg g.legend rect[fill='#000'], ",
+              "body.theme-dark #%s svg g.legend rect[fill='#000000'], ",
+              "body.theme-dark #%s svg g.legend rect[style*='fill: black'], ",
+              "body.theme-dark #%s svg g.legend rect[style*='fill:#000'], ",
+              "body.theme-dark #%s svg g.legend rect[style*='fill: #000000'] { fill: #ffffff !important; }"
             ),
-            ns(out_id), ns(out_id), ns(out_id)
+            ns(out_id), ns(out_id), ns(out_id),
+            ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id), ns(out_id)
           ))),
           ggiraph::girafeOutput(ns(out_id), height = "300px")
         ))
