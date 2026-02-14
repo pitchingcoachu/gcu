@@ -1314,3 +1314,15 @@
 20260214-PittFieldUOR-1_unverified.csv
 # Auto-pruned non-team data
 20260214-TheDiamond-1_unverified.csv
+# Auto-pruned non-team data
+20260213-ClarkLeClair-1.csv
+# Auto-pruned non-team data
+20260213-SamfordUniversity-1.csv
+# Auto-pruned non-team data
+20260213-SamfordUniversity-3.csv
+# Auto-pruned non-team data
+20260213-UNorthFlorida-1.csv
+# Auto-pruned non-team data
+20260214-HendersonFieldMarsHill-1_unverified.csv
+# Auto-pruned non-team data
+20260214-LamarUniversity-1_unverified.csv
