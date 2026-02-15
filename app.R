@@ -16204,16 +16204,14 @@ custom_reports_ui <- function(id) {
                      class = "btn-primary"
                    )
                ),
-               div(id = ns("report_pdf_content"), class = "creport-report-content",
+               div(id = ns("report_pdf_content"),
                    div(class = "creport-brandbar",
                        tags$img(src = "PCUlogo.png", class = "creport-brand-logo creport-brand-logo-left", alt = "PCU"),
                        tags$img(src = school_logo, class = "creport-brand-logo creport-brand-logo-right creport-logo-default", alt = school_display_name),
                        tags$img(src = custom_reports_light_logo, class = "creport-brand-logo creport-brand-logo-right creport-logo-light", alt = school_display_name)
                    ),
-                   div(class = "creport-report-header",
-                       uiOutput(ns("report_header"))
-                   ),
-                   div(id = ns("report_canvas_wrapper"), class = "creport-canvas-wrapper",
+                   uiOutput(ns("report_header")),
+                   div(id = ns("report_canvas_wrapper"),
                        uiOutput(ns("report_canvas"))
                    )
                )
@@ -16962,10 +16960,8 @@ custom_reports_server <- function(id) {
           )
         })
 
-        # Keep panel width locked to the 3-column layout for any additional columns.
-        base_width <- if (cols == 1) 8 else if (cols == 2) 6 else 4
+        base_width <- if (cols == 1) 8 else if (cols == 2) 6 else if (cols == 3) 4 else if (cols == 4) 3 else 2
         widths <- compute_column_widths(cols, base_width)
-        use_horizontal_row <- cols > 3
 
         col_used <- rep(FALSE, cols)
         row_cells <- lapply(seq_len(cols), function(cn) {
@@ -17142,29 +17138,14 @@ custom_reports_server <- function(id) {
                            )
           )
 
-          if (use_horizontal_row) {
-            width_pct <- (width / 12) * 100
-            offset_pct <- (offset / 12) * 100
-            cell_style <- sprintf(
-              "flex:0 0 %.6f%%; max-width:%.6f%%; box-sizing:border-box; padding-left:15px; padding-right:15px;%s",
-              width_pct, width_pct,
-              if (offset > 0) sprintf(" margin-left:%.6f%%;", offset_pct) else ""
-            )
-            div(class = "creport-grid-col", style = cell_style, cell_inner)
-          } else {
-            column(width = width, offset = offset, cell_inner)
-          }
+          column(width = width, offset = offset, cell_inner)
         })
         row_cells <- Filter(Negate(is.null), row_cells)
         
         # Return player name (if Multi-Player) followed by the row of charts
         tagList(
           player_name_row,
-          if (use_horizontal_row) {
-            div(class = "row creport-grid-row creport-grid-row-flex", row_cells)
-          } else {
-            fluidRow(row_cells)
-          }
+          fluidRow(row_cells)
         )
       })
       
@@ -21010,17 +20991,6 @@ ui <- tagList(
         justify-content: flex-end;
         margin-bottom: 10px;
       }
-      .creport-report-content {
-        display: inline-block;
-        min-width: 100%;
-        width: max-content;
-      }
-      .creport-report-header {
-        width: 100%;
-      }
-      .creport-canvas-wrapper {
-        width: 100%;
-      }
       .creport-brandbar {
         display: flex;
         justify-content: space-between;
@@ -21850,18 +21820,9 @@ ui <- tagList(
         --creport-gap: 15px;
         /* Lock panel height to the 2-row feel so extra rows extend the page instead of shrinking panels. */
         --creport-cell-height: clamp(320px, calc((86vh - var(--creport-gap)) / 2), 520px);
-        width: max-content;
-        min-width: 100%;
       }
       .creport-grid .row {
         margin-bottom: var(--creport-gap);
-      }
-      .creport-grid .creport-grid-row-flex {
-        display: flex;
-        flex-wrap: nowrap;
-        margin-left: -15px;
-        margin-right: -15px;
-        width: max-content;
       }
       .creport-grid .row:last-child {
         margin-bottom: 0;
