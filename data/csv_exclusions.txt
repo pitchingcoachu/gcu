@@ -1656,3 +1656,29 @@
 20260214-WilsonField-3_unverified.csv
 # Auto-pruned non-team data
 20260214-WinthropUniversity-2_unverified.csv
+# Auto-pruned non-team data
+20260214-AbileneChristian-2_unverified.csv
+# Auto-pruned non-team data
+20260214-AlabamaState-2_unverified.csv
+# Auto-pruned non-team data
+20260214-CSUBallparkNielsen-2_unverified.csv
+# Auto-pruned non-team data
+20260214-DavenportField-2_unverified.csv
+# Auto-pruned non-team data
+20260214-FresnoPacificUniversity-2_unverified.csv
+# Auto-pruned non-team data
+20260214-GeorgiaSouthern-3_unverified.csv
+# Auto-pruned non-team data
+20260214-JCLoveFieldatPatPattersonPark-2_unverified.csv
+# Auto-pruned non-team data
+20260214-LoyolaMarymount-1_unverified.csv
+# Auto-pruned non-team data
+20260214-MelchingFielda-3_unverified.csv
+# Auto-pruned non-team data
+20260214-PeteBeidenField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-PlainsmanPark-2_unverified.csv
+# Auto-pruned non-team data
+20260214-TerryParkField1-1_unverified.csv
+# Auto-pruned non-team data
+20260214-UofMiami-1_unverified.csv
