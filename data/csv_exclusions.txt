@@ -1682,3 +1682,55 @@
 20260214-TerryParkField1-1_unverified.csv
 # Auto-pruned non-team data
 20260214-UofMiami-1_unverified.csv
+# Auto-pruned non-team data
+20260214-Arlington-3_unverified.csv
+# Auto-pruned non-team data
+20260214-Baylor-1_unverified.csv
+# Auto-pruned non-team data
+20260214-CarterMemorial-1_unverified.csv
+# Auto-pruned non-team data
+20260214-DedeauxField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-KleinFamilyField-2_unverified.csv
+# Auto-pruned non-team data
+20260214-TarletonBBComplex-1_unverified.csv
+# Auto-pruned non-team data
+20260214-Texas-1_unverified.csv
+# Auto-pruned non-team data
+20260214-TonyGwynnStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-UTRGVStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-UTSanAntonio-1_unverified.csv
+# Auto-pruned non-team data
+20260214-UTSanAntonio-2_unverified.csv
+# Auto-pruned non-team data
+20260214-705-CalBaptistBaseballField-2_unverified.csv
+# Auto-pruned non-team data
+20260214-BlairField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-BudMethenyBBStad-2_unverified.csv
+# Auto-pruned non-team data
+20260214-CalBerkeley-2_unverified.csv
+# Auto-pruned non-team data
+20260214-DicksonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-EarlEWilsonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-GaryWright-1_unverified.csv
+# Auto-pruned non-team data
+20260214-GaryWright-2_unverified.csv
+# Auto-pruned non-team data
+20260214-HardtField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-LathamPark-1_unverified.csv
+# Auto-pruned non-team data
+20260214-LathamPark-2_unverified.csv
+# Auto-pruned non-team data
+20260214-LPFrans-2_unverified.csv
+# Auto-pruned non-team data
+20260214-StickWilliamsField-2_unverified.csv
+# Auto-pruned non-team data
+20260214-UofMountOlive-1_unverified.csv
+# Auto-pruned non-team data
+20260214-UofMountOlive-2_unverified.csv
