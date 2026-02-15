@@ -16965,8 +16965,7 @@ custom_reports_server <- function(id) {
         # Keep panel width locked to the 3-column layout for any additional columns.
         base_width <- if (cols == 1) 8 else if (cols == 2) 6 else 4
         widths <- compute_column_widths(cols, base_width)
-        row_scale <- max(1, sum(widths, na.rm = TRUE) / 12)
-        row_style <- sprintf("width: %.6f%%;", row_scale * 100)
+        use_horizontal_row <- cols > 3
 
         col_used <- rep(FALSE, cols)
         row_cells <- lapply(seq_len(cols), function(cn) {
@@ -16981,43 +16980,41 @@ custom_reports_server <- function(id) {
           offset <- if (cols == 1 && cn == 1 && width < 12) floor((12 - width) / 2) else 0
           col_used[col_idx] <<- TRUE
 
-          column(
-            width = width, offset = offset,
-            div(class = if (isTRUE(info$is_summary)) "creport-cell creport-cell-summary" else "creport-cell",
-                # Compact controls toggle in panel header.
-                div(
-                  class = "creport-cell-toolbar",
-                  if (!info$is_controlled_row) {
-                    tagList(
-                      div(
-                        class = "creport-hidden-toggle",
-                        checkboxInput(
-                          ns(paste0("cell_show_controls_", info$cell_id)),
-                          label = NULL,
-                          value = info$sel$show_controls %||% TRUE,
-                          width = "1px"
-                        )
-                      ),
-                      actionButton(
-                        ns(paste0("cell_controls_toggle_", info$cell_id)),
-                        label = if (isTRUE(info$sel$show_controls %||% TRUE)) "\u25BC Controls" else "\u25B6 Controls",
-                        class = "btn btn-link btn-xs creport-controls-toggle"
-                      )
-                    )
-                  }
-                ),
-                # Controls container - always render but hide with CSS for rows 2+
-                div(
-                  id = ns(paste0("cell_controls_container_", info$cell_id)),
-                  class = "creport-controls-container",
-                  style = if (info$is_controlled_row) "display:none;" else "",
-                  conditionalPanel(
-                    condition = if (info$is_controlled_row) "false" else sprintf("input['%s']", ns(paste0("cell_show_controls_", info$cell_id))),
-                    div(
-                      div(
-                        textInput(ns(paste0("cell_title_", info$cell_id)), "Chart Title:", 
-                                  value = info$sel$title %||% "", placeholder = "Enter chart title..."),
-                        tags$script(HTML(sprintf("
+          cell_inner <- div(class = if (isTRUE(info$is_summary)) "creport-cell creport-cell-summary" else "creport-cell",
+                           # Compact controls toggle in panel header.
+                           div(
+                             class = "creport-cell-toolbar",
+                             if (!info$is_controlled_row) {
+                               tagList(
+                                 div(
+                                   class = "creport-hidden-toggle",
+                                   checkboxInput(
+                                     ns(paste0("cell_show_controls_", info$cell_id)),
+                                     label = NULL,
+                                     value = info$sel$show_controls %||% TRUE,
+                                     width = "1px"
+                                   )
+                                 ),
+                                 actionButton(
+                                   ns(paste0("cell_controls_toggle_", info$cell_id)),
+                                   label = if (isTRUE(info$sel$show_controls %||% TRUE)) "\u25BC Controls" else "\u25B6 Controls",
+                                   class = "btn btn-link btn-xs creport-controls-toggle"
+                                 )
+                               )
+                             }
+                           ),
+                           # Controls container - always render but hide with CSS for rows 2+
+                           div(
+                             id = ns(paste0("cell_controls_container_", info$cell_id)),
+                             class = "creport-controls-container",
+                             style = if (info$is_controlled_row) "display:none;" else "",
+                             conditionalPanel(
+                               condition = if (info$is_controlled_row) "false" else sprintf("input['%s']", ns(paste0("cell_show_controls_", info$cell_id))),
+                               div(
+                                 div(
+                                   textInput(ns(paste0("cell_title_", info$cell_id)), "Chart Title:", 
+                                             value = info$sel$title %||% "", placeholder = "Enter chart title..."),
+                                   tags$script(HTML(sprintf("
                           (function() {
                             var id = '%s';
                             var blurId = '%s';
@@ -17038,120 +17035,136 @@ custom_reports_server <- function(id) {
                             el.addEventListener('input', inputListener);
                             inputListener();
                           })();
-                        ", ns(paste0("cell_title_", info$cell_id)), ns(paste0("cell_title_blur_", info$cell_id)),
-                           ns(paste0("cell_title_pending_", info$cell_id)))))
-                      ),
-                      selectInput(ns(paste0("cell_type_", info$cell_id)), "Content:", 
-                                  choices = if (identical(input$report_type, "Pitching")) {
-                                    c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Velocity Chart", "Pitch Usage Pie Chart", "Pitch Usage Bar Chart", "Velocity Bar Chart", "Velocity Distribution", "Summary Table", "Spray Chart")
-                                  } else {
-                                    c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart")
-                                  },
-                                  selected = info$sel$type),
-                      {
-                        cols_total <- as.integer(input$report_cols)
-                        if (is.na(cols_total) || cols_total < 1) cols_total <- 1
-                        col_num <- as.integer(sub(".*c(\\d+)$", "\\1", info$cell_id))
-                        if (is.na(col_num) || col_num < 1) col_num <- 1
-                        max_span <- max(1, cols_total - (col_num - 1))
-                        span_id <- ns(paste0("cell_span_", info$cell_id))
-                        default_span <- info$settings_span %||% info$span %||% 1
-                        existing_span <- input[[span_id]] %||% default_span
-                        existing_span <- suppressWarnings(as.integer(existing_span))
-                        if (is.na(existing_span) || existing_span < 1) existing_span <- 1
-                        existing_span <- min(existing_span, max_span)
-                        numericInput(span_id, "Column span:", min = 1, max = max_span, value = existing_span)
-                      },
-                      conditionalPanel(
-                        sprintf("input['%s'] == 'Summary Table'", ns(paste0("cell_type_", info$cell_id))),
-                        tagList(
-                          selectInput(ns(paste0("cell_table_mode_", info$cell_id)), "Table:", 
-                                      choices = if (input$report_type == "Hitting") {
-                                        c("Results","Swing Decisions", names(custom_tables()), "Custom")
-                                      } else {
-                                        c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data", names(custom_tables()), "Custom")
-                                      },
-                                      selected = {
-                                        ch <- if (input$report_type == "Hitting") {
-                                          c("Results","Swing Decisions", names(custom_tables()), "Custom")
-                                        } else {
-                                          c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data", names(custom_tables()), "Custom")
-                                        }
-                                        if (!is.null(info$sel$table_mode) && info$sel$table_mode %in% ch) info$sel$table_mode else ch[[1]]
-                                      }),
-                          selectInput(ns(paste0("cell_filter_", info$cell_id)), "Split By:", 
-                                      choices = c("Pitch Types","Batter Hand","Pitcher Hand","Count","After Count","Velocity","IVB","HB","Batter"),
-                                      selected = info$sel$filter),
-                          checkboxInput(ns(paste0("cell_color_", info$cell_id)), "Color-Code", value = info$sel$color %||% TRUE),
-                          conditionalPanel(
-                            condition = sprintf("input['%s']=='Custom' && input['%s']=='Hitting'", 
-                                                ns(paste0("cell_table_mode_", info$cell_id)), ns("report_type")),
-                            selectizeInput(
-                              ns(paste0("cell_table_custom_cols_", info$cell_id)),
-                              "Columns (drag to order):",
-                              choices = c("PA","AB","AVG","SLG","OBP","OPS","wOBA","xWOBA","ISO","xISO","BABIP",
-                                          "Velo","IVB","HB","Distance","RV/100","1-1W%","QP%","QP+",
-                                          "Swing%","FPS%","Called-S%","Take%","Whiff%","CSW%","GB%","K%","BB%","Barrel%",
-                                          "Chase%","GoZoneSw%","IZswing%","EdgeSwing%","PosSD%","EV","LA",
-                                          "Swings","Takes","Called-S","Whiffs","Chases","IZswings","Barrels","FPS","EdgeSwings","PosSD","GoZoneSw"),
-                              selected = info$sel$table_custom_cols %||% c("PA","AB","AVG","SLG","OBP","OPS","Swing%","Whiff%"),
-                              multiple = TRUE,
-                              options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
-                            )
-                          )
-                        )
-                      ),
-                      conditionalPanel(
-                        sprintf("input['%s'] == 'Heatmap'", ns(paste0("cell_type_", info$cell_id))),
-                        selectInput(ns(paste0("cell_heat_stat_", info$cell_id)), "Heatmap Type:",
-                                    choices = c("Frequency","Whiff Rate","Exit Velocity","GB Rate","Contact Rate","Swing Rate","Run Values"),
-                                    selected = info$sel$heat_stat %||% "Frequency")
-                      ),
-                      conditionalPanel(
-                        condition = sprintf("input['%s'] == 'Velocity Chart' && input['%s'] == 'Pitching'",
-                                            ns(paste0("cell_type_", info$cell_id)), ns("report_type")),
-                        selectInput(
-                          ns(paste0("cell_velocity_chart_", info$cell_id)),
-                          "Velocity Chart:",
-                          choices = c(
-                            "Velocity Chart (Game/Inning)",
-                            "Average Velocity by Game",
-                            "Average Velocity by Inning"
-                          ),
-                          selected = info$sel$velocity_chart %||% "Velocity Chart (Game/Inning)"
-                        )
-                      ),
-                      selectizeInput(
-                        ns(paste0("cell_filter_select_", info$cell_id)),
-                        "Filters to show:",
-                        choices = c("Dates","Session Type","Pitch Types","Batter Hand","Pitcher Hand","Pitch Results","QP Locations",
-                                    "Count","After Count","Zone Location","Velo Min/Max","IVB Min/Max","HB Min/Max"),
-                        selected = info$sel$filter_select %||% c("Dates","Session Type","Pitch Types"),
-                        multiple = TRUE,
-                        options = list(plugins = list("remove_button"))
-                      ),
-                      uiOutput(ns(paste0("cell_filters_", info$cell_id)))
-                    )
-                  )
-                ),
-                div(
-                  id = ns(paste0("cell_title_display_", info$cell_id)),
-                  style = "text-align:center; margin-bottom:10px; font-weight:bold;",
-                  ""
-                ),
-                div(
-                  class = "creport-cell-content",
-                  uiOutput(ns(paste0("cell_output_", info$cell_id)))
-                )
-            )
+                          ", ns(paste0("cell_title_", info$cell_id)), ns(paste0("cell_title_blur_", info$cell_id)),
+                                      ns(paste0("cell_title_pending_", info$cell_id)))))
+                                 ),
+                                 selectInput(ns(paste0("cell_type_", info$cell_id)), "Content:", 
+                                             choices = if (identical(input$report_type, "Pitching")) {
+                                               c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Velocity Chart", "Pitch Usage Pie Chart", "Pitch Usage Bar Chart", "Velocity Bar Chart", "Velocity Distribution", "Summary Table", "Spray Chart")
+                                             } else {
+                                               c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart")
+                                             },
+                                             selected = info$sel$type),
+                                 {
+                                   cols_total <- as.integer(input$report_cols)
+                                   if (is.na(cols_total) || cols_total < 1) cols_total <- 1
+                                   col_num <- as.integer(sub(".*c(\\d+)$", "\\1", info$cell_id))
+                                   if (is.na(col_num) || col_num < 1) col_num <- 1
+                                   max_span <- max(1, cols_total - (col_num - 1))
+                                   span_id <- ns(paste0("cell_span_", info$cell_id))
+                                   default_span <- info$settings_span %||% info$span %||% 1
+                                   existing_span <- input[[span_id]] %||% default_span
+                                   existing_span <- suppressWarnings(as.integer(existing_span))
+                                   if (is.na(existing_span) || existing_span < 1) existing_span <- 1
+                                   existing_span <- min(existing_span, max_span)
+                                   numericInput(span_id, "Column span:", min = 1, max = max_span, value = existing_span)
+                                 },
+                                 conditionalPanel(
+                                   sprintf("input['%s'] == 'Summary Table'", ns(paste0("cell_type_", info$cell_id))),
+                                   tagList(
+                                     selectInput(ns(paste0("cell_table_mode_", info$cell_id)), "Table:", 
+                                                 choices = if (input$report_type == "Hitting") {
+                                                   c("Results","Swing Decisions", names(custom_tables()), "Custom")
+                                                 } else {
+                                                   c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data", names(custom_tables()), "Custom")
+                                                 },
+                                                 selected = {
+                                                   ch <- if (input$report_type == "Hitting") {
+                                                     c("Results","Swing Decisions", names(custom_tables()), "Custom")
+                                                   } else {
+                                                     c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data", names(custom_tables()), "Custom")
+                                                   }
+                                                   if (!is.null(info$sel$table_mode) && info$sel$table_mode %in% ch) info$sel$table_mode else ch[[1]]
+                                                 }),
+                                     selectInput(ns(paste0("cell_filter_", info$cell_id)), "Split By:", 
+                                                 choices = c("Pitch Types","Batter Hand","Pitcher Hand","Count","After Count","Velocity","IVB","HB","Batter"),
+                                                 selected = info$sel$filter),
+                                     checkboxInput(ns(paste0("cell_color_", info$cell_id)), "Color-Code", value = info$sel$color %||% TRUE),
+                                     conditionalPanel(
+                                       condition = sprintf("input['%s']=='Custom' && input['%s']=='Hitting'", 
+                                                           ns(paste0("cell_table_mode_", info$cell_id)), ns("report_type")),
+                                       selectizeInput(
+                                         ns(paste0("cell_table_custom_cols_", info$cell_id)),
+                                         "Columns (drag to order):",
+                                         choices = c("PA","AB","AVG","SLG","OBP","OPS","wOBA","xWOBA","ISO","xISO","BABIP",
+                                                     "Velo","IVB","HB","Distance","RV/100","1-1W%","QP%","QP+",
+                                                     "Swing%","FPS%","Called-S%","Take%","Whiff%","CSW%","GB%","K%","BB%","Barrel%",
+                                                     "Chase%","GoZoneSw%","IZswing%","EdgeSwing%","PosSD%","EV","LA",
+                                                     "Swings","Takes","Called-S","Whiffs","Chases","IZswings","Barrels","FPS","EdgeSwings","PosSD","GoZoneSw"),
+                                         selected = info$sel$table_custom_cols %||% c("PA","AB","AVG","SLG","OBP","OPS","Swing%","Whiff%"),
+                                         multiple = TRUE,
+                                         options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
+                                       )
+                                     )
+                                   )
+                                 ),
+                                 conditionalPanel(
+                                   sprintf("input['%s'] == 'Heatmap'", ns(paste0("cell_type_", info$cell_id))),
+                                   selectInput(ns(paste0("cell_heat_stat_", info$cell_id)), "Heatmap Type:",
+                                               choices = c("Frequency","Whiff Rate","Exit Velocity","GB Rate","Contact Rate","Swing Rate","Run Values"),
+                                               selected = info$sel$heat_stat %||% "Frequency")
+                                 ),
+                                 conditionalPanel(
+                                   condition = sprintf("input['%s'] == 'Velocity Chart' && input['%s'] == 'Pitching'",
+                                                       ns(paste0("cell_type_", info$cell_id)), ns("report_type")),
+                                   selectInput(
+                                     ns(paste0("cell_velocity_chart_", info$cell_id)),
+                                     "Velocity Chart:",
+                                     choices = c(
+                                       "Velocity Chart (Game/Inning)",
+                                       "Average Velocity by Game",
+                                       "Average Velocity by Inning"
+                                     ),
+                                     selected = info$sel$velocity_chart %||% "Velocity Chart (Game/Inning)"
+                                   )
+                                 ),
+                                 selectizeInput(
+                                   ns(paste0("cell_filter_select_", info$cell_id)),
+                                   "Filters to show:",
+                                   choices = c("Dates","Session Type","Pitch Types","Batter Hand","Pitcher Hand","Pitch Results","QP Locations",
+                                               "Count","After Count","Zone Location","Velo Min/Max","IVB Min/Max","HB Min/Max"),
+                                   selected = info$sel$filter_select %||% c("Dates","Session Type","Pitch Types"),
+                                   multiple = TRUE,
+                                   options = list(plugins = list("remove_button"))
+                                 ),
+                                 uiOutput(ns(paste0("cell_filters_", info$cell_id)))
+                               )
+                             )
+                           ),
+                           div(
+                             id = ns(paste0("cell_title_display_", info$cell_id)),
+                             style = "text-align:center; margin-bottom:10px; font-weight:bold;",
+                             ""
+                           ),
+                           div(
+                             class = "creport-cell-content",
+                             uiOutput(ns(paste0("cell_output_", info$cell_id)))
+                           )
           )
+
+          if (use_horizontal_row) {
+            width_pct <- (width / 12) * 100
+            offset_pct <- (offset / 12) * 100
+            cell_style <- sprintf(
+              "flex:0 0 %.6f%%; max-width:%.6f%%; box-sizing:border-box; padding-left:15px; padding-right:15px;%s",
+              width_pct, width_pct,
+              if (offset > 0) sprintf(" margin-left:%.6f%%;", offset_pct) else ""
+            )
+            div(class = "creport-grid-col", style = cell_style, cell_inner)
+          } else {
+            column(width = width, offset = offset, cell_inner)
+          }
         })
         row_cells <- Filter(Negate(is.null), row_cells)
         
         # Return player name (if Multi-Player) followed by the row of charts
         tagList(
           player_name_row,
-          div(class = "row creport-grid-row", style = row_style, row_cells)
+          if (use_horizontal_row) {
+            div(class = "row creport-grid-row creport-grid-row-flex", row_cells)
+          } else {
+            fluidRow(row_cells)
+          }
         )
       })
       
@@ -21843,8 +21856,12 @@ ui <- tagList(
       .creport-grid .row {
         margin-bottom: var(--creport-gap);
       }
-      .creport-grid .creport-grid-row {
-        width: 100%;
+      .creport-grid .creport-grid-row-flex {
+        display: flex;
+        flex-wrap: nowrap;
+        margin-left: -15px;
+        margin-right: -15px;
+        width: max-content;
       }
       .creport-grid .row:last-child {
         margin-bottom: 0;
