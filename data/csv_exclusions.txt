@@ -2056,3 +2056,11 @@
 20260215-TIGERBALLPARK-1_unverified.csv
 # Auto-pruned non-team data
 20260215-WarHawkField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-AndersonUniversity-1.csv
+# Auto-pruned non-team data
+20260214-AndersonUniversity-2.csv
+# Auto-pruned non-team data
+20260215-JimPatterson-3_unverified.csv
+# Auto-pruned non-team data
+20260215-Texas-1_unverified.csv
