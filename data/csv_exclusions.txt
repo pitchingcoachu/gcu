@@ -2064,3 +2064,9 @@
 20260215-JimPatterson-3_unverified.csv
 # Auto-pruned non-team data
 20260215-Texas-1_unverified.csv
+# Auto-pruned non-team data
+20260215-HDetterField-1_unverified.csv
+# Auto-pruned non-team data
+20260215-JayceesField-2_unverified.csv
+# Auto-pruned non-team data
+20260215-SullivanField-1_unverified.csv
