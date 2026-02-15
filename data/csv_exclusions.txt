@@ -2042,3 +2042,17 @@
 20260215-USFBaseballStadium-1_unverified.csv
 # Auto-pruned non-team data
 20260215-WichitaState-1_unverified.csv
+# Auto-pruned non-team data
+20260215-DallasBaptist-2_unverified.csv
+# Auto-pruned non-team data
+20260215-HenleyField-1_unverified.csv
+# Auto-pruned non-team data
+20260215-JohnEulianoPark-1_unverified.csv
+# Auto-pruned non-team data
+20260215-Olsen-1_unverified.csv
+# Auto-pruned non-team data
+20260215-PomonaPitzer-1_unverified.csv
+# Auto-pruned non-team data
+20260215-TIGERBALLPARK-1_unverified.csv
+# Auto-pruned non-team data
+20260215-WarHawkField-1_unverified.csv
