@@ -16204,14 +16204,16 @@ custom_reports_ui <- function(id) {
                      class = "btn-primary"
                    )
                ),
-               div(id = ns("report_pdf_content"),
+               div(id = ns("report_pdf_content"), class = "creport-report-content",
                    div(class = "creport-brandbar",
                        tags$img(src = "PCUlogo.png", class = "creport-brand-logo creport-brand-logo-left", alt = "PCU"),
                        tags$img(src = school_logo, class = "creport-brand-logo creport-brand-logo-right creport-logo-default", alt = school_display_name),
                        tags$img(src = custom_reports_light_logo, class = "creport-brand-logo creport-brand-logo-right creport-logo-light", alt = school_display_name)
                    ),
-                   uiOutput(ns("report_header")),
-                   div(id = ns("report_canvas_wrapper"),
+                   div(class = "creport-report-header",
+                       uiOutput(ns("report_header"))
+                   ),
+                   div(id = ns("report_canvas_wrapper"), class = "creport-canvas-wrapper",
                        uiOutput(ns("report_canvas"))
                    )
                )
@@ -16960,8 +16962,11 @@ custom_reports_server <- function(id) {
           )
         })
 
-        base_width <- if (cols == 1) 8 else if (cols == 2) 6 else if (cols == 3) 4 else if (cols == 4) 3 else 2
+        # Keep panel width locked to the 3-column layout for any additional columns.
+        base_width <- if (cols == 1) 8 else if (cols == 2) 6 else 4
         widths <- compute_column_widths(cols, base_width)
+        row_scale <- max(1, sum(widths, na.rm = TRUE) / 12)
+        row_style <- sprintf("width: %.6f%%;", row_scale * 100)
 
         col_used <- rep(FALSE, cols)
         row_cells <- lapply(seq_len(cols), function(cn) {
@@ -17144,7 +17149,10 @@ custom_reports_server <- function(id) {
         row_cells <- Filter(Negate(is.null), row_cells)
         
         # Return player name (if Multi-Player) followed by the row of charts
-        tagList(player_name_row, fluidRow(row_cells))
+        tagList(
+          player_name_row,
+          div(class = "row creport-grid-row", style = row_style, row_cells)
+        )
       })
       
       div(
@@ -20989,6 +20997,17 @@ ui <- tagList(
         justify-content: flex-end;
         margin-bottom: 10px;
       }
+      .creport-report-content {
+        display: inline-block;
+        min-width: 100%;
+        width: max-content;
+      }
+      .creport-report-header {
+        width: 100%;
+      }
+      .creport-canvas-wrapper {
+        width: 100%;
+      }
       .creport-brandbar {
         display: flex;
         justify-content: space-between;
@@ -21818,9 +21837,14 @@ ui <- tagList(
         --creport-gap: 15px;
         /* Lock panel height to the 2-row feel so extra rows extend the page instead of shrinking panels. */
         --creport-cell-height: clamp(320px, calc((86vh - var(--creport-gap)) / 2), 520px);
+        width: max-content;
+        min-width: 100%;
       }
       .creport-grid .row {
         margin-bottom: var(--creport-gap);
+      }
+      .creport-grid .creport-grid-row {
+        width: 100%;
       }
       .creport-grid .row:last-child {
         margin-bottom: 0;
