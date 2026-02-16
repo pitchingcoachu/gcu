@@ -18964,7 +18964,7 @@ custom_reports_server <- function(id) {
                   velocity_chart = input[[paste0("cell_velocity_chart_", settings_id)]],
                   custom_cols = input[[paste0("cell_table_custom_cols_", settings_id)]]
                 )
-              }) %>% debounce(300)  # Slightly increased for stability
+              })
               
               # Update title display using delayed shinyjs::html
               # In Multi-Player mode, rows 2+ use Row 1's title
