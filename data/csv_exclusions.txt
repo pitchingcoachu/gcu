@@ -2144,3 +2144,21 @@
 20260215-WarHawkField-2_unverified.csv
 # Auto-pruned non-team data
 20260215-WichitaState-2_unverified.csv
+# Auto-pruned non-team data
+20260215-Arlington-3_unverified.csv
+# Auto-pruned non-team data
+20260215-IrwinField-2_unverified.csv
+# Auto-pruned non-team data
+20260215-Arlington-2_unverified.csv
+# Auto-pruned non-team data
+20260215-BrownStroudField-1_unverified.csv
+# Auto-pruned non-team data
+20260215-EarlEWilsonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260215-GaryWright-2_unverified.csv
+# Auto-pruned non-team data
+20260215-GoodwinField-1_unverified.csv
+# Auto-pruned non-team data
+20260215-HardtField-3_unverified.csv
+# Auto-pruned non-team data
+20260215-HardtField-5_unverified.csv
