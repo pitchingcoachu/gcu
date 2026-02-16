@@ -2440,3 +2440,5 @@
 20260215-WichitaState-2.csv
 # Auto-pruned non-team data
 20260216-HDetterField-1_unverified.csv
+# Auto-pruned non-team data
+20260213-PaulDemieMainieriField-3.csv
