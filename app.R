@@ -5445,15 +5445,28 @@ season_mask <- function(df) {
   is_live & xor(p_mark, b_mark)
 }
 
+normalize_session_filter_value <- function(session_value) {
+  if (is.null(session_value) || !length(session_value)) return("All")
+  sel <- tolower(trimws(as.character(session_value[[1]])))
+  if (!nzchar(sel) || sel == "all") return("All")
+  if (grepl("season", sel)) return("Season")
+  if (grepl("bull|prac", sel)) return("Bullpen")
+  if (grepl("live|game|ab", sel)) return("Live")
+  NA_character_
+}
+
 apply_session_type_filter <- function(df, session_value) {
-  if (is.null(session_value) || !length(session_value)) return(df)
-  sel <- as.character(session_value[[1]])
-  if (!nzchar(sel) || identical(sel, "All")) return(df)
-  if (identical(sel, "Bullpen")) return(dplyr::filter(df, SessionType == "Bullpen"))
+  sel <- normalize_session_filter_value(session_value)
+  if (identical(sel, "All")) return(df)
+  if (is.na(sel)) return(df[0, , drop = FALSE])
+  if (identical(sel, "Bullpen")) {
+    st <- trimws(as.character(df$SessionType))
+    return(df[st == "Bullpen", , drop = FALSE])
+  }
   if (identical(sel, "Season")) return(df[season_mask(df), , drop = FALSE])
   # "Live" value is shown as "Live BP" in UI
   if (identical(sel, "Live")) return(df[live_bp_mask(df), , drop = FALSE])
-  df
+  df[0, , drop = FALSE]
 }
 
 session_type_choices <- function() {
