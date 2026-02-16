@@ -17314,10 +17314,14 @@ custom_reports_server <- function(id) {
       
       # Handle "All" selection - get all data for that report type
       if (report_type == "Pitching") {
+        # Match Pitching suite behavior by using the same modified dataset pipeline.
+        pitching_source <- tryCatch(modified_pitch_data(), error = function(e) pitch_data_pitching)
+        if (is.null(pitching_source)) pitching_source <- pitch_data_pitching
+
         if ("All" %in% players || identical(players, "All")) {
-          df <- pitch_data_pitching  # All pitchers
+          df <- pitching_source  # All pitchers
         } else {
-          df <- pitch_data_pitching %>% dplyr::filter(Pitcher %in% players)
+          df <- pitching_source %>% dplyr::filter(Pitcher %in% players)
         }
         
         # Apply three-tier filtering for players (admins and coaches see all)
@@ -19002,6 +19006,14 @@ custom_reports_server <- function(id) {
               output[[paste0("cell_output_", id)]] <- renderUI({
                 # Get cell data (triggers on chart type/filter/mode changes only)
                 cd <- cell_data()
+                out_id <- paste0("cell_render_", id)
+                df_now <- get_cell_data_wrapper(id)
+                if (!nrow(df_now)) {
+                  output[[out_id]] <- renderUI({
+                    div("No data for selected filters")
+                  })
+                  return(uiOutput(ns(out_id)))
+                }
                 
                 # Render the chart (title is separate, updated via shinyjs)
                 render_cell(id)
