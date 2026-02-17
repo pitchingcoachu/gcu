@@ -16200,6 +16200,22 @@ custom_reports_ui <- function(id) {
                    ),
                    selectInput(ns("report_rows"), "Rows:", choices = 1:15, selected = 1),
                    selectInput(ns("report_cols"), "Columns:", choices = 1:5, selected = 1),
+                   checkboxInput(ns("use_global_dates"), "Apply one date range to all panels", value = FALSE),
+                   conditionalPanel(
+                     sprintf("input['%s']", ns("use_global_dates")),
+                     {
+                       all_dates <- c(pitch_data_pitching$Date, pitch_data$Date)
+                       d_min <- suppressWarnings(min(all_dates, na.rm = TRUE))
+                       d_max <- suppressWarnings(max(all_dates, na.rm = TRUE))
+                       if (!is.finite(d_min)) d_min <- Sys.Date() - 30
+                       if (!is.finite(d_max)) d_max <- Sys.Date()
+                       dateRangeInput(
+                         ns("global_dates"), "Global Date Range:",
+                         start = d_max, end = d_max, min = d_min, max = d_max,
+                         format = "mm/dd/yyyy"
+                       )
+                     }
+                   ),
                    selectInput(ns("saved_report"), "Saved Reports:", choices = c(""), selected = ""),
                    uiOutput(ns("report_global_toggle")),
                    div(style = "display: flex; gap: 5px;",
@@ -16226,7 +16242,8 @@ custom_reports_ui <- function(id) {
                    uiOutput(ns("report_header")),
                    div(id = ns("report_canvas_wrapper"),
                        uiOutput(ns("report_canvas"))
-                   )
+                   ),
+                   uiOutput(ns("report_pitch_type_legend"))
                )
         )
       )
@@ -16372,6 +16389,10 @@ custom_reports_server <- function(id) {
       updateSelectizeInput(session, "report_players", selected = rep$players %||% character(0))
       updateSelectInput(session, "report_rows", selected = rep$rows %||% 1)
       updateSelectInput(session, "report_cols", selected = rep$cols %||% 1)
+      updateCheckboxInput(session, "use_global_dates", value = isTRUE(rep$use_global_dates))
+      if (!is.null(rep$global_dates) && length(rep$global_dates) == 2) {
+        updateDateRangeInput(session, "global_dates", start = rep$global_dates[1], end = rep$global_dates[2])
+      }
       
       rows <- rep$rows %||% 1
       cols <- rep$cols %||% 1
@@ -16651,6 +16672,8 @@ custom_reports_server <- function(id) {
         players = input$report_players,
         rows = as.integer(input$report_rows),
         cols = as.integer(input$report_cols),
+        use_global_dates = isTRUE(input$use_global_dates),
+        global_dates = input$global_dates,
         cells = cells,
         school_code = scope
       )
@@ -16685,6 +16708,7 @@ custom_reports_server <- function(id) {
       updateTextInput(session, "report_title", value = "")
       updateTextInput(session, "report_subtitle", value = "")
       updateSelectInput(session, "saved_report", selected = "")
+      updateCheckboxInput(session, "use_global_dates", value = FALSE)
       if (isTRUE(is_admin_local())) updateCheckboxInput(session, "report_global", value = FALSE)
 
       loading_report_handle <<- later::later(function() {
@@ -16711,6 +16735,52 @@ custom_reports_server <- function(id) {
     update_reports_grid <- function(cells_list) {
       current_cells(cells_list)
     }
+
+    show_report_pitch_legend <- reactive({
+      rows <- suppressWarnings(as.integer(input$report_rows))
+      cols <- suppressWarnings(as.integer(input$report_cols))
+      if (is.na(rows) || is.na(cols) || rows < 1 || cols < 1) return(TRUE)
+      cells <- current_cells()
+      for (r in seq_len(rows)) for (c in seq_len(cols)) {
+        cell_id <- paste0("r", r, "c", c)
+        settings_cell_id <- if (identical(input$report_scope, "Multi-Player") && r > 1) paste0("r1c", c) else cell_id
+        saved <- cells[[settings_cell_id]] %||% list()
+        tsel <- input[[paste0("cell_type_", settings_cell_id)]] %||% saved$type %||% ""
+        fsel <- input[[paste0("cell_filter_", settings_cell_id)]] %||% saved$filter %||% "Pitch Types"
+        if (identical(tsel, "Summary Table") && identical(fsel, "Pitch Types")) return(FALSE)
+      }
+      TRUE
+    })
+
+    output$report_pitch_type_legend <- renderUI({
+      if (!show_report_pitch_legend()) return(NULL)
+      rows <- suppressWarnings(as.integer(input$report_rows))
+      cols <- suppressWarnings(as.integer(input$report_cols))
+      if (is.na(rows) || is.na(cols) || rows < 1 || cols < 1) return(NULL)
+      cell_ids <- as.vector(outer(seq_len(rows), seq_len(cols), function(r, c) paste0("r", r, "c", c)))
+      pitch_types <- unique(unlist(lapply(cell_ids, function(cid) {
+        d <- tryCatch(get_cell_data_wrapper(cid), error = function(...) data.frame())
+        if (!is.data.frame(d) || !"TaggedPitchType" %in% names(d) || !nrow(d)) return(character(0))
+        as.character(d$TaggedPitchType)
+      })))
+      pitch_types <- pitch_types[!is.na(pitch_types) & nzchar(pitch_types)]
+      if (!length(pitch_types)) return(NULL)
+      ord <- names(all_colors)
+      pitch_types <- c(ord[ord %in% pitch_types], setdiff(pitch_types, ord))
+      legend_items <- lapply(pitch_types, function(pt) {
+        col <- all_colors[[pt]]
+        if (is.null(col) || !nzchar(col)) col <- "gray70"
+        tags$div(
+          style = "display:flex;align-items:center;gap:6px;",
+          tags$span(style = sprintf("display:inline-block;width:12px;height:12px;border-radius:50%%;background:%s;border:1px solid rgba(0,0,0,0.2);", col)),
+          tags$span(style = "font-size:12px;font-weight:600;", pt)
+        )
+      })
+      tags$div(
+        style = "display:flex;justify-content:center;align-items:center;gap:14px;flex-wrap:wrap;margin-top:14px;padding-top:8px;",
+        legend_items
+      )
+    })
     
     # Build per-cell filter UI based on "Filters to show"
     output_filters_for_cell <- function(cell_id) {
@@ -17483,12 +17553,18 @@ custom_reports_server <- function(id) {
       }
       
       cell_state <- current_cells()[[filter_cell_id]] %||% list()
+      use_global_dates <- isTRUE(input$use_global_dates)
+      global_dates <- input$global_dates
 
       get_cell_data(
         cell_id = cell_id,
         players = players,
         report_type = input$report_type,
-        dates = input[[paste0("cell_dates_", filter_cell_id)]] %||% cell_state$dates,
+        dates = if (use_global_dates && !is.null(global_dates) && length(global_dates) == 2) {
+          global_dates
+        } else {
+          input[[paste0("cell_dates_", filter_cell_id)]] %||% cell_state$dates
+        },
         session = input[[paste0("cell_session_", filter_cell_id)]] %||% cell_state$session %||% "All",
         pitch_types = input[[paste0("cell_pitch_types_", filter_cell_id)]] %||% cell_state$pitch_types,
         batter_side = input[[paste0("cell_batter_side_", filter_cell_id)]] %||% cell_state$batter_side,
@@ -18100,7 +18176,7 @@ custom_reports_server <- function(id) {
               scale_fill_manual(values  = col_vals, limits = types_chr, name = NULL) +
               theme_minimal() + axis_theme + grid_theme(dark_on) +
               theme(
-                legend.position = "bottom",
+                legend.position = "none",
                 legend.text = element_text(size = 12, color = axis_col),
                 axis.text.x = element_text(color = axis_col),
                 axis.text.y = element_text(color = axis_col),
@@ -18108,6 +18184,27 @@ custom_reports_server <- function(id) {
                 axis.title.y = element_text(color = axis_col)
               ) +
               labs(title = "Velocity Chart (Game/Inning)", x = "Pitch Count", y = "Velocity (MPH)")
+
+            # Dashed inning boundary lines (matches Pitching velocity chart behavior for Live-only data).
+            if ("SessionType" %in% names(df2) &&
+                length(na.omit(unique(df2$SessionType))) == 1 &&
+                na.omit(unique(df2$SessionType)) == "Live" &&
+                "Inning" %in% names(df2)) {
+              inning <- df2$Inning
+              boundary_idx <- which(!is.na(inning) & dplyr::lag(inning, default = inning[1]) != inning)
+              boundary_idx <- boundary_idx[boundary_idx != 1]
+              if (length(boundary_idx)) {
+                vlines <- dplyr::tibble(x = df2$PitchCount[boundary_idx])
+                p <- p + geom_vline(
+                  data = vlines,
+                  aes(xintercept = x),
+                  linetype = "dashed",
+                  linewidth = 0.4,
+                  alpha = 0.6,
+                  inherit.aes = FALSE
+                )
+              }
+            }
 
             return(girafe_transparent(
               ggobj = p,
@@ -18168,7 +18265,7 @@ custom_reports_server <- function(id) {
               scale_fill_manual(values  = col_vals, limits = types_chr, name = NULL) +
               theme_minimal() + axis_theme + grid_theme(dark_on) +
               theme(
-                legend.position = "bottom",
+                legend.position = "none",
                 legend.text = element_text(size = 12, color = axis_col),
                 axis.text.x = element_text(angle = 45, hjust = 1, color = axis_col),
                 axis.text.y = element_text(color = axis_col),
@@ -18249,7 +18346,7 @@ custom_reports_server <- function(id) {
             scale_fill_manual(values  = col_vals, limits = types_chr, name = NULL) +
             theme_minimal() + axis_theme + grid_theme(dark_on) +
             theme(
-              legend.position = "bottom",
+              legend.position = "none",
               legend.text = element_text(size = 12, color = axis_col),
               axis.text.x = element_text(color = axis_col),
               axis.text.y = element_text(color = axis_col),
@@ -18293,8 +18390,7 @@ custom_reports_server <- function(id) {
               pitch_chr = as.character(TaggedPitchType),
               pct = 100 * n / sum(n),
               lbl = paste0(as.character(TaggedPitchType), " ", sprintf("%.1f%%", pct)),
-              rid = as.character(TaggedPitchType),
-              legend_lbl = paste0(pitch_chr, " (", sprintf("%.1f%%", pct), ")")
+              rid = as.character(TaggedPitchType)
             )
           if (!nrow(usage)) return(NULL)
 
@@ -18303,17 +18399,17 @@ custom_reports_server <- function(id) {
           if (dark_on) {
             col_vals[tolower(trimws(usage$pitch_chr)) == "fastball"] <- "#ffffff"
           }
-          usage <- usage %>%
-            dplyr::mutate(legend_lbl = factor(legend_lbl, levels = legend_lbl))
-          legend_cols <- setNames(unname(col_vals), as.character(usage$legend_lbl))
+          legend_cols <- setNames(unname(col_vals), usage$pitch_chr)
+          legend_breaks <- usage$pitch_chr
+          legend_labels <- setNames(sprintf("%.1f%%", usage$pct), usage$pitch_chr)
 
           p <- ggplot(
             usage,
-            aes(x = 1, y = pct, fill = legend_lbl, tooltip = lbl, data_id = rid)
+            aes(x = 1, y = pct, fill = pitch_chr, tooltip = lbl, data_id = rid)
           ) +
             ggiraph::geom_col_interactive(width = 1, color = if (dark_on) "#0b0f14" else "white", linewidth = 0.4) +
             coord_polar(theta = "y") +
-            scale_fill_manual(values = legend_cols, limits = levels(usage$legend_lbl), name = NULL) +
+            scale_fill_manual(values = legend_cols, breaks = legend_breaks, labels = legend_labels, name = NULL) +
             theme_void() +
             theme(
               legend.position = "right",
@@ -18693,6 +18789,23 @@ custom_reports_server <- function(id) {
               res_mode$cols,
               enable_colors = isTRUE(input[[paste0("cell_color_", settings_cell_id)]])
             )
+            # Keep Pitch Types in canonical order for Results mode in custom reports.
+            if (identical(res_mode$mode, "Results") && identical(fsel, "Pitch Types")) {
+              dt_data <- tryCatch(dt_tbl$x$data, error = function(...) NULL)
+              if (is.data.frame(dt_data) && nrow(dt_data)) {
+                pcol <- intersect(c("Pitch", "Pitch Type", "PitchType"), names(dt_data))
+                if (length(pcol)) {
+                  pcol <- pcol[[1]]
+                  ord <- names(all_colors)
+                  cur_vals <- as.character(dt_data[[pcol]])
+                  other_vals <- setdiff(unique(cur_vals), c(ord, "All"))
+                  dt_data[[pcol]] <- factor(cur_vals, levels = c(ord, other_vals, "All"))
+                  dt_data <- dt_data %>% dplyr::arrange(.data[[pcol]])
+                  dt_data[[pcol]] <- as.character(dt_data[[pcol]])
+                  dt_tbl$x$data <- dt_data
+                }
+              }
+            }
 
             # Custom Reports only: color pitch-type column cells by pitch type.
             # Dark mode special rule: Fastball is white background with black text.
@@ -18866,7 +18979,7 @@ custom_reports_server <- function(id) {
             scale_color_manual(values = outcome_cols, name = "Result") +
             coord_fixed(xlim = c(-380, 380), ylim = c(-30, 420)) +
             theme_void() + theme(
-              legend.position = "bottom",
+              legend.position = "none",
               legend.direction = "horizontal",
               legend.box = "horizontal",
               legend.margin = margin(t = -4, r = 0, b = -12, l = 0),
@@ -18961,6 +19074,8 @@ custom_reports_server <- function(id) {
                 input[[paste0("cell_ivb_max_", settings_id)]]
                 input[[paste0("cell_hb_min_", settings_id)]]
                 input[[paste0("cell_hb_max_", settings_id)]]
+                input$use_global_dates
+                input$global_dates
                 
                 # For Multi-Player mode, also monitor the row player selection
                 if (is_multi_player) {
