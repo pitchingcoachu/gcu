@@ -16746,7 +16746,7 @@ custom_reports_server <- function(id) {
           out <- c(out, list(
             selectInput(ns(paste0("cell_session_", cell_id)), "Session Type:",
                         choices = session_type_choices(), 
-                        selected = if (!is.null(existing_session)) existing_session else "Season")
+                        selected = if (!is.null(existing_session)) existing_session else "All")
           ))
         }
         if ("Pitch Types" %in% sel) {
@@ -17489,7 +17489,7 @@ custom_reports_server <- function(id) {
         players = players,
         report_type = input$report_type,
         dates = input[[paste0("cell_dates_", filter_cell_id)]] %||% cell_state$dates,
-        session = input[[paste0("cell_session_", filter_cell_id)]] %||% cell_state$session %||% "Season",
+        session = input[[paste0("cell_session_", filter_cell_id)]] %||% cell_state$session %||% "All",
         pitch_types = input[[paste0("cell_pitch_types_", filter_cell_id)]] %||% cell_state$pitch_types,
         batter_side = input[[paste0("cell_batter_side_", filter_cell_id)]] %||% cell_state$batter_side,
         pitcher_hand = input[[paste0("cell_pitcher_hand_", filter_cell_id)]] %||% cell_state$pitcher_hand,
