@@ -16732,7 +16732,7 @@ custom_reports_server <- function(id) {
           
           # Preserve existing date range - check input first, then saved cell data
           existing_dates <- input[[paste0("cell_dates_", cell_id)]] %||% saved_cell$dates %||% NULL
-          start_date <- if (!is.null(existing_dates) && length(existing_dates) >= 1) existing_dates[1] else d_max - 30
+          start_date <- if (!is.null(existing_dates) && length(existing_dates) >= 1) existing_dates[1] else d_max
           end_date <- if (!is.null(existing_dates) && length(existing_dates) >= 2) existing_dates[2] else d_max
           
           out <- c(out, list(
