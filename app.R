@@ -18807,30 +18807,32 @@ custom_reports_server <- function(id) {
               }
             }
 
-            # Custom Reports only: color pitch-type column cells by pitch type.
-            # Dark mode special rule: Fastball is white background with black text.
-            dt_col_names <- tryCatch(names(dt_tbl$x$data), error = function(...) character(0))
-            pitch_col <- c("Pitch", "Pitch Type", "PitchType")
-            pitch_col <- pitch_col[pitch_col %in% dt_col_names]
-            if (!length(pitch_col) && "Pitch" %in% names(df_tbl)) pitch_col <- "Pitch"
-            if (length(pitch_col)) {
-              pitch_col <- pitch_col[[1]]
-              pitch_values <- names(all_colors)
-              bg_values <- unname(all_colors[pitch_values])
-              text_values <- rep("#ffffff", length(pitch_values))
-              dark_on <- is_dark_mode_local()
-              if (dark_on && "Fastball" %in% pitch_values) {
-                idx <- which(pitch_values == "Fastball")
-                bg_values[idx] <- "#ffffff"
-                text_values[idx] <- "#000000"
+            # Custom Reports only: color pitch-type cells when split-by is Pitch Types.
+            # Avoid styling other split columns (e.g. Count/After Count/Batter Hand),
+            # which can trigger DataTables column-name warnings.
+            if (identical(fsel, "Pitch Types")) {
+              dt_col_names <- tryCatch(names(dt_tbl$x$data), error = function(...) character(0))
+              pitch_col <- c("Pitch", "Pitch Type", "PitchType")
+              pitch_col <- pitch_col[pitch_col %in% dt_col_names]
+              if (length(pitch_col)) {
+                pitch_col <- pitch_col[[1]]
+                pitch_values <- names(all_colors)
+                bg_values <- unname(all_colors[pitch_values])
+                text_values <- rep("#ffffff", length(pitch_values))
+                dark_on <- is_dark_mode_local()
+                if (dark_on && "Fastball" %in% pitch_values) {
+                  idx <- which(pitch_values == "Fastball")
+                  bg_values[idx] <- "#ffffff"
+                  text_values[idx] <- "#000000"
+                }
+                dt_tbl <- dt_tbl %>% DT::formatStyle(
+                  pitch_col,
+                  target = "cell",
+                  backgroundColor = DT::styleEqual(pitch_values, bg_values),
+                  color = DT::styleEqual(pitch_values, text_values),
+                  fontWeight = "700"
+                )
               }
-              dt_tbl <- dt_tbl %>% DT::formatStyle(
-                pitch_col,
-                target = "cell",
-                backgroundColor = DT::styleEqual(pitch_values, bg_values),
-                color = DT::styleEqual(pitch_values, text_values),
-                fontWeight = "700"
-              )
             }
             # Ensure the full summary table is visible (no inner paging/scroll clipping).
             row_count <- tryCatch(nrow(dt_tbl$x$data), error = function(...) NA_integer_)
