@@ -5412,10 +5412,11 @@ row_matches_school_markers <- function(df, cols, tokens = school_marker_tokens()
   cols <- intersect(cols, names(df))
   if (!length(cols) || !length(tokens) || !nrow(df)) return(rep(FALSE, nrow(df)))
   out <- rep(FALSE, nrow(df))
+  tokens <- toupper(trimws(as.character(tokens)))
+  tokens <- unique(tokens[nzchar(tokens)])
   for (col in cols) {
     vals <- toupper(trimws(as.character(df[[col]])))
-    hit <- rep(FALSE, nrow(df))
-    for (tok in tokens) hit <- hit | grepl(tok, vals, fixed = TRUE)
+    hit <- vals %in% tokens
     out <- out | hit
   }
   out
@@ -5502,12 +5503,11 @@ verify_allowed_players_by_school <- function(df, player_col, allowed_names, labe
   if (!nrow(dat)) return(character(0))
 
   row_has_school <- rep(FALSE, nrow(dat))
+  tokens <- toupper(trimws(as.character(tokens)))
+  tokens <- unique(tokens[nzchar(tokens)])
   for (col in marker_cols) {
     vals <- toupper(trimws(as.character(dat[[col]])))
-    col_has <- rep(FALSE, length(vals))
-    for (tok in tokens) {
-      col_has <- col_has | grepl(tok, vals, fixed = TRUE)
-    }
+    col_has <- vals %in% tokens
     row_has_school <- row_has_school | col_has
   }
 
