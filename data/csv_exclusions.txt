@@ -2544,3 +2544,5 @@
 20260217-USNavalAcademy-1_unverified.csv
 # Auto-pruned non-team data
 20260214-TarletonBBComplex-1.csv
+# Auto-pruned non-team data
+20260217-GrierField-1_unverified.csv
