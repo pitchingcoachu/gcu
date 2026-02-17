@@ -2454,3 +2454,11 @@
 20260216-IrwinField-1_unverified.csv
 # Auto-pruned non-team data
 20260216-NickDenesField-1_unverified.csv
+# Auto-pruned non-team data
+20260216-Arlington-2_unverified.csv
+# Auto-pruned non-team data
+20260216-HenleyField-2_unverified.csv
+# Auto-pruned non-team data
+20260216-LSU-1_unverified.csv
+# Auto-pruned non-team data
+20260216-StephenSchottBBS-2_unverified.csv
