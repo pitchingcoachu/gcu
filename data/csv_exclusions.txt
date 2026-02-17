@@ -2462,3 +2462,13 @@
 20260216-LSU-1_unverified.csv
 # Auto-pruned non-team data
 20260216-StephenSchottBBS-2_unverified.csv
+# Auto-pruned non-team data
+20260213-SwansonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-SwansonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260214-SwansonStadium-1.csv
+# Auto-pruned non-team data
+20260215-SwansonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260215-SwansonStadium-1.csv
