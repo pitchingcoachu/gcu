@@ -1467,6 +1467,65 @@ refresh_missing_pitch_keys <- function(con, mods_df, base_data) {
   mods_with_keys
 }
 
+mod_row_signature <- function(df) {
+  if (is.null(df) || !nrow(df)) return(character(0))
+  num_sig <- function(x) {
+    v <- suppressWarnings(as.numeric(x))
+    out <- rep("", length(v))
+    ok <- is.finite(v)
+    out[ok] <- sprintf("%.3f", round(v[ok], 3))
+    out
+  }
+  chr_sig <- function(x) {
+    out <- as.character(x)
+    out[is.na(out)] <- ""
+    trimws(out)
+  }
+  paste(
+    chr_sig(df$pitcher %||% ""),
+    chr_sig(df$date %||% ""),
+    num_sig(df$rel_speed %||% NA),
+    num_sig(df$horz_break %||% NA),
+    num_sig(df$induced_vert_break %||% NA),
+    chr_sig(df$new_pitch_type %||% ""),
+    chr_sig(df$new_pitcher %||% ""),
+    chr_sig(df$is_deleted %||% 0),
+    sep = "|"
+  )
+}
+
+deduplicate_mod_rows <- function(mods_df) {
+  if (is.null(mods_df) || !nrow(mods_df)) return(mods_df)
+  if (!"pitch_key" %in% names(mods_df)) mods_df$pitch_key <- NA_character_
+  if (!"modified_at" %in% names(mods_df)) mods_df$modified_at <- NA_character_
+  if (!"created_at" %in% names(mods_df)) mods_df$created_at <- NA_character_
+
+  mods_df$.row_id <- seq_len(nrow(mods_df))
+  key <- as.character(mods_df$pitch_key)
+  key[is.na(key)] <- ""
+  keyed <- nzchar(key)
+  fallback <- mod_row_signature(mods_df)
+  mods_df$.dedupe_group <- ifelse(keyed, paste0("k:", key), paste0("f:", fallback))
+
+  mod_ts <- suppressWarnings(as.numeric(as.POSIXct(mods_df$modified_at, tz = "UTC")))
+  created_ts <- suppressWarnings(as.numeric(as.POSIXct(mods_df$created_at, tz = "UTC")))
+  rank_ts <- mod_ts
+  missing_rank <- !is.finite(rank_ts)
+  rank_ts[missing_rank] <- created_ts[missing_rank]
+  rank_ts[!is.finite(rank_ts)] <- -Inf
+  mods_df$.rank_ts <- rank_ts
+
+  out <- mods_df %>%
+    dplyr::group_by(.dedupe_group) %>%
+    dplyr::arrange(dplyr::desc(.rank_ts), dplyr::desc(.row_id), .by_group = TRUE) %>%
+    dplyr::slice_head(n = 1) %>%
+    dplyr::ungroup() %>%
+    dplyr::arrange(.row_id) %>%
+    dplyr::select(-.row_id, -.dedupe_group, -.rank_ts)
+
+  out
+}
+
 write_modifications_snapshot <- function(con) {
   export_path <- get_modifications_export_path()
   if (!nzchar(export_path)) return()
@@ -1519,15 +1578,35 @@ import_modifications_from_export <- function(con, base_data) {
   
   # Attach pitch keys if missing
   mods_csv <- attach_pitch_keys_to_mods(mods_csv, base_data)
+  mods_csv <- deduplicate_mod_rows(mods_csv)
   
   # Get existing modifications from database
   tbl <- as.character(pitch_mod_table_clause(con))
   ns_clause <- pitch_mod_namespace_clause(con)
-  existing <- try(dbGetQuery(con, sprintf("SELECT pitch_key FROM %s WHERE namespace = %s", tbl, ns_clause)), silent = TRUE)
-  existing_keys <- if (inherits(existing, "try-error")) character(0) else as.character(existing$pitch_key)
-  
-  # Find new rows (those not already in database)
-  new_rows <- mods_csv[!(mods_csv$pitch_key %in% existing_keys), , drop = FALSE]
+  existing <- try(dbGetQuery(con, sprintf("SELECT pitcher, date, rel_speed, horz_break, induced_vert_break, new_pitch_type, new_pitcher, is_deleted, pitch_key FROM %s WHERE namespace = %s", tbl, ns_clause)), silent = TRUE)
+
+  if (inherits(existing, "try-error") || !nrow(existing)) {
+    new_rows <- mods_csv
+  } else {
+    existing$pitch_key <- as.character(existing$pitch_key)
+    existing$pitch_key[is.na(existing$pitch_key)] <- ""
+    existing_keyed <- unique(existing$pitch_key[nzchar(existing$pitch_key)])
+
+    mods_csv$pitch_key <- as.character(mods_csv$pitch_key)
+    mods_csv$pitch_key[is.na(mods_csv$pitch_key)] <- ""
+
+    keyed_rows <- mods_csv[nzchar(mods_csv$pitch_key), , drop = FALSE]
+    keyed_rows <- keyed_rows[!(keyed_rows$pitch_key %in% existing_keyed), , drop = FALSE]
+
+    existing_keyless <- existing[!nzchar(existing$pitch_key), , drop = FALSE]
+    existing_keyless_sig <- unique(mod_row_signature(existing_keyless))
+    keyless_rows <- mods_csv[!nzchar(mods_csv$pitch_key), , drop = FALSE]
+    keyless_sig <- mod_row_signature(keyless_rows)
+    keyless_rows <- keyless_rows[!(keyless_sig %in% existing_keyless_sig), , drop = FALSE]
+
+    new_rows <- dplyr::bind_rows(keyed_rows, keyless_rows)
+    new_rows <- deduplicate_mod_rows(new_rows)
+  }
   if (!nrow(new_rows)) {
     cat("All modifications from export file already exist in database\n")
     return()
@@ -1702,6 +1781,22 @@ init_modifications_db <- function() {
     message(sprintf("Pitch modifications backend (%s) rows: %s", backend_label, db_count))
 
     if (!inherits(mods, "try-error") && nrow(mods)) {
+      mods_dedup <- deduplicate_mod_rows(mods)
+      if (nrow(mods_dedup) < nrow(mods)) {
+        message(sprintf("Deduplicating stored modifications (%d -> %d rows)", nrow(mods), nrow(mods_dedup)))
+        tryCatch({
+          dbBegin(con)
+          dbExecute(con, sprintf("DELETE FROM %s WHERE namespace = %s", tbl_clause, ns_clause))
+          mods_write <- mods_dedup
+          mods_write$id <- NULL
+          dbWriteTable(con, pitch_mod_table_name(), mods_write, append = TRUE)
+          dbCommit(con)
+          mods <- try(dbGetQuery(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl_clause, ns_clause)), silent = TRUE)
+        }, error = function(e) {
+          try(dbRollback(con), silent = TRUE)
+          warning(sprintf("Could not deduplicate stored modifications: %s", conditionMessage(e)))
+        })
+      }
       refresh_missing_pitch_keys(con, mods, base_data)
       write_modifications_snapshot(con)
 
@@ -1734,6 +1829,7 @@ init_modifications_db <- function() {
           mods_csv <- as.data.frame(mods_csv, stringsAsFactors = FALSE, check.names = FALSE)
           if (!"pitch_key" %in% names(mods_csv)) mods_csv$pitch_key <- NA_character_
           mods_csv <- attach_pitch_keys_to_mods(mods_csv, base_data)
+          mods_csv <- deduplicate_mod_rows(mods_csv)
           new_rows <- mods_csv
           new_rows$id <- NULL
           expected_cols <- c(
@@ -1925,6 +2021,7 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
 
     base_data <- ensure_pitch_keys(pitch_data)
     mods <- refresh_missing_pitch_keys(con, mods, base_data)
+    mods <- deduplicate_mod_rows(mods)
 
     if (!nrow(mods)) {
       return(list(
@@ -1974,6 +2071,17 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
             temp_data$Date == mod$date &
             abs(temp_data$RelSpeed - mod$rel_speed) < 0.5
         )
+      }
+      if (length(match_idx) > 1) {
+        candidate <- temp_data[match_idx, , drop = FALSE]
+        rel_delta <- abs(suppressWarnings(as.numeric(candidate$RelSpeed)) - suppressWarnings(as.numeric(mod$rel_speed)))
+        hb_delta <- abs(suppressWarnings(as.numeric(candidate$HorzBreak)) - suppressWarnings(as.numeric(mod$horz_break)))
+        ivb_delta <- abs(suppressWarnings(as.numeric(candidate$InducedVertBreak)) - suppressWarnings(as.numeric(mod$induced_vert_break)))
+        rel_delta[!is.finite(rel_delta)] <- 9e9
+        hb_delta[!is.finite(hb_delta)] <- 9e9
+        ivb_delta[!is.finite(ivb_delta)] <- 9e9
+        best <- which.min(rel_delta + hb_delta + ivb_delta)
+        match_idx <- match_idx[best]
       }
       if (length(match_idx) > 0) {
         if (isTRUE(as.integer(mod$is_deleted) == 1L)) {
@@ -18789,16 +18897,30 @@ custom_reports_server <- function(id) {
               res_mode$cols,
               enable_colors = isTRUE(input[[paste0("cell_color_", settings_cell_id)]])
             )
+            expected_split_col <- switch(
+              fsel,
+              "Pitch Types" = "Pitch",
+              "Batter Hand" = if (identical(input$report_type, "Hitting")) "Pitcher Hand" else "Batter Hand",
+              "Pitcher Hand" = "Pitcher Hand",
+              "Count" = "Count",
+              "After Count" = "After Count",
+              "Velocity" = "Velocity",
+              "IVB" = "IVB",
+              "HB" = "HB",
+              "Batter" = if (identical(input$report_type, "Hitting")) "Pitcher" else "Batter",
+              "Pitcher" = "Pitcher",
+              "Pitch"
+            )
             # Normalize returned DT payload so split-by column always exists with the
             # expected name in custom reports. This prevents DT column-name lookup
             # warnings when switching split options.
             dt_data <- tryCatch(dt_tbl$x$data, error = function(...) NULL)
             if (is.data.frame(dt_data) && nrow(dt_data)) {
-              if (!(fsel %in% names(dt_data))) {
+              if (!(expected_split_col %in% names(dt_data))) {
                 if ("SplitColumn" %in% names(dt_data)) {
-                  names(dt_data)[names(dt_data) == "SplitColumn"] <- fsel
+                  names(dt_data)[names(dt_data) == "SplitColumn"] <- expected_split_col
                 } else if (ncol(dt_data) >= 1) {
-                  names(dt_data)[1] <- fsel
+                  names(dt_data)[1] <- expected_split_col
                 }
               }
               dt_tbl$x$data <- dt_data
