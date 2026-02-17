@@ -18789,6 +18789,23 @@ custom_reports_server <- function(id) {
               res_mode$cols,
               enable_colors = isTRUE(input[[paste0("cell_color_", settings_cell_id)]])
             )
+            # Normalize returned DT payload so split-by column always exists with the
+            # expected name in custom reports. This prevents DT column-name lookup
+            # warnings when switching split options.
+            dt_data <- tryCatch(dt_tbl$x$data, error = function(...) NULL)
+            if (is.data.frame(dt_data) && nrow(dt_data)) {
+              if (!(fsel %in% names(dt_data))) {
+                if ("SplitColumn" %in% names(dt_data)) {
+                  names(dt_data)[names(dt_data) == "SplitColumn"] <- fsel
+                } else if (ncol(dt_data) >= 1) {
+                  names(dt_data)[1] <- fsel
+                }
+              }
+              dt_tbl$x$data <- dt_data
+            }
+            if (!identical(fsel, "Pitch Types") && !is.null(dt_tbl$x$format)) {
+              dt_tbl$x$format <- list()
+            }
             # Keep Pitch Types in canonical order for Results mode in custom reports.
             if (identical(res_mode$mode, "Results") && identical(fsel, "Pitch Types")) {
               dt_data <- tryCatch(dt_tbl$x$data, error = function(...) NULL)
