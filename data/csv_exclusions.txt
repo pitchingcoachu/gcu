@@ -2582,3 +2582,11 @@
 20260217-UofMontevallo-1_unverified.csv
 # Auto-pruned non-team data
 20260217-VATech-1_unverified.csv
+# Auto-pruned non-team data
+20260217-BobSmithStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260217-FriersonField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-JLJohnsonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260217-SpringsBrooksStadium-1_unverified.csv
