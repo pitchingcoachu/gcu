@@ -2808,3 +2808,19 @@
 20260217-UTSanAntonio-1.csv
 # Auto-pruned non-team data
 20260217-WilsonField-1.csv
+# Auto-pruned non-team data
+20260213-SwansonStadium-1.csv
+# Auto-pruned non-team data
+20260214-ClevelandCommunityCollegeBaseballField-1_unverified.csv
+# Auto-pruned non-team data
+20260214-ClevelandCommunityCollegeBaseballField-2_unverified.csv
+# Auto-pruned non-team data
+20260215-HenleyField-1.csv
+# Auto-pruned non-team data
+20260215-RodenField-1.csv
+# Auto-pruned non-team data
+20260215-RodenField-3.csv
+# Auto-pruned non-team data
+20260215-WarHawkField-1.csv
+# Auto-pruned non-team data
+20260217-GrierField-1.csv
