@@ -2666,3 +2666,27 @@
 20260217-UofMiami-1_unverified.csv
 # Auto-pruned non-team data
 20260217-UTRGVStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260217-DicksonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260217-DicksonStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260217-DicksonStadium-3_unverified.csv
+# Auto-pruned non-team data
+20260217-LindseyNelsonStadium-2.csv
+# Auto-pruned non-team data
+20260217-MSST-1.csv
+# Auto-pruned non-team data
+20260217-OleMiss-1.csv
+# Auto-pruned non-team data
+20260217-Olsen-1.csv
+# Auto-pruned non-team data
+20260217-RiceUniversity-1.csv
+# Auto-pruned non-team data
+20260217-SheheeStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260217-Tankersleyfield-4_unverified.csv
+# Auto-pruned non-team data
+20260217-UNC-1.csv
+# Auto-pruned non-team data
+20260217-Vanderbilt-1.csv
