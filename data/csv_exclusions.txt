@@ -2828,3 +2828,11 @@
 20260213-UTSanAntonio-1.csv
 # Auto-pruned non-team data
 20260214-OdessaCollege-1.csv
+# Auto-pruned non-team data
+20260218-AngelinaCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260218-BudMethenyBBStad-1_unverified.csv
+# Auto-pruned non-team data
+20260218-McBean-1_unverified.csv
+# Auto-pruned non-team data
+20260218-PittFieldUOR-1_unverified.csv
