@@ -4702,6 +4702,9 @@ apply_after_count_filter <- function(df, selection) {
 # ---- Split By helper - adds a column for grouping based on split selection ----
 apply_split_by <- function(df, split_choice) {
   if (is.null(split_choice)) split_choice <- "Pitch Types"
+  if (dplyr::is_grouped_df(df)) {
+    df <- dplyr::ungroup(df)
+  }
   
   to_atomic_character <- function(x, n_expected) {
     if (is.null(x)) return(rep(NA_character_, n_expected))
