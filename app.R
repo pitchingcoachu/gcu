@@ -2812,9 +2812,9 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
     }
     # Safe condition checking for color mode - now also checks for split column names
     # Allow colors for any split column (Count, BatterSide, PitcherThrows, InducedVert, HorzBreak, etc.)
-    split_col_names <- c("Count", "BatterSide", "Batter Side", "PitcherThrows", "InducedVert", "HorzBreak", 
-                         "PitcherSet", "Inning", "TaggedHitType", "Date", "Batter Hand", "After Count", 
-                         "Velocity", "Batter")
+    split_col_names <- c("Count", "BatterSide", "Batter Side", "PitcherThrows", "Pitcher Hand",
+                         "InducedVert", "HorzBreak", "PitcherSet", "Inning", "TaggedHitType",
+                         "Date", "Batter Hand", "After Count", "Velocity", "Batter", "Pitcher")
     has_split_column <- any(split_col_names %in% names(df))
     
     color_mode <- if (identical(mode, "Custom")) "Process" else mode
@@ -4682,37 +4682,47 @@ apply_after_count_filter <- function(df, selection) {
 apply_split_by <- function(df, split_choice) {
   if (is.null(split_choice)) split_choice <- "Pitch Types"
   
+  get_first_existing <- function(data, candidates) {
+    hit <- intersect(candidates, names(data))
+    if (length(hit)) data[[hit[[1]]]] else rep(NA, nrow(data))
+  }
+  
   df <- switch(
     split_choice,
     
     "Pitch Types" = {
-      df %>% dplyr::mutate(SplitColumn = as.character(TaggedPitchType))
+      pt <- get_first_existing(df, c("TaggedPitchType", "PitchType", "Pitch"))
+      df %>% dplyr::mutate(SplitColumn = as.character(pt))
     },
     
     "Batter Hand" = {
+      batter_hand <- get_first_existing(df, c("BatterSide", "BatterHand", "Batter Hand"))
       df %>% dplyr::mutate(SplitColumn = ifelse(
-        !is.na(BatterSide) & BatterSide != "", 
-        as.character(BatterSide), 
+        !is.na(batter_hand) & as.character(batter_hand) != "", 
+        as.character(batter_hand), 
         "Unknown"
       ))
     },
     
     "Pitcher Hand" = {
+      pitcher_hand <- get_first_existing(df, c("PitcherThrows", "PitcherHand", "Pitcher Hand"))
       df %>% dplyr::mutate(SplitColumn = ifelse(
-        !is.na(PitcherThrows) & PitcherThrows != "", 
-        as.character(PitcherThrows), 
+        !is.na(pitcher_hand) & as.character(pitcher_hand) != "", 
+        as.character(pitcher_hand), 
         "Unknown"
       ))
     },
     
     "Count" = {
+      balls <- suppressWarnings(as.numeric(get_first_existing(df, c("Balls"))))
+      strikes <- suppressWarnings(as.numeric(get_first_existing(df, c("Strikes"))))
       df %>% dplyr::mutate(
         SplitColumn = ifelse(
-          is.finite(Balls) & is.finite(Strikes),
-          paste0(Balls, "-", Strikes),
+          is.finite(balls) & is.finite(strikes),
+          paste0(balls, "-", strikes),
           "Unknown"
         ),
-        CountState = count_state_vec(Balls, Strikes)
+        CountState = count_state_vec(balls, strikes)
       )
     },
     
@@ -4738,51 +4748,57 @@ apply_split_by <- function(df, split_choice) {
     },
     
     "Velocity" = {
+      rel_speed <- suppressWarnings(as.numeric(get_first_existing(df, c("RelSpeed", "Velocity", "Velo"))))
       df %>% dplyr::mutate(SplitColumn = dplyr::case_when(
-        !is.finite(RelSpeed) ~ "Unknown",
-        RelSpeed < 70 ~ "<70",
-        RelSpeed >= 100 ~ ">99",
-        TRUE ~ paste0(floor(RelSpeed/2)*2, "-", floor(RelSpeed/2)*2 + 1)
+        !is.finite(rel_speed) ~ "Unknown",
+        rel_speed < 70 ~ "<70",
+        rel_speed >= 100 ~ ">99",
+        TRUE ~ paste0(floor(rel_speed/2)*2, "-", floor(rel_speed/2)*2 + 1)
       ))
     },
     
     "IVB" = {
+      ivb <- suppressWarnings(as.numeric(get_first_existing(df, c("InducedVertBreak", "IVB"))))
       df %>% dplyr::mutate(SplitColumn = dplyr::case_when(
-        !is.finite(InducedVertBreak) ~ "Unknown",
-        InducedVertBreak < -22 ~ "<-22",
-        InducedVertBreak > 22 ~ ">22",
-        TRUE ~ paste0(floor(InducedVertBreak/2)*2, "-", floor(InducedVertBreak/2)*2 + 1)
+        !is.finite(ivb) ~ "Unknown",
+        ivb < -22 ~ "<-22",
+        ivb > 22 ~ ">22",
+        TRUE ~ paste0(floor(ivb/2)*2, "-", floor(ivb/2)*2 + 1)
       ))
     },
     
     "HB" = {
+      hb <- suppressWarnings(as.numeric(get_first_existing(df, c("HorzBreak", "HB"))))
       df %>% dplyr::mutate(SplitColumn = dplyr::case_when(
-        !is.finite(HorzBreak) ~ "Unknown",
-        HorzBreak < -22 ~ "<-22",
-        HorzBreak > 22 ~ ">22",
-        TRUE ~ paste0(floor(HorzBreak/2)*2, "-", floor(HorzBreak/2)*2 + 1)
+        !is.finite(hb) ~ "Unknown",
+        hb < -22 ~ "<-22",
+        hb > 22 ~ ">22",
+        TRUE ~ paste0(floor(hb/2)*2, "-", floor(hb/2)*2 + 1)
       ))
     },
     
     "Batter" = {
+      batter <- get_first_existing(df, c("Batter", "Hitter", "Player"))
       df %>% dplyr::mutate(SplitColumn = ifelse(
-        !is.na(Batter) & nzchar(Batter), 
-        as.character(Batter), 
+        !is.na(batter) & nzchar(as.character(batter)), 
+        as.character(batter), 
         "Unknown"
       ))
     },
     
     "Pitcher" = {
+      pitcher <- get_first_existing(df, c("Pitcher", "Player"))
       df %>% dplyr::mutate(SplitColumn = ifelse(
-        !is.na(Pitcher) & nzchar(Pitcher), 
-        as.character(Pitcher), 
+        !is.na(pitcher) & nzchar(as.character(pitcher)), 
+        as.character(pitcher), 
         "Unknown"
       ))
     },
     
     # Default: Pitch Types
     {
-      df %>% dplyr::mutate(SplitColumn = as.character(TaggedPitchType))
+      pt <- get_first_existing(df, c("TaggedPitchType", "PitchType", "Pitch"))
+      df %>% dplyr::mutate(SplitColumn = as.character(pt))
     }
   )
   attr(df, "split_choice") <- split_choice
@@ -18947,6 +18963,7 @@ custom_reports_server <- function(id) {
                   names(dt_data)[1] <- expected_split_col
                 }
               }
+              dt_tbl$x$data <- dt_data
             }
             # Keep Pitch Types in canonical order for Results mode in custom reports.
             if (identical(res_mode$mode, "Results") && identical(fsel, "Pitch Types")) {
@@ -18960,36 +18977,17 @@ custom_reports_server <- function(id) {
                   dt_data[[pcol]] <- factor(cur_vals, levels = c(ord, other_vals, "All"))
                   dt_data <- dt_data %>% dplyr::arrange(.data[[pcol]])
                   dt_data[[pcol]] <- as.character(dt_data[[pcol]])
+                  dt_tbl$x$data <- dt_data
                 }
               }
             }
-
-            if (!is.data.frame(dt_data)) {
-              return(DT::datatable(
-                data.frame(Message = "Unable to render summary table"),
-                options = list(dom = "t", autoWidth = FALSE),
-                rownames = FALSE
-              ))
-            }
-
-            row_count <- nrow(dt_data)
-            dt_out <- DT::datatable(
-              dt_data,
-              rownames = FALSE,
-              escape = FALSE,
-              class = "compact",
-              options = list(
-                dom = "t",
-                paging = FALSE,
-                pageLength = if (row_count > 0) row_count else 10,
-                autoWidth = FALSE,
-                scrollX = FALSE
-              )
-            )
+            # Drop any stale DT formatting instructions when split-by changes.
+            # These can carry old column targets and trigger "column name not found".
+            dt_tbl$x$format <- list()
 
             # Custom Reports only: color pitch-type cells when split-by is Pitch Types.
             if (identical(fsel, "Pitch Types")) {
-              dt_col_names <- names(dt_data)
+              dt_col_names <- tryCatch(names(dt_tbl$x$data), error = function(...) character(0))
               pitch_col <- c("Pitch", "Pitch Type", "PitchType")
               pitch_col <- pitch_col[pitch_col %in% dt_col_names]
               if (length(pitch_col)) {
@@ -19003,7 +19001,7 @@ custom_reports_server <- function(id) {
                   bg_values[idx] <- "#ffffff"
                   text_values[idx] <- "#000000"
                 }
-                dt_out <- dt_out %>% DT::formatStyle(
+                dt_tbl <- dt_tbl %>% DT::formatStyle(
                   pitch_col,
                   target = "cell",
                   backgroundColor = DT::styleEqual(pitch_values, bg_values),
@@ -19012,8 +19010,16 @@ custom_reports_server <- function(id) {
                 )
               }
             }
-
-            dt_out
+            # Ensure the full summary table is visible (no inner paging/scroll clipping).
+            row_count <- tryCatch(nrow(dt_tbl$x$data), error = function(...) NA_integer_)
+            if (is.finite(row_count) && row_count > 0) {
+              dt_tbl$x$options$pageLength <- row_count
+              dt_tbl$x$options$paging <- FALSE
+            }
+            dt_tbl$x$options$scrollY <- NULL
+            dt_tbl$x$options$scrollX <- FALSE
+            dt_tbl$x$options$class <- "compact"
+            dt_tbl
           }, error = function(e) {
             message("Error rendering custom reports table: ", e$message)
             DT::datatable(
