@@ -2546,3 +2546,39 @@
 20260214-TarletonBBComplex-1.csv
 # Auto-pruned non-team data
 20260217-GrierField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-BobHannahStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260217-DavenportField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-DurhamField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-EarleCombsStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260217-JimReevesField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-KingsmoreStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260217-LamarHennonField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-LathamPark-1_unverified.csv
+# Auto-pruned non-team data
+20260217-LeeUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260217-LindseyNelsonStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260217-PioneerPark-1_unverified.csv
+# Auto-pruned non-team data
+20260217-ReeseField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-SammyCoxField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-SullivanField-2_unverified.csv
+# Auto-pruned non-team data
+20260217-TommyCareyField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-UNC-1_unverified.csv
+# Auto-pruned non-team data
+20260217-UofMontevallo-1_unverified.csv
+# Auto-pruned non-team data
+20260217-VATech-1_unverified.csv
