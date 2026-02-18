@@ -2642,3 +2642,27 @@
 20260217-Vanderbilt-1_unverified.csv
 # Auto-pruned non-team data
 20260217-WilsonField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-Arlington-1_unverified.csv
+# Auto-pruned non-team data
+20260217-BenMeyerDiamond-1_unverified.csv
+# Auto-pruned non-team data
+20260217-BlairField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-BrownStroudField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-DallasBaptist-1_unverified.csv
+# Auto-pruned non-team data
+20260217-PhoenixMunicipal-1_unverified.csv
+# Auto-pruned non-team data
+20260217-PlainsmanPark-1_unverified.csv
+# Auto-pruned non-team data
+20260217-RiceUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260217-UArizona-1_unverified.csv
+# Auto-pruned non-team data
+20260217-UNorthFlorida-1_unverified.csv
+# Auto-pruned non-team data
+20260217-UofMiami-1_unverified.csv
+# Auto-pruned non-team data
+20260217-UTRGVStadium-1_unverified.csv
