@@ -21628,13 +21628,14 @@ ui <- tagList(
       }
       .creport-pdf-clone [id$='report_canvas_wrapper'] {
         padding-left: 40px !important;
-        margin-left: 0 !important;
+        margin-left: -40px !important;
+        overflow: visible !important;
       }
       .creport-pdf-clone .creport-row-wrap-has-gutter {
-        padding-left: 34px !important;
+        padding-left: 0 !important;
       }
       .creport-pdf-clone .creport-row-note {
-        left: 0 !important;
+        left: -34px !important;
       }
       .creport-pdf-clone.creport-pdf-light {
         background: #ffffff;
