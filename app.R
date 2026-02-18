@@ -14624,6 +14624,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
         "IVB" = "IVB",
         "HB" = "HB",
         "Batter" = if (dom == "Hitter") "Pitcher" else "Batter",
+        "Pitcher" = "Pitcher",
         "Pitch"
       )
       ensure_split_column <- function(tbl) {
@@ -16843,6 +16844,29 @@ custom_reports_server <- function(id) {
     update_reports_grid <- function(cells_list) {
       current_cells(cells_list)
     }
+    
+    # Keep all per-panel date inputs synced to the global date range whenever it changes.
+    observe({
+      if (!isTRUE(input$use_global_dates)) return()
+      global_dates <- input$global_dates
+      if (is.null(global_dates) || length(global_dates) != 2) return()
+      
+      rows <- suppressWarnings(as.integer(input$report_rows))
+      cols <- suppressWarnings(as.integer(input$report_cols))
+      if (is.na(rows) || is.na(cols) || rows < 1 || cols < 1) return()
+      
+      for (r in seq_len(rows)) {
+        for (c in seq_len(cols)) {
+          cell_id <- paste0("r", r, "c", c)
+          updateDateRangeInput(
+            session,
+            paste0("cell_dates_", cell_id),
+            start = global_dates[1],
+            end = global_dates[2]
+          )
+        }
+      }
+    })
 
     show_report_pitch_legend <- reactive({
       rows <- suppressWarnings(as.integer(input$report_rows))
@@ -18915,7 +18939,7 @@ custom_reports_server <- function(id) {
             # expected name in custom reports. This prevents DT column-name lookup
             # warnings when switching split options.
             dt_data <- tryCatch(dt_tbl$x$data, error = function(...) NULL)
-            if (is.data.frame(dt_data) && nrow(dt_data)) {
+            if (is.data.frame(dt_data)) {
               if (!(expected_split_col %in% names(dt_data))) {
                 if ("SplitColumn" %in% names(dt_data)) {
                   names(dt_data)[names(dt_data) == "SplitColumn"] <- expected_split_col
@@ -18923,14 +18947,9 @@ custom_reports_server <- function(id) {
                   names(dt_data)[1] <- expected_split_col
                 }
               }
-              dt_tbl$x$data <- dt_data
-            }
-            if (!identical(fsel, "Pitch Types") && !is.null(dt_tbl$x$format)) {
-              dt_tbl$x$format <- list()
             }
             # Keep Pitch Types in canonical order for Results mode in custom reports.
             if (identical(res_mode$mode, "Results") && identical(fsel, "Pitch Types")) {
-              dt_data <- tryCatch(dt_tbl$x$data, error = function(...) NULL)
               if (is.data.frame(dt_data) && nrow(dt_data)) {
                 pcol <- intersect(c("Pitch", "Pitch Type", "PitchType"), names(dt_data))
                 if (length(pcol)) {
@@ -18941,16 +18960,36 @@ custom_reports_server <- function(id) {
                   dt_data[[pcol]] <- factor(cur_vals, levels = c(ord, other_vals, "All"))
                   dt_data <- dt_data %>% dplyr::arrange(.data[[pcol]])
                   dt_data[[pcol]] <- as.character(dt_data[[pcol]])
-                  dt_tbl$x$data <- dt_data
                 }
               }
             }
 
+            if (!is.data.frame(dt_data)) {
+              return(DT::datatable(
+                data.frame(Message = "Unable to render summary table"),
+                options = list(dom = "t", autoWidth = FALSE),
+                rownames = FALSE
+              ))
+            }
+
+            row_count <- nrow(dt_data)
+            dt_out <- DT::datatable(
+              dt_data,
+              rownames = FALSE,
+              escape = FALSE,
+              class = "compact",
+              options = list(
+                dom = "t",
+                paging = FALSE,
+                pageLength = if (row_count > 0) row_count else 10,
+                autoWidth = FALSE,
+                scrollX = FALSE
+              )
+            )
+
             # Custom Reports only: color pitch-type cells when split-by is Pitch Types.
-            # Avoid styling other split columns (e.g. Count/After Count/Batter Hand),
-            # which can trigger DataTables column-name warnings.
             if (identical(fsel, "Pitch Types")) {
-              dt_col_names <- tryCatch(names(dt_tbl$x$data), error = function(...) character(0))
+              dt_col_names <- names(dt_data)
               pitch_col <- c("Pitch", "Pitch Type", "PitchType")
               pitch_col <- pitch_col[pitch_col %in% dt_col_names]
               if (length(pitch_col)) {
@@ -18964,7 +19003,7 @@ custom_reports_server <- function(id) {
                   bg_values[idx] <- "#ffffff"
                   text_values[idx] <- "#000000"
                 }
-                dt_tbl <- dt_tbl %>% DT::formatStyle(
+                dt_out <- dt_out %>% DT::formatStyle(
                   pitch_col,
                   target = "cell",
                   backgroundColor = DT::styleEqual(pitch_values, bg_values),
@@ -18973,16 +19012,8 @@ custom_reports_server <- function(id) {
                 )
               }
             }
-            # Ensure the full summary table is visible (no inner paging/scroll clipping).
-            row_count <- tryCatch(nrow(dt_tbl$x$data), error = function(...) NA_integer_)
-            if (is.finite(row_count) && row_count > 0) {
-              dt_tbl$x$options$pageLength <- row_count
-              dt_tbl$x$options$paging <- FALSE
-            }
-            dt_tbl$x$options$scrollY <- NULL
-            dt_tbl$x$options$scrollX <- FALSE
-            dt_tbl$x$options$class <- "compact"
-            dt_tbl
+
+            dt_out
           }, error = function(e) {
             message("Error rendering custom reports table: ", e$message)
             DT::datatable(
