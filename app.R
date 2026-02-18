@@ -4795,32 +4795,35 @@ apply_split_by <- function(df, split_choice) {
     
     "Velocity" = {
       rel_speed <- get_first_numeric(df, c("RelSpeed", "Velocity", "Velo"))
-      df %>% dplyr::mutate(SplitColumn = dplyr::case_when(
-        !is.finite(rel_speed) ~ "Unknown",
-        rel_speed < 70 ~ "<70",
-        rel_speed >= 100 ~ ">99",
-        TRUE ~ paste0(floor(rel_speed/2)*2, "-", floor(rel_speed/2)*2 + 1)
-      ))
+      split_vals <- rep("Unknown", nrow(df))
+      ok <- is.finite(rel_speed)
+      split_vals[ok & rel_speed < 70] <- "<70"
+      split_vals[ok & rel_speed >= 100] <- ">99"
+      mid <- ok & rel_speed >= 70 & rel_speed < 100
+      split_vals[mid] <- paste0(floor(rel_speed[mid] / 2) * 2, "-", floor(rel_speed[mid] / 2) * 2 + 1)
+      df %>% dplyr::mutate(SplitColumn = split_vals)
     },
     
     "IVB" = {
       ivb <- get_first_numeric(df, c("InducedVertBreak", "IVB"))
-      df %>% dplyr::mutate(SplitColumn = dplyr::case_when(
-        !is.finite(ivb) ~ "Unknown",
-        ivb < -22 ~ "<-22",
-        ivb > 22 ~ ">22",
-        TRUE ~ paste0(floor(ivb/2)*2, "-", floor(ivb/2)*2 + 1)
-      ))
+      split_vals <- rep("Unknown", nrow(df))
+      ok <- is.finite(ivb)
+      split_vals[ok & ivb < -22] <- "<-22"
+      split_vals[ok & ivb > 22] <- ">22"
+      mid <- ok & ivb >= -22 & ivb <= 22
+      split_vals[mid] <- paste0(floor(ivb[mid] / 2) * 2, "-", floor(ivb[mid] / 2) * 2 + 1)
+      df %>% dplyr::mutate(SplitColumn = split_vals)
     },
     
     "HB" = {
       hb <- get_first_numeric(df, c("HorzBreak", "HB"))
-      df %>% dplyr::mutate(SplitColumn = dplyr::case_when(
-        !is.finite(hb) ~ "Unknown",
-        hb < -22 ~ "<-22",
-        hb > 22 ~ ">22",
-        TRUE ~ paste0(floor(hb/2)*2, "-", floor(hb/2)*2 + 1)
-      ))
+      split_vals <- rep("Unknown", nrow(df))
+      ok <- is.finite(hb)
+      split_vals[ok & hb < -22] <- "<-22"
+      split_vals[ok & hb > 22] <- ">22"
+      mid <- ok & hb >= -22 & hb <= 22
+      split_vals[mid] <- paste0(floor(hb[mid] / 2) * 2, "-", floor(hb[mid] / 2) * 2 + 1)
+      df %>% dplyr::mutate(SplitColumn = split_vals)
     },
     
     "Batter" = {
