@@ -2824,3 +2824,7 @@
 20260215-WarHawkField-1.csv
 # Auto-pruned non-team data
 20260217-GrierField-1.csv
+# Auto-pruned non-team data
+20260213-UTSanAntonio-1.csv
+# Auto-pruned non-team data
+20260214-OdessaCollege-1.csv
