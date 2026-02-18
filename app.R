@@ -21626,6 +21626,16 @@ ui <- tagList(
       .creport-pdf-clone {
         width: 100%;
       }
+      .creport-pdf-clone [id$='report_canvas_wrapper'] {
+        padding-left: 40px !important;
+        margin-left: 0 !important;
+      }
+      .creport-pdf-clone .creport-row-wrap-has-gutter {
+        padding-left: 34px !important;
+      }
+      .creport-pdf-clone .creport-row-note {
+        left: 0 !important;
+      }
       .creport-pdf-clone.creport-pdf-light {
         background: #ffffff;
         color: #111111;
