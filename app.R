@@ -16400,6 +16400,7 @@ custom_reports_ui <- function(id) {
                      uiOutput(ns("multi_player_selectors"))
                    ),
                    selectInput(ns("report_rows"), "Rows:", choices = 1:15, selected = 1),
+                   uiOutput(ns("row_panel_notes_inputs")),
                    selectInput(ns("report_cols"), "Columns:", choices = 1:5, selected = 1),
                    checkboxInput(ns("use_global_dates"), "Apply one date range to all panels", value = FALSE),
                    conditionalPanel(
@@ -16618,6 +16619,16 @@ custom_reports_server <- function(id) {
           }
         }
         for (r in seq_len(rows)) {
+          note_val <- cells[[paste0("row_", r, "_panel_note")]] %||% ""
+          span_val <- cells[[paste0("row_", r, "_panel_note_span")]] %||% 1
+          span_val <- suppressWarnings(as.integer(span_val))
+          if (is.na(span_val) || span_val < 1) span_val <- 1
+          max_span <- max(1L, rows - r + 1L)
+          span_val <- min(span_val, max_span)
+          updateTextInput(session, paste0("row_panel_note_", r), value = note_val)
+          updateNumericInput(session, paste0("row_panel_note_span_", r), value = span_val, min = 1, max = max_span)
+        }
+        for (r in seq_len(rows)) {
           for (c in seq_len(cols)) {
             cell_id <- paste0("r", r, "c", c)
             saved_cell <- cells[[cell_id]]
@@ -16751,6 +16762,48 @@ custom_reports_server <- function(id) {
         )
       })
     })
+
+    output$row_panel_notes_inputs <- renderUI({
+      rows <- suppressWarnings(as.integer(input$report_rows))
+      if (is.na(rows) || rows < 1) return(NULL)
+
+      cells <- current_cells()
+      inputs <- lapply(seq_len(rows), function(r) {
+        note_id <- paste0("row_panel_note_", r)
+        span_id <- paste0("row_panel_note_span_", r)
+        max_span <- max(1L, rows - r + 1L)
+        stored_note <- cells[[paste0("row_", r, "_panel_note")]] %||% ""
+        stored_span <- cells[[paste0("row_", r, "_panel_note_span")]] %||% 1
+        span_val <- suppressWarnings(as.integer(input[[span_id]] %||% stored_span))
+        if (is.na(span_val) || span_val < 1) span_val <- 1L
+        span_val <- min(span_val, max_span)
+
+        tagList(
+          textInput(
+            ns(note_id),
+            label = paste0("Row ", r, " Panel Notes"),
+            value = input[[note_id]] %||% stored_note,
+            placeholder = "Optional"
+          ),
+          numericInput(
+            ns(span_id),
+            label = paste0("Row ", r, " Note Covers Rows"),
+            value = span_val,
+            min = 1,
+            max = max_span,
+            step = 1,
+            width = "100%"
+          )
+        )
+      })
+
+      tagList(
+        tags$hr(style = "margin-top:12px; margin-bottom:12px;"),
+        tags$strong("Row Panel Notes (optional)"),
+        tags$div(style = "height:8px;"),
+        inputs
+      )
+    })
     
     # Header showing report title + players
     output$report_header <- renderUI({
@@ -16799,6 +16852,15 @@ custom_reports_server <- function(id) {
         )
       )
     })
+
+    stack_vertical_note <- function(txt) {
+      chars <- strsplit(txt %||% "", "", fixed = TRUE)[[1]]
+      chars <- ifelse(chars == " ", "\u00a0", chars)
+      tags$div(
+        class = "creport-row-note-text",
+        lapply(chars, function(ch) tags$div(htmltools::HTML(htmltools::htmlEscape(ch))))
+      )
+    }
 
     observeEvent(input$download_report_pdf, {
       title_txt <- trimws(input$report_title %||% "")
@@ -16910,6 +16972,13 @@ custom_reports_server <- function(id) {
       updateTextInput(session, "report_subtitle", value = "")
       updateSelectInput(session, "saved_report", selected = "")
       updateCheckboxInput(session, "use_global_dates", value = FALSE)
+      rows_now <- suppressWarnings(as.integer(input$report_rows))
+      if (is.na(rows_now) || rows_now < 1) rows_now <- 1
+      for (r in seq_len(rows_now)) {
+        max_span <- max(1L, rows_now - r + 1L)
+        updateTextInput(session, paste0("row_panel_note_", r), value = "")
+        updateNumericInput(session, paste0("row_panel_note_span_", r), value = 1, min = 1, max = max_span)
+      }
       if (isTRUE(is_admin_local())) updateCheckboxInput(session, "report_global", value = FALSE)
 
       loading_report_handle <<- later::later(function() {
@@ -17219,6 +17288,28 @@ custom_reports_server <- function(id) {
         }
         player_name
       }
+
+      row_note_starts <- vector("list", rows)
+      covered_by_prior_note <- rep(FALSE, rows)
+      for (note_row in seq_len(rows)) {
+        if (isTRUE(covered_by_prior_note[note_row])) next
+        note_text <- trimws(input[[paste0("row_panel_note_", note_row)]] %||%
+                              cells[[paste0("row_", note_row, "_panel_note")]] %||% "")
+        if (!nzchar(note_text)) next
+        note_span <- suppressWarnings(as.integer(
+          input[[paste0("row_panel_note_span_", note_row)]] %||%
+            cells[[paste0("row_", note_row, "_panel_note_span")]] %||% 1
+        ))
+        if (is.na(note_span) || note_span < 1) note_span <- 1L
+        max_span <- max(1L, rows - note_row + 1L)
+        note_span <- min(note_span, max_span)
+        row_note_starts[[note_row]] <- list(text = note_text, span = note_span)
+        if (note_span > 1L) {
+          covered_idx <- seq.int(note_row + 1L, note_row + note_span - 1L)
+          if (length(covered_idx)) covered_by_prior_note[covered_idx] <- TRUE
+        }
+      }
+      has_row_notes <- any(vapply(row_note_starts, Negate(is.null), logical(1)))
       
       grid <- lapply(seq_len(rows), function(r) {
         # For Multi-Player mode, add player name before the row of charts
@@ -17450,9 +17541,27 @@ custom_reports_server <- function(id) {
         row_cells <- Filter(Negate(is.null), row_cells)
         
         # Return player name (if Multi-Player) followed by the row of charts
+        row_note <- row_note_starts[[r]]
+        note_block <- NULL
+        note_span <- 1L
+        if (!is.null(row_note)) {
+          note_span <- row_note$span %||% 1L
+          note_block <- div(
+            class = "creport-row-note",
+            stack_vertical_note(row_note$text)
+          )
+        }
+
+        row_block <- div(
+          class = paste("creport-row-wrap", if (has_row_notes) "creport-row-wrap-has-gutter" else ""),
+          style = sprintf("--creport-row-note-span:%d;", note_span),
+          note_block,
+          fluidRow(row_cells)
+        )
+
         tagList(
           player_name_row,
-          fluidRow(row_cells)
+          row_block
         )
       })
       
@@ -17487,6 +17596,25 @@ custom_reports_server <- function(id) {
           if (!is.null(player_input)) {
             cells[[paste0("row_", r, "_player")]] <- player_input
           }
+        }
+      }
+
+      for (r in seq_len(rows)) {
+        note_key <- paste0("row_", r, "_panel_note")
+        span_key <- paste0("row_", r, "_panel_note_span")
+        note_input <- input[[paste0("row_panel_note_", r)]]
+        span_input <- input[[paste0("row_panel_note_span_", r)]]
+        if (!is.null(note_input)) {
+          cells[[note_key]] <- note_input
+        } else if (is.null(cells[[note_key]])) {
+          cells[[note_key]] <- ""
+        }
+        if (!is.null(span_input)) {
+          span_val <- suppressWarnings(as.integer(span_input))
+          if (is.na(span_val) || span_val < 1) span_val <- 1L
+          cells[[span_key]] <- span_val
+        } else if (is.null(cells[[span_key]])) {
+          cells[[span_key]] <- 1L
         }
       }
       
@@ -22221,6 +22349,34 @@ ui <- tagList(
       .creport-grid .row:last-child {
         margin-bottom: 0;
       }
+      .creport-row-wrap {
+        position: relative;
+      }
+      .creport-row-wrap-has-gutter {
+        padding-left: 34px;
+      }
+      .creport-row-note {
+        position: absolute;
+        left: 0;
+        top: calc(50% + ((var(--creport-row-note-span, 1) - 1) * (var(--creport-cell-height) + var(--creport-gap)) / 2));
+        transform: translateY(-50%);
+        width: 28px;
+        display: flex;
+        justify-content: center;
+        pointer-events: none;
+      }
+      .creport-row-note-text {
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        gap: 1px;
+        font-weight: 700;
+        font-size: 13px;
+        line-height: 1.02;
+        text-transform: none;
+        white-space: nowrap;
+      }
       .creport-cell {
         background: #ffffff;
         border: 2px solid #000;
@@ -22316,6 +22472,9 @@ ui <- tagList(
         background: rgba(0,0,0,0.92) !important;
         border: 1px solid #2a2a2a !important;
         box-shadow: 0 4px 18px rgba(0,0,0,0.35);
+        color: #e5e7eb;
+      }
+      body.theme-dark .creport-row-note-text {
         color: #e5e7eb;
       }
       body.theme-dark .creport-controls-toggle {
