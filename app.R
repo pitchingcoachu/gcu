@@ -21520,25 +21520,59 @@ ui <- tagList(
             el.remove();
           });
 
-          var sandbox = document.createElement('div');
-          sandbox.className = 'creport-pdf-sandbox';
-          if (isDark) sandbox.classList.add('creport-pdf-sandbox-dark');
-          sandbox.appendChild(clone);
-          document.body.appendChild(sandbox);
+          var renderCloneToCanvas = async function(node) {
+            var sandbox = document.createElement('div');
+            sandbox.className = 'creport-pdf-sandbox';
+            if (isDark) sandbox.classList.add('creport-pdf-sandbox-dark');
+            sandbox.appendChild(node);
+            document.body.appendChild(sandbox);
+            try {
+              return await window.html2canvas(node, {
+                scale: 2,
+                useCORS: true,
+                allowTaint: true,
+                backgroundColor: isDark ? '#0b0f14' : '#ffffff',
+                windowWidth: window.innerWidth,
+                windowHeight: window.innerHeight
+              });
+            } finally {
+              if (sandbox.parentNode) sandbox.parentNode.removeChild(sandbox);
+            }
+          };
 
-          var canvas = await window.html2canvas(clone, {
-            scale: 2,
-            useCORS: true,
-            allowTaint: true,
-            backgroundColor: isDark ? '#0b0f14' : '#ffffff',
-            windowWidth: window.innerWidth,
-            windowHeight: window.innerHeight
-          });
+          var buildPageClone = function(baseClone, startIdx, endIdx) {
+            var pageClone = baseClone.cloneNode(true);
+            var rows = Array.prototype.slice.call(pageClone.querySelectorAll('.creport-row-wrap'));
+            rows.forEach(function(rowEl, idx) {
+              if (idx >= startIdx && idx <= endIdx) return;
+              var prev = rowEl.previousElementSibling;
+              rowEl.remove();
+              if (prev && !prev.classList.contains('creport-row-wrap')) {
+                var prevHasRows = prev.querySelector && prev.querySelector('.creport-row-wrap');
+                if (!prevHasRows) prev.remove();
+              }
+            });
+            return pageClone;
+          };
 
-          document.body.removeChild(sandbox);
+          var rowsPerPage = 5;
+          var totalRows = clone.querySelectorAll('.creport-row-wrap').length;
+          var pageCanvases = [];
+          if (totalRows > rowsPerPage) {
+            var pageCount = Math.ceil(totalRows / rowsPerPage);
+            for (var p = 0; p < pageCount; p++) {
+              var startIdx = p * rowsPerPage;
+              var endIdx = Math.min(totalRows - 1, startIdx + rowsPerPage - 1);
+              var pageClone = buildPageClone(clone, startIdx, endIdx);
+              pageCanvases.push(await renderCloneToCanvas(pageClone));
+            }
+          } else {
+            pageCanvases.push(await renderCloneToCanvas(clone));
+          }
 
           var jsPDF = window.jspdf.jsPDF;
-          var orientation = canvas.width > canvas.height ? 'landscape' : 'portrait';
+          var firstCanvas = pageCanvases[0];
+          var orientation = firstCanvas.width > firstCanvas.height ? 'landscape' : 'portrait';
           var pdf = new jsPDF({
             orientation: orientation,
             unit: 'pt',
@@ -21549,20 +21583,24 @@ ui <- tagList(
           var pageW = pdf.internal.pageSize.getWidth();
           var pageH = pdf.internal.pageSize.getHeight();
           var margin = 24;
-          var availW = pageW - (margin * 2);
-          var availH = pageH - (margin * 2);
-          var ratio = Math.min(availW / canvas.width, availH / canvas.height);
-          var drawW = canvas.width * ratio;
-          var drawH = canvas.height * ratio;
-          var x = (pageW - drawW) / 2;
-          var y = (pageH - drawH) / 2;
+          pageCanvases.forEach(function(canvas, idx) {
+            if (idx > 0) pdf.addPage();
+            pageW = pdf.internal.pageSize.getWidth();
+            pageH = pdf.internal.pageSize.getHeight();
+            var availW = pageW - (margin * 2);
+            var availH = pageH - (margin * 2);
+            var ratio = Math.min(availW / canvas.width, availH / canvas.height);
+            var drawW = canvas.width * ratio;
+            var drawH = canvas.height * ratio;
+            var x = (pageW - drawW) / 2;
+            var y = (pageH - drawH) / 2;
 
-          if (isDark) {
-            pdf.setFillColor(11, 15, 20);
-            pdf.rect(0, 0, pageW, pageH, 'F');
-          }
-
-          pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, drawW, drawH, '', 'FAST');
+            if (isDark) {
+              pdf.setFillColor(11, 15, 20);
+              pdf.rect(0, 0, pageW, pageH, 'F');
+            }
+            pdf.addImage(canvas.toDataURL('image/jpeg', 0.95), 'JPEG', x, y, drawW, drawH, '', 'FAST');
+          });
           pdf.save(message.filename || 'custom_report.pdf');
         } catch (err) {
           if (window.Shiny && Shiny.setInputValue) {
@@ -21628,14 +21666,17 @@ ui <- tagList(
       }
       .creport-pdf-clone [id$='report_canvas_wrapper'] {
         padding-left: 40px !important;
-        margin-left: -40px !important;
+        margin-left: 0 !important;
         overflow: visible !important;
+      }
+      .creport-pdf-clone [id$='report_canvas'] {
+        margin-left: -40px !important;
       }
       .creport-pdf-clone .creport-row-wrap-has-gutter {
         padding-left: 0 !important;
       }
       .creport-pdf-clone .creport-row-note {
-        left: -34px !important;
+        left: 6px !important;
       }
       .creport-pdf-clone.creport-pdf-light {
         background: #ffffff;
