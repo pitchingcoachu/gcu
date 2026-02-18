@@ -16766,29 +16766,46 @@ custom_reports_server <- function(id) {
     output$row_panel_notes_inputs <- renderUI({
       rows <- suppressWarnings(as.integer(input$report_rows))
       if (is.na(rows) || rows < 1) return(NULL)
-
-      cells <- current_cells()
       inputs <- lapply(seq_len(rows), function(r) {
         note_id <- paste0("row_panel_note_", r)
         span_id <- paste0("row_panel_note_span_", r)
         max_span <- max(1L, rows - r + 1L)
-        stored_note <- cells[[paste0("row_", r, "_panel_note")]] %||% ""
-        stored_span <- cells[[paste0("row_", r, "_panel_note_span")]] %||% 1
-        span_val <- suppressWarnings(as.integer(input[[span_id]] %||% stored_span))
-        if (is.na(span_val) || span_val < 1) span_val <- 1L
-        span_val <- min(span_val, max_span)
+        blur_id <- paste0("row_panel_note_blur_", r)
+        pending_id <- paste0("row_panel_note_pending_", r)
 
         tagList(
           textInput(
             ns(note_id),
             label = paste0("Row ", r, " Panel Notes"),
-            value = input[[note_id]] %||% stored_note,
+            value = "",
             placeholder = "Optional"
           ),
+          tags$script(HTML(sprintf("
+            (function() {
+              var id = '%s';
+              var blurId = '%s';
+              var pendingId = '%s';
+              var el = document.getElementById(id);
+              if (!el) return;
+              el.removeEventListener('blur', el.__row_note_blur_listener__);
+              el.removeEventListener('input', el.__row_note_input_listener__);
+              var blurListener = function() {
+                Shiny.setInputValue(blurId, el.value, {priority: 'event'});
+              };
+              var inputListener = function() {
+                Shiny.setInputValue(pendingId, el.value, {priority: 'event'});
+              };
+              el.__row_note_blur_listener__ = blurListener;
+              el.__row_note_input_listener__ = inputListener;
+              el.addEventListener('blur', blurListener);
+              el.addEventListener('input', inputListener);
+              inputListener();
+            })();
+          ", ns(note_id), ns(blur_id), ns(pending_id)))),
           numericInput(
             ns(span_id),
             label = paste0("Row ", r, " Note Covers Rows"),
-            value = span_val,
+            value = 1,
             min = 1,
             max = max_span,
             step = 1,
@@ -16804,6 +16821,22 @@ custom_reports_server <- function(id) {
         inputs
       )
     })
+
+    observeEvent(input$report_rows, {
+      rows <- suppressWarnings(as.integer(input$report_rows))
+      if (is.na(rows) || rows < 1) return()
+      cells <- isolate(current_cells())
+      for (r in seq_len(rows)) {
+        note_val <- cells[[paste0("row_", r, "_panel_note")]] %||% ""
+        span_val <- cells[[paste0("row_", r, "_panel_note_span")]] %||% 1
+        span_val <- suppressWarnings(as.integer(span_val))
+        if (is.na(span_val) || span_val < 1) span_val <- 1
+        max_span <- max(1L, rows - r + 1L)
+        span_val <- min(span_val, max_span)
+        updateTextInput(session, paste0("row_panel_note_", r), value = note_val)
+        updateNumericInput(session, paste0("row_panel_note_span_", r), value = span_val, min = 1, max = max_span)
+      }
+    }, ignoreInit = FALSE)
     
     # Header showing report title + players
     output$report_header <- renderUI({
@@ -16862,6 +16895,30 @@ custom_reports_server <- function(id) {
       )
     }
 
+    flush_row_note_now <- function(row_num, value = NULL) {
+      rows_now <- suppressWarnings(as.integer(input$report_rows))
+      if (is.na(rows_now) || rows_now < 1 || row_num < 1 || row_num > rows_now) return(invisible(NULL))
+      pending_val <- isolate(input[[paste0("row_panel_note_pending_", row_num)]])
+      note_val <- if (!is.null(value)) value else if (!is.null(pending_val)) pending_val else isolate(input[[paste0("row_panel_note_", row_num)]])
+      if (is.null(note_val)) return(invisible(NULL))
+      cells <- isolate(current_cells())
+      cells[[paste0("row_", row_num, "_panel_note")]] <- note_val
+      current_cells(cells)
+    }
+
+    flush_row_note_span_now <- function(row_num, value = NULL) {
+      rows_now <- suppressWarnings(as.integer(input$report_rows))
+      if (is.na(rows_now) || rows_now < 1 || row_num < 1 || row_num > rows_now) return(invisible(NULL))
+      max_span <- max(1L, rows_now - row_num + 1L)
+      raw_span <- if (!is.null(value)) value else isolate(input[[paste0("row_panel_note_span_", row_num)]])
+      span_val <- suppressWarnings(as.integer(raw_span))
+      if (is.na(span_val) || span_val < 1) span_val <- 1L
+      span_val <- min(span_val, max_span)
+      cells <- isolate(current_cells())
+      cells[[paste0("row_", row_num, "_panel_note_span")]] <- span_val
+      current_cells(cells)
+    }
+
     observeEvent(input$download_report_pdf, {
       title_txt <- trimws(input$report_title %||% "")
       if (!nzchar(title_txt)) title_txt <- "custom_report"
@@ -16912,6 +16969,13 @@ custom_reports_server <- function(id) {
       if (!nzchar(nm)) {
         showNotification("Please enter a report title.", type = "warning")
         return()
+      }
+
+      rows_now <- suppressWarnings(as.integer(input$report_rows))
+      if (is.na(rows_now) || rows_now < 1) rows_now <- 1
+      for (r in seq_len(rows_now)) {
+        flush_row_note_now(r)
+        flush_row_note_span_now(r)
       }
       
       # First, ensure all titles are synced from cell_titles to current_cells
@@ -16978,6 +17042,8 @@ custom_reports_server <- function(id) {
         max_span <- max(1L, rows_now - r + 1L)
         updateTextInput(session, paste0("row_panel_note_", r), value = "")
         updateNumericInput(session, paste0("row_panel_note_span_", r), value = 1, min = 1, max = max_span)
+        flush_row_note_now(r, value = "")
+        flush_row_note_span_now(r, value = 1)
       }
       if (isTRUE(is_admin_local())) updateCheckboxInput(session, "report_global", value = FALSE)
 
@@ -17600,25 +17666,6 @@ custom_reports_server <- function(id) {
       }
 
       for (r in seq_len(rows)) {
-        note_key <- paste0("row_", r, "_panel_note")
-        span_key <- paste0("row_", r, "_panel_note_span")
-        note_input <- input[[paste0("row_panel_note_", r)]]
-        span_input <- input[[paste0("row_panel_note_span_", r)]]
-        if (!is.null(note_input)) {
-          cells[[note_key]] <- note_input
-        } else if (is.null(cells[[note_key]])) {
-          cells[[note_key]] <- ""
-        }
-        if (!is.null(span_input)) {
-          span_val <- suppressWarnings(as.integer(span_input))
-          if (is.na(span_val) || span_val < 1) span_val <- 1L
-          cells[[span_key]] <- span_val
-        } else if (is.null(cells[[span_key]])) {
-          cells[[span_key]] <- 1L
-        }
-      }
-      
-      for (r in seq_len(rows)) {
         for (c in seq_len(cols)) {
           id <- paste0("r", r, "c", c)
           
@@ -17687,6 +17734,25 @@ custom_reports_server <- function(id) {
     }
 
     created_title_flush_ids <- character(0)
+    created_row_note_flush_ids <- integer(0)
+
+    observeEvent(input$report_rows, {
+      rows <- suppressWarnings(as.integer(input$report_rows))
+      if (is.na(rows) || rows < 1) return()
+      for (r in seq_len(rows)) {
+        if (r %in% created_row_note_flush_ids) next
+        created_row_note_flush_ids <<- c(created_row_note_flush_ids, r)
+        local({
+          rid <- r
+          observeEvent(input[[paste0("row_panel_note_blur_", rid)]], {
+            flush_row_note_now(rid, value = input[[paste0("row_panel_note_blur_", rid)]])
+          }, ignoreInit = TRUE)
+          observeEvent(input[[paste0("row_panel_note_span_", rid)]], {
+            flush_row_note_span_now(rid, value = input[[paste0("row_panel_note_span_", rid)]])
+          }, ignoreInit = TRUE)
+        })
+      }
+    }, ignoreInit = FALSE)
 
     observeEvent(list(input$report_rows, input$report_cols), {
       rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
@@ -22351,13 +22417,14 @@ ui <- tagList(
       }
       .creport-row-wrap {
         position: relative;
+        overflow: visible;
       }
       .creport-row-wrap-has-gutter {
-        padding-left: 34px;
+        padding-left: 0;
       }
       .creport-row-note {
         position: absolute;
-        left: 0;
+        left: -34px;
         top: calc(50% + ((var(--creport-row-note-span, 1) - 1) * (var(--creport-cell-height) + var(--creport-gap)) / 2));
         transform: translateY(-50%);
         width: 28px;
@@ -22372,10 +22439,14 @@ ui <- tagList(
         justify-content: center;
         gap: 1px;
         font-weight: 700;
-        font-size: 13px;
+        font-size: 16px;
         line-height: 1.02;
         text-transform: none;
         white-space: nowrap;
+      }
+      #creports-report_canvas_wrapper {
+        padding-left: 40px;
+        margin-left: -40px;
       }
       .creport-cell {
         background: #ffffff;
