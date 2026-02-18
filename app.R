@@ -1169,6 +1169,16 @@ state_db_connect <- function() {
   state_backend_cfg$connect()
 }
 
+delete_rows_for_school_codes <- function(con, table_name, codes) {
+  codes <- unique(trimws(as.character(codes %||% character(0))))
+  codes <- codes[nzchar(codes)]
+  if (!length(codes)) return(invisible(FALSE))
+  quoted <- vapply(codes, function(cd) as.character(DBI::dbQuoteString(con, cd)), character(1))
+  sql <- sprintf("DELETE FROM %s WHERE school_code IN (%s)", table_name, paste(quoted, collapse = ", "))
+  DBI::dbExecute(con, sql)
+  invisible(TRUE)
+}
+
 init_state_db <- function() {
   con <- state_db_connect()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
@@ -1236,7 +1246,11 @@ load_custom_tables_db <- function() {
 save_custom_tables_db <- function(x) {
   con <- state_db_connect()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
-  DBI::dbExecute(con, "DELETE FROM custom_tables")
+  touched_codes <- unique(c(
+    current_school(),
+    vapply(x, function(v) v$school_code %||% current_school(), character(1))
+  ))
+  delete_rows_for_school_codes(con, "custom_tables", touched_codes)
   if (!length(x)) return(invisible(TRUE))
   payload <- data.frame(
     name = names(x),
@@ -1269,7 +1283,11 @@ load_custom_reports_db <- function() {
 save_custom_reports_db <- function(x) {
   con <- state_db_connect()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
-  DBI::dbExecute(con, "DELETE FROM custom_reports")
+  touched_codes <- unique(c(
+    current_school(),
+    vapply(x, function(v) v$school_code %||% current_school(), character(1))
+  ))
+  delete_rows_for_school_codes(con, "custom_reports", touched_codes)
   if (!length(x)) return(invisible(TRUE))
   payload <- data.frame(
     name = names(x),
@@ -1296,13 +1314,16 @@ load_target_shapes_db <- function() {
 save_target_shapes_db <- function(df) {
   con <- state_db_connect()
   on.exit(DBI::dbDisconnect(con), add = TRUE)
-  DBI::dbExecute(con, "DELETE FROM target_shapes")
-  if (!nrow(df)) return(invisible(TRUE))
+  if (!nrow(df)) {
+    delete_rows_for_school_codes(con, "target_shapes", current_school())
+    return(invisible(TRUE))
+  }
   if (!"school_code" %in% names(df)) {
     df$school_code <- current_school()
   } else {
     df$school_code[is.na(df$school_code) | !nzchar(df$school_code)] <- current_school()
   }
+  delete_rows_for_school_codes(con, "target_shapes", unique(df$school_code))
   DBI::dbWriteTable(con, "target_shapes", df, append = TRUE, row.names = FALSE)
 }
 
@@ -4682,20 +4703,31 @@ apply_after_count_filter <- function(df, selection) {
 apply_split_by <- function(df, split_choice) {
   if (is.null(split_choice)) split_choice <- "Pitch Types"
   
-  get_first_existing <- function(data, candidates) {
-    hit <- intersect(candidates, names(data))
-    if (!length(hit)) return(rep(NA_character_, nrow(data)))
-    out <- data[[hit[[1]]]]
-    if (is.list(out)) {
-      out <- vapply(out, function(v) {
+  to_atomic_character <- function(x, n_expected) {
+    if (is.null(x)) return(rep(NA_character_, n_expected))
+    if (is.data.frame(x)) x <- x[[1]]
+    if (is.matrix(x)) x <- x[, 1]
+    if (is.list(x)) {
+      x <- vapply(x, function(v) {
         if (length(v) == 0 || all(is.na(v))) return(NA_character_)
         as.character(v[[1]])
       }, character(1))
+    } else {
+      x <- as.character(x)
     }
-    if (length(out) != nrow(data)) {
-      return(rep(NA_character_, nrow(data)))
-    }
-    out
+    if (length(x) != n_expected) return(rep(NA_character_, n_expected))
+    x
+  }
+  
+  get_first_existing <- function(data, candidates) {
+    hit <- intersect(candidates, names(data))
+    if (!length(hit)) return(rep(NA_character_, nrow(data)))
+    to_atomic_character(data[[hit[[1]]]], nrow(data))
+  }
+  
+  get_first_numeric <- function(data, candidates) {
+    vals <- get_first_existing(data, candidates)
+    suppressWarnings(as.numeric(vals))
   }
   
   df <- switch(
@@ -4725,8 +4757,8 @@ apply_split_by <- function(df, split_choice) {
     },
     
     "Count" = {
-      balls <- suppressWarnings(as.numeric(get_first_existing(df, c("Balls"))))
-      strikes <- suppressWarnings(as.numeric(get_first_existing(df, c("Strikes"))))
+      balls <- get_first_numeric(df, c("Balls"))
+      strikes <- get_first_numeric(df, c("Strikes"))
       df %>% dplyr::mutate(
         SplitColumn = ifelse(
           is.finite(balls) & is.finite(strikes),
@@ -4759,7 +4791,7 @@ apply_split_by <- function(df, split_choice) {
     },
     
     "Velocity" = {
-      rel_speed <- suppressWarnings(as.numeric(get_first_existing(df, c("RelSpeed", "Velocity", "Velo"))))
+      rel_speed <- get_first_numeric(df, c("RelSpeed", "Velocity", "Velo"))
       df %>% dplyr::mutate(SplitColumn = dplyr::case_when(
         !is.finite(rel_speed) ~ "Unknown",
         rel_speed < 70 ~ "<70",
@@ -4769,7 +4801,7 @@ apply_split_by <- function(df, split_choice) {
     },
     
     "IVB" = {
-      ivb <- suppressWarnings(as.numeric(get_first_existing(df, c("InducedVertBreak", "IVB"))))
+      ivb <- get_first_numeric(df, c("InducedVertBreak", "IVB"))
       df %>% dplyr::mutate(SplitColumn = dplyr::case_when(
         !is.finite(ivb) ~ "Unknown",
         ivb < -22 ~ "<-22",
@@ -4779,7 +4811,7 @@ apply_split_by <- function(df, split_choice) {
     },
     
     "HB" = {
-      hb <- suppressWarnings(as.numeric(get_first_existing(df, c("HorzBreak", "HB"))))
+      hb <- get_first_numeric(df, c("HorzBreak", "HB"))
       df %>% dplyr::mutate(SplitColumn = dplyr::case_when(
         !is.finite(hb) ~ "Unknown",
         hb < -22 ~ "<-22",
@@ -15619,6 +15651,9 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
         }
         
         visible_set <- visible_set_for(mode, custom_cols)
+        if (split_col_name != "Pitch") {
+          visible_set <- gsub("^Pitch$", split_col_name, visible_set)
+        }
         if (identical(mode, "Custom")) {
           # Only include custom columns that actually exist in the dataframe
           valid_custom_cols <- intersect(custom_cols, names(df_dt))
@@ -34721,7 +34756,11 @@ deg_to_clock <- function(x) {
   save_player_plans_db <- function(plans) {
     con <- state_db_connect()
     on.exit(DBI::dbDisconnect(con), add = TRUE)
-    DBI::dbExecute(con, "DELETE FROM player_plans")
+    touched_codes <- unique(c(
+      current_school(),
+      vapply(plans, function(v) v$school_code %||% current_school(), character(1))
+    ))
+    delete_rows_for_school_codes(con, "player_plans", touched_codes)
     if (!length(plans)) return(invisible(TRUE))
     payload <- data.frame(
       player = names(plans),
@@ -34753,7 +34792,11 @@ deg_to_clock <- function(x) {
   save_completed_goals_db <- function(goals) {
     con <- state_db_connect()
     on.exit(DBI::dbDisconnect(con), add = TRUE)
-    DBI::dbExecute(con, "DELETE FROM completed_goals")
+    touched_codes <- unique(c(
+      current_school(),
+      vapply(goals, function(v) v$school_code %||% current_school(), character(1))
+    ))
+    delete_rows_for_school_codes(con, "completed_goals", touched_codes)
     if (!length(goals)) return(invisible(TRUE))
     payload <- data.frame(
       player = names(goals),
