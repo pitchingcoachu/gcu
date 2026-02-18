@@ -4684,7 +4684,18 @@ apply_split_by <- function(df, split_choice) {
   
   get_first_existing <- function(data, candidates) {
     hit <- intersect(candidates, names(data))
-    if (length(hit)) data[[hit[[1]]]] else rep(NA, nrow(data))
+    if (!length(hit)) return(rep(NA_character_, nrow(data)))
+    out <- data[[hit[[1]]]]
+    if (is.list(out)) {
+      out <- vapply(out, function(v) {
+        if (length(v) == 0 || all(is.na(v))) return(NA_character_)
+        as.character(v[[1]])
+      }, character(1))
+    }
+    if (length(out) != nrow(data)) {
+      return(rep(NA_character_, nrow(data)))
+    }
+    out
   }
   
   df <- switch(
@@ -15745,9 +15756,11 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
       }
       
       # ---- NON-Results modes (match DP page) ----
+      split_group_col <- if ("SplitColumn" %in% names(df)) "SplitColumn" else "TaggedPitchType"
+      
       # QP+ per pitch type
       qp_by_type <- df %>%
-        dplyr::group_by(TaggedPitchType) %>%
+        dplyr::group_by(.data[[split_group_col]]) %>%
         dplyr::summarise(
           `QP+` = {
             vals <- compute_qp_points(dplyr::cur_data_all())
@@ -15757,13 +15770,14 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
           .groups = "drop"
         )
       
-      summ <- safe_make_summary(df)
+      summ <- safe_make_summary(df, group_col = split_group_col)
       summ <- dplyr::mutate(summ,
                             ReleaseTilt = as.character(ReleaseTilt),
                             BreakTilt   = as.character(BreakTilt)
       )
       if (!("QP+" %in% names(summ))) {
-        summ <- summ %>% dplyr::left_join(qp_by_type, by = c("PitchType" = "TaggedPitchType"))
+        names(qp_by_type)[names(qp_by_type) == split_group_col] <- "PitchType"
+        summ <- summ %>% dplyr::left_join(qp_by_type, by = "PitchType")
       }
       
       
