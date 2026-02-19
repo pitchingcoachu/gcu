@@ -16781,20 +16781,7 @@ custom_reports_server <- function(id) {
           # premature overwrites by the throttled observe (which fires when
           # loading_report flips to FALSE and may read stale input values).
           update_reports_grid(loaded_cells)
-
-          current_rows <- suppressWarnings(as.integer(input$report_rows %||% NA))
-          current_cols <- suppressWarnings(as.integer(input$report_cols %||% NA))
-          current_type <- as.character(input$report_type %||% "")
-          current_scope <- as.character(input$report_scope %||% "")
-          current_title <- trimws(as.character(input$report_title %||% ""))
-
-          inputs_match <- identical(current_rows, loaded_rows) &&
-            identical(current_cols, loaded_cols) &&
-            identical(current_type, loaded_type) &&
-            identical(current_scope, loaded_scope) &&
-            identical(current_title, loaded_title)
-
-          if (!inputs_match && attempt < 12L) {
+          if (attempt < 8L) {
             loading_report_handle <<- later::later(function() {
               apply_loaded_state(attempt + 1L)
             }, delay = 0.15)
