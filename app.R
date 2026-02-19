@@ -16564,6 +16564,27 @@ custom_reports_server <- function(id) {
       if (!nm %in% names(cr)) return()
       rep <- cr[[nm]]
       if (!is.list(rep)) return()
+      scalar_chr <- function(x, default = "") {
+        if (is.null(x) || length(x) < 1 || all(is.na(x))) return(default)
+        as.character(x[[1]])
+      }
+      scalar_int <- function(x, default = 1L, min_val = 1L, max_val = 15L) {
+        out <- suppressWarnings(as.integer(x[[1]]))
+        if (is.null(out) || length(out) < 1 || is.na(out)) out <- as.integer(default)
+        out <- max(as.integer(min_val), out)
+        out <- min(as.integer(max_val), out)
+        out
+      }
+      loaded_title <- scalar_chr(rep$title, "")
+      loaded_subtitle <- scalar_chr(rep$subtitle, "")
+      loaded_team <- scalar_chr(rep$team, "All")
+      loaded_type <- scalar_chr(rep$type, "Pitching")
+      if (!loaded_type %in% c("Pitching", "Hitting")) loaded_type <- "Pitching"
+      loaded_scope <- scalar_chr(rep$scope, "Single Player")
+      if (!loaded_scope %in% c("Single Player", "Multi-Player")) loaded_scope <- "Single Player"
+      loaded_players <- rep$players %||% character(0)
+      loaded_rows <- scalar_int(rep$rows, default = 1L, min_val = 1L, max_val = 15L)
+      loaded_cols <- scalar_int(rep$cols, default = 1L, min_val = 1L, max_val = 5L)
       if (isTRUE(is_admin_local())) {
         updateCheckboxInput(session, "report_global", value = identical(rep$school_code, GLOBAL_SCOPE))
       }
@@ -16573,7 +16594,7 @@ custom_reports_server <- function(id) {
 
       # Store the players from the saved report so get_cell_data_wrapper can use
       # correct players during load (before input$report_players round-trip completes)
-      loading_scope_players(rep$players %||% character(0))
+      loading_scope_players(loaded_players)
 
       # FIRST: Update current_cells with saved data (before UI changes)
       loaded_cells <- rep$cells
@@ -16592,25 +16613,23 @@ custom_reports_server <- function(id) {
       cell_titles(titles)
       
       # THEN: Update all UI elements (this will trigger renderUI which reads from current_cells)
-      updateTextInput(session, "report_title", value = rep$title %||% "")
-      updateTextInput(session, "report_subtitle", value = rep$subtitle %||% "")
-      updateSelectInput(session, "report_team", selected = rep$team %||% "All")
-      updateSelectInput(session, "report_type", selected = rep$type %||% "Pitching")
-      updateSelectInput(session, "report_scope", selected = rep$scope %||% "Single Player")
-      updateSelectizeInput(session, "report_players", selected = rep$players %||% character(0))
-      updateSelectInput(session, "report_rows", selected = rep$rows %||% 1)
-      updateSelectInput(session, "report_cols", selected = rep$cols %||% 1)
+      updateTextInput(session, "report_title", value = loaded_title)
+      updateTextInput(session, "report_subtitle", value = loaded_subtitle)
+      updateSelectInput(session, "report_team", selected = loaded_team)
+      updateSelectInput(session, "report_type", selected = loaded_type)
+      updateSelectInput(session, "report_scope", selected = loaded_scope)
+      updateSelectizeInput(session, "report_players", selected = loaded_players)
+      updateSelectInput(session, "report_rows", selected = loaded_rows)
+      updateSelectInput(session, "report_cols", selected = loaded_cols)
       updateCheckboxInput(session, "use_global_dates", value = isTRUE(rep$use_global_dates))
       updateCheckboxInput(session, "show_pitch_type_key", value = if (is.null(rep$show_pitch_type_key)) TRUE else isTRUE(rep$show_pitch_type_key))
       if (!is.null(rep$global_dates) && length(rep$global_dates) == 2) {
         updateDateRangeInput(session, "global_dates", start = rep$global_dates[1], end = rep$global_dates[2])
       }
       
-      rows <- suppressWarnings(as.integer(rep$rows %||% 1))
-      cols <- suppressWarnings(as.integer(rep$cols %||% 1))
-      if (is.na(rows) || rows < 1) rows <- 1
-      if (is.na(cols) || cols < 1) cols <- 1
-      scope <- rep$scope %||% "Single Player"
+      rows <- loaded_rows
+      cols <- loaded_cols
+      scope <- loaded_scope
       cells <- loaded_cells
 
       update_saved_state <- function() {
@@ -16749,11 +16768,20 @@ custom_reports_server <- function(id) {
         loading_report_handle <<- later::later(function() {
           if (loading_report_cycle != load_cycle) return()
           update_saved_state()
+          # Re-assert loaded report metadata after dependent observers settle.
+          updateTextInput(session, "report_title", value = loaded_title)
+          updateTextInput(session, "report_subtitle", value = loaded_subtitle)
+          updateSelectInput(session, "report_team", selected = loaded_team)
+          updateSelectInput(session, "report_type", selected = loaded_type)
+          updateSelectInput(session, "report_scope", selected = loaded_scope)
+          updateSelectizeInput(session, "report_players", selected = loaded_players)
+          updateSelectInput(session, "report_rows", selected = loaded_rows)
+          updateSelectInput(session, "report_cols", selected = loaded_cols)
           # Re-assert the correct current_cells from the saved report to undo any
           # premature overwrites by the throttled observe (which fires when
           # loading_report flips to FALSE and may read stale input values).
           update_reports_grid(loaded_cells)
-          loading_scope_players(rep$players %||% character(0))
+          loading_scope_players(loaded_players)
           # Trigger one final repaint after all saved values are flushed.
           new_report_token(as.numeric(Sys.time()))
           loading_report(FALSE)
