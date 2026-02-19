@@ -16577,8 +16577,9 @@ custom_reports_server <- function(id) {
       # Also populate cell_titles from the loaded report
       titles <- list()
       for (cell_id in names(rep$cells)) {
-        if (!is.null(rep$cells[[cell_id]]$title)) {
-          titles[[cell_id]] <- rep$cells[[cell_id]]$title
+        cell_obj <- rep$cells[[cell_id]]
+        if (is.list(cell_obj) && !is.null(cell_obj$title)) {
+          titles[[cell_id]] <- cell_obj$title
         }
       }
       cell_titles(titles)
