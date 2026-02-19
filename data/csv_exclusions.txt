@@ -2988,3 +2988,5 @@
 20260218-USFBaseballStadium-1.csv
 # Auto-pruned non-team data
 20260218-Vanderbilt-1.csv
+# Auto-pruned non-team data
+20260217-Tankersleyfield-4.csv
