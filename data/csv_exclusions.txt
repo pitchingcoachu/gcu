@@ -2836,3 +2836,19 @@
 20260218-McBean-1_unverified.csv
 # Auto-pruned non-team data
 20260218-PittFieldUOR-1_unverified.csv
+# Auto-pruned non-team data
+20260218-BridgeforthField-2_unverified.csv
+# Auto-pruned non-team data
+20260218-BrooksField-1_unverified.csv
+# Auto-pruned non-team data
+20260218-ClevelandCommunityCollegeBaseballField-1_unverified.csv
+# Auto-pruned non-team data
+20260218-DoakField-1_unverified.csv
+# Auto-pruned non-team data
+20260218-JohnKurtzField-1_unverified.csv
+# Auto-pruned non-team data
+20260218-LSU-1_unverified.csv
+# Auto-pruned non-team data
+20260218-UGeorgia-1_unverified.csv
+# Auto-pruned non-team data
+20260218-UNCGreensboro-1_unverified.csv
