@@ -18028,6 +18028,17 @@ custom_reports_server <- function(id) {
       )
     }
     
+    # Version per-cell output IDs by report load token so switching reports forces
+    # a full output binding refresh instead of reusing stale widget bindings.
+    cell_render_output_id <- function(cell_id) {
+      token <- format(
+        round(as.numeric(new_report_token()) * 1000),
+        scientific = FALSE,
+        trim = TRUE
+      )
+      paste0("cell_render_", cell_id, "_", token)
+    }
+
     # Simple visuals
     render_cell <- function(cell_id) {
       # In Multi-Player mode, use Row 1's chart type and settings for all rows
@@ -18057,7 +18068,7 @@ custom_reports_server <- function(id) {
       } else {
         input[[paste0("cell_filter_", settings_cell_id)]] %||% settings_state$filter %||% "Pitch Types"
       }
-      out_id <- paste0("cell_render_", cell_id)
+      out_id <- cell_render_output_id(cell_id)
       tooltip_css_local <- if (exists("tooltip_css", inherits = TRUE)) tooltip_css else
         "color:#fff !important;font-weight:600;padding:6px;border-radius:8px;text-shadow:0 1px 1px rgba(0,0,0,.4);"
       # Dark-mode helper
@@ -19636,7 +19647,7 @@ custom_reports_server <- function(id) {
               output[[paste0("cell_output_", id)]] <- renderUI({
                 # Get cell data (triggers on chart type/filter/mode changes only)
                 cd <- cell_data()
-                out_id <- paste0("cell_render_", id)
+                out_id <- cell_render_output_id(id)
                 df_now <- get_cell_data_wrapper(id)
                 if (!nrow(df_now)) {
                   output[[out_id]] <- renderUI({
