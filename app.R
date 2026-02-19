@@ -21668,7 +21668,7 @@ ui <- tagList(
         margin-left: -40px !important;
       }
       .creport-pdf-clone .creport-row-note {
-        left: 6px !important;
+        left: -30px !important;
         z-index: 25 !important;
         opacity: 1 !important;
         visibility: visible !important;
