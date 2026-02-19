@@ -21474,6 +21474,9 @@ ui <- tagList(
           var clone = target.cloneNode(true);
           clone.classList.add('creport-pdf-clone');
           clone.classList.add(isDark ? 'creport-pdf-dark' : 'creport-pdf-light');
+          if (clone.querySelector('.creport-row-note')) {
+            clone.classList.add('creport-pdf-has-row-notes');
+          }
 
           // Keep PDF panel sizing identical to live dashboard sizing.
           var liveGrid = target.querySelector('.creport-grid');
@@ -21661,11 +21664,14 @@ ui <- tagList(
       .creport-pdf-clone [id$='report_canvas'] {
         margin-left: 0 !important;
       }
-      .creport-pdf-clone .creport-row-wrap-has-gutter {
+      .creport-pdf-clone.creport-pdf-has-row-notes [id$='report_canvas_wrapper'] {
         padding-left: 56px !important;
       }
-      .creport-pdf-clone .creport-row-wrap-has-gutter > .row {
+      .creport-pdf-clone.creport-pdf-has-row-notes [id$='report_canvas'] {
         margin-left: -56px !important;
+      }
+      .creport-pdf-clone .creport-row-wrap-has-gutter {
+        padding-left: 56px !important;
       }
       .creport-pdf-clone .creport-row-note {
         left: 8px !important;
@@ -21673,6 +21679,17 @@ ui <- tagList(
         z-index: 25 !important;
         opacity: 1 !important;
         visibility: visible !important;
+      }
+      .creport-pdf-clone .creport-row-wrap {
+        margin-bottom: 30px !important;
+      }
+      .creport-pdf-clone .creport-row-wrap:last-child {
+        margin-bottom: 0 !important;
+      }
+      .creport-pdf-clone .creport-cell-toolbar,
+      .creport-pdf-clone .creport-controls-toggle,
+      .creport-pdf-clone .creport-hidden-toggle {
+        display: none !important;
       }
       .creport-pdf-clone .creport-row-note-text {
         color: #111111 !important;
