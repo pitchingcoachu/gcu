@@ -17948,11 +17948,17 @@ custom_reports_server <- function(id) {
     
     # Wrapper that extracts inputs and calls cached function
     get_cell_data_wrapper <- function(cell_id) {
+      is_loading_now <- isTRUE(loading_report())
+
       # Determine which player(s) to use
       players <- if (input$report_scope == "Multi-Player") {
         # Extract row number from cell_id (e.g., "r1c2" -> row 1)
         row_num <- as.integer(sub("r(\\d+)c.*", "\\1", cell_id))
-        row_player <- input[[paste0("row_player_", row_num)]]
+        row_player <- if (is_loading_now) {
+          current_cells()[[paste0("row_", row_num, "_player")]]
+        } else {
+          input[[paste0("row_player_", row_num)]] %||% current_cells()[[paste0("row_", row_num, "_player")]]
+        }
         if (is.null(row_player) || !nzchar(row_player)) {
           return(data.frame())  # No player selected for this row
         }
@@ -17986,9 +17992,14 @@ custom_reports_server <- function(id) {
         cell_id
       }
       
-      cell_state <- current_cells()[[filter_cell_id]] %||% list()
+      cell_state <- current_cells()[[filter_cell_id]]
+      if (!is.list(cell_state)) cell_state <- list()
       use_global_dates <- isTRUE(input$use_global_dates)
       global_dates <- input$global_dates
+      pick_filter_val <- function(input_id, state_val, default_val = NULL) {
+        if (is_loading_now) return(state_val %||% default_val)
+        input[[input_id]] %||% state_val %||% default_val
+      }
 
       get_cell_data(
         cell_id = cell_id,
@@ -17997,23 +18008,23 @@ custom_reports_server <- function(id) {
         dates = if (use_global_dates && !is.null(global_dates) && length(global_dates) == 2) {
           global_dates
         } else {
-          input[[paste0("cell_dates_", filter_cell_id)]] %||% cell_state$dates
+          pick_filter_val(paste0("cell_dates_", filter_cell_id), cell_state$dates)
         },
-        session = input[[paste0("cell_session_", filter_cell_id)]] %||% cell_state$session %||% "All",
-        pitch_types = input[[paste0("cell_pitch_types_", filter_cell_id)]] %||% cell_state$pitch_types,
-        batter_side = input[[paste0("cell_batter_side_", filter_cell_id)]] %||% cell_state$batter_side,
-        pitcher_hand = input[[paste0("cell_pitcher_hand_", filter_cell_id)]] %||% cell_state$pitcher_hand,
-        results = input[[paste0("cell_results_", filter_cell_id)]] %||% cell_state$results,
-        qp = input[[paste0("cell_qp_", filter_cell_id)]] %||% cell_state$qp,
-        count = input[[paste0("cell_count_", filter_cell_id)]] %||% cell_state$count,
-        after_count = input[[paste0("cell_after_count_", filter_cell_id)]] %||% cell_state$after_count,
-        zone = input[[paste0("cell_zone_", filter_cell_id)]] %||% cell_state$zone,
-        velo_min = input[[paste0("cell_velo_min_", filter_cell_id)]] %||% cell_state$velo_min,
-        velo_max = input[[paste0("cell_velo_max_", filter_cell_id)]] %||% cell_state$velo_max,
-        ivb_min = input[[paste0("cell_ivb_min_", filter_cell_id)]] %||% cell_state$ivb_min,
-        ivb_max = input[[paste0("cell_ivb_max_", filter_cell_id)]] %||% cell_state$ivb_max,
-        hb_min = input[[paste0("cell_hb_min_", filter_cell_id)]] %||% cell_state$hb_min,
-        hb_max = input[[paste0("cell_hb_max_", filter_cell_id)]] %||% cell_state$hb_max
+        session = pick_filter_val(paste0("cell_session_", filter_cell_id), cell_state$session, "All"),
+        pitch_types = pick_filter_val(paste0("cell_pitch_types_", filter_cell_id), cell_state$pitch_types),
+        batter_side = pick_filter_val(paste0("cell_batter_side_", filter_cell_id), cell_state$batter_side),
+        pitcher_hand = pick_filter_val(paste0("cell_pitcher_hand_", filter_cell_id), cell_state$pitcher_hand),
+        results = pick_filter_val(paste0("cell_results_", filter_cell_id), cell_state$results),
+        qp = pick_filter_val(paste0("cell_qp_", filter_cell_id), cell_state$qp),
+        count = pick_filter_val(paste0("cell_count_", filter_cell_id), cell_state$count),
+        after_count = pick_filter_val(paste0("cell_after_count_", filter_cell_id), cell_state$after_count),
+        zone = pick_filter_val(paste0("cell_zone_", filter_cell_id), cell_state$zone),
+        velo_min = pick_filter_val(paste0("cell_velo_min_", filter_cell_id), cell_state$velo_min),
+        velo_max = pick_filter_val(paste0("cell_velo_max_", filter_cell_id), cell_state$velo_max),
+        ivb_min = pick_filter_val(paste0("cell_ivb_min_", filter_cell_id), cell_state$ivb_min),
+        ivb_max = pick_filter_val(paste0("cell_ivb_max_", filter_cell_id), cell_state$ivb_max),
+        hb_min = pick_filter_val(paste0("cell_hb_min_", filter_cell_id), cell_state$hb_min),
+        hb_max = pick_filter_val(paste0("cell_hb_max_", filter_cell_id), cell_state$hb_max)
       )
     }
     
@@ -18032,9 +18043,20 @@ custom_reports_server <- function(id) {
         # Use this cell's own settings
         cell_id
       }
-      
-      tsel <- input[[paste0("cell_type_", settings_cell_id)]] %||% ""
-      fsel <- input[[paste0("cell_filter_", settings_cell_id)]] %||% "Pitch Types"
+
+      settings_state <- current_cells()[[settings_cell_id]]
+      if (!is.list(settings_state)) settings_state <- list()
+
+      tsel <- if (isTRUE(loading_report())) {
+        settings_state$type %||% ""
+      } else {
+        input[[paste0("cell_type_", settings_cell_id)]] %||% settings_state$type %||% ""
+      }
+      fsel <- if (isTRUE(loading_report())) {
+        settings_state$filter %||% "Pitch Types"
+      } else {
+        input[[paste0("cell_filter_", settings_cell_id)]] %||% settings_state$filter %||% "Pitch Types"
+      }
       out_id <- paste0("cell_render_", cell_id)
       tooltip_css_local <- if (exists("tooltip_css", inherits = TRUE)) tooltip_css else
         "color:#fff !important;font-weight:600;padding:6px;border-radius:8px;text-shadow:0 1px 1px rgba(0,0,0,.4);"
@@ -18543,8 +18565,12 @@ custom_reports_server <- function(id) {
           df_vel <- df %>% dplyr::filter(!is.na(RelSpeed), !is.na(TaggedPitchType))
           if (!nrow(df_vel)) return(NULL)
 
-          velocity_choice <- input[[paste0("cell_velocity_chart_", settings_cell_id)]] %||%
-            (current_cells()[[settings_cell_id]]$velocity_chart %||% "Velocity Chart (Game/Inning)")
+          velocity_choice <- if (isTRUE(loading_report())) {
+            settings_state$velocity_chart %||% "Velocity Chart (Game/Inning)"
+          } else {
+            input[[paste0("cell_velocity_chart_", settings_cell_id)]] %||%
+              (settings_state$velocity_chart %||% "Velocity Chart (Game/Inning)")
+          }
 
           dark_on <- is_dark_mode_local()
           axis_col <- if (dark_on) "#e5e7eb" else "black"
