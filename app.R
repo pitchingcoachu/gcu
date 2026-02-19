@@ -18439,19 +18439,19 @@ custom_reports_server <- function(id) {
         })
         return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Heatmap") {
-        output[[out_id]] <- renderPlot({
+        output[[out_id]] <- ggiraph::renderGirafe({
           df_loc <- df
           if (!nrow(df_loc)) {
-            plot.new(); title("No data"); return(invisible())
+            return(girafe_transparent(ggobj = ggplot() + theme_void()))
           }
-          
+
           # Apply Pitch Results filter for heatmap too (use settings_cell_id for filter)
           df_loc <- apply_pitch_results_filter(df_loc, input[[paste0("cell_results_", settings_cell_id)]])
-          
+
           if (!nrow(df_loc)) {
-            plot.new(); title("No data after filters"); return(invisible())
+            return(girafe_transparent(ggobj = ggplot() + theme_void()))
           }
-          
+
           # Heatmap type selection
           hm_stat <- input[[paste0("cell_heat_stat_", settings_cell_id)]] %||% "Frequency"
           plot_obj <- render_heatmap_stat(
@@ -18459,10 +18459,9 @@ custom_reports_server <- function(id) {
             plot_xlim = c(-2.0, 2.0),
             plot_ylim = c(0.6, 4.2)
           )
-          print(plot_obj)
-          return(invisible())
-          
-          # Use advanced Pitching Suite heatmap implementation
+          return(girafe_transparent(ggobj = plot_obj))
+
+          # Use advanced Pitching Suite heatmap implementation (dead code below)
           if (hm_stat == "Frequency") {
             grid <- make_kde_grid(df_loc$PlateLocSide, df_loc$PlateLocHeight, n = 200)
             
@@ -18574,9 +18573,9 @@ custom_reports_server <- function(id) {
           }
           
           # Default fallback
-          ggplot() + theme_void()
-        }, bg = "transparent")
-        return(plotOutput(ns(out_id), height = "280px"))
+          girafe_transparent(ggobj = ggplot() + theme_void())
+        })
+        return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Velocity Chart") {
         output[[out_id]] <- ggiraph::renderGirafe({
           if (!identical(input$report_type, "Pitching")) return(NULL)
