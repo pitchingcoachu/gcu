@@ -2862,3 +2862,27 @@
 20260218-OleMiss-1_unverified.csv
 # Auto-pruned non-team data
 20260218-MikeDLaneField-1_unverified.csv
+# Auto-pruned non-team data
+20260218-BenedettiDiamond-1_unverified.csv
+# Auto-pruned non-team data
+20260218-CondronBallpark-1_unverified.csv
+# Auto-pruned non-team data
+20260218-GrandPark5-1_unverified.csv
+# Auto-pruned non-team data
+20260218-McBean-2_unverified.csv
+# Auto-pruned non-team data
+20260218-MercerUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260218-MSST-1_unverified.csv
+# Auto-pruned non-team data
+20260218-SwansonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260218-SwellThomasStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260218-UofMiami-1_unverified.csv
+# Auto-pruned non-team data
+20260218-UofSouthCarolina-1_unverified.csv
+# Auto-pruned non-team data
+20260218-USFBaseballStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260218-Vanderbilt-1_unverified.csv
