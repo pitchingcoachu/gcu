@@ -2900,3 +2900,21 @@
 20260218-AnteaterBallpark-1_unverified.csv
 # Auto-pruned non-team data
 20260218-DedeauxField-1_unverified.csv
+# Auto-pruned non-team data
+20260217-Baylor-1_unverified.csv
+# Auto-pruned non-team data
+20260217-ESRosePark-1_unverified.csv
+# Auto-pruned non-team data
+20260217-FedExPark-1_unverified.csv
+# Auto-pruned non-team data
+20260217-IllinoisField-1.csv
+# Auto-pruned non-team data
+20260217-JackCoombs-1.csv
+# Auto-pruned non-team data
+20260217-KennesawState-1_unverified.csv
+# Auto-pruned non-team data
+20260217-UArizona-1.csv
+# Auto-pruned non-team data
+20260217-UKentucky-1.csv
+# Auto-pruned non-team data
+20260217-VATech-1.csv
