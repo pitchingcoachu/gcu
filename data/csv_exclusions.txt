@@ -3008,3 +3008,9 @@
 20260130-SammyCoxField-2.csv
 # Auto-pruned non-team data
 20260213-NickDenesField-2.csv
+# Auto-pruned non-team data
+20260213-EarlEWilsonStadium-1.csv
+# Auto-pruned non-team data
+20260214-FranciscoMontaner-1.csv
+# Auto-pruned non-team data
+20260216-NickDenesField-1.csv
