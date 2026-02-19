@@ -16563,6 +16563,7 @@ custom_reports_server <- function(id) {
       cr <- custom_reports_store()
       if (!nm %in% names(cr)) return()
       rep <- cr[[nm]]
+      if (!is.list(rep)) return()
       if (isTRUE(is_admin_local())) {
         updateCheckboxInput(session, "report_global", value = identical(rep$school_code, GLOBAL_SCOPE))
       }
@@ -16571,13 +16572,15 @@ custom_reports_server <- function(id) {
       loading_report(TRUE)
       
       # FIRST: Update current_cells with saved data (before UI changes)
-      update_reports_grid(rep$cells %||% list())
+      loaded_cells <- rep$cells
+      if (!is.list(loaded_cells)) loaded_cells <- list()
+      update_reports_grid(loaded_cells)
       new_report_token(as.numeric(Sys.time()))
       
       # Also populate cell_titles from the loaded report
       titles <- list()
-      for (cell_id in names(rep$cells)) {
-        cell_obj <- rep$cells[[cell_id]]
+      for (cell_id in names(loaded_cells)) {
+        cell_obj <- loaded_cells[[cell_id]]
         if (is.list(cell_obj) && !is.null(cell_obj$title)) {
           titles[[cell_id]] <- cell_obj$title
         }
@@ -16599,10 +16602,12 @@ custom_reports_server <- function(id) {
         updateDateRangeInput(session, "global_dates", start = rep$global_dates[1], end = rep$global_dates[2])
       }
       
-      rows <- rep$rows %||% 1
-      cols <- rep$cols %||% 1
+      rows <- suppressWarnings(as.integer(rep$rows %||% 1))
+      cols <- suppressWarnings(as.integer(rep$cols %||% 1))
+      if (is.na(rows) || rows < 1) rows <- 1
+      if (is.na(cols) || cols < 1) cols <- 1
       scope <- rep$scope %||% "Single Player"
-      cells <- rep$cells %||% list()
+      cells <- loaded_cells
 
       update_saved_state <- function() {
         for (r in seq_len(rows)) {
@@ -16635,6 +16640,7 @@ custom_reports_server <- function(id) {
           for (c in seq_len(cols)) {
             cell_id <- paste0("r", r, "c", c)
             saved_cell <- cells[[cell_id]]
+            if (!is.list(saved_cell)) next
             if (is.null(saved_cell)) next
             if (!is.null(saved_cell$type)) {
               updateSelectInput(session, paste0("cell_type_", cell_id), selected = saved_cell$type)
@@ -17397,7 +17403,9 @@ custom_reports_server <- function(id) {
         # Build cells for this row
         cell_infos <- lapply(seq_len(cols), function(cn) {
           cell_id <- paste0("r", r, "c", cn)
-          sel <- cells[[cell_id]] %||% list(
+          sel <- cells[[cell_id]]
+          if (!is.list(sel)) sel <- list()
+          sel <- modifyList(list(
             type = "", 
             filter = "Pitch Types", 
             title = "",
@@ -17409,9 +17417,10 @@ custom_reports_server <- function(id) {
             velocity_chart = "Velocity Chart (Game/Inning)",
             filter_select = c("Dates","Session Type","Pitch Types"),
             span = 1
-          )
+          ), sel)
           settings_cell_id <- if (is_multi_player && r > 1) paste0("r1c", cn) else cell_id
-          settings_sel <- cells[[settings_cell_id]] %||% sel
+          settings_sel <- cells[[settings_cell_id]]
+          if (!is.list(settings_sel)) settings_sel <- sel
           cell_type_selected <- input[[paste0("cell_type_", settings_cell_id)]] %||% settings_sel$type %||% ""
           is_summary_table <- identical(cell_type_selected, "Summary Table")
           is_controlled_row <- is_multi_player && r > 1
@@ -17673,7 +17682,8 @@ custom_reports_server <- function(id) {
           id <- paste0("r", r, "c", c)
           
           # Get existing cell data or create new
-          existing_cell <- cells[[id]] %||% list()
+          existing_cell <- cells[[id]]
+          if (!is.list(existing_cell)) existing_cell <- list()
           
           # Helper function to update value only if input exists, otherwise keep existing
           update_if_exists <- function(input_val, existing_val, default_val = NULL) {
