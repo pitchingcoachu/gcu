@@ -2886,3 +2886,11 @@
 20260218-USFBaseballStadium-1_unverified.csv
 # Auto-pruned non-team data
 20260218-Vanderbilt-1_unverified.csv
+# Auto-pruned non-team data
+20260218-HardtField-1_unverified.csv
+# Auto-pruned non-team data
+20260218-LamarUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260218-RiceUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260218-StephenSchottBBS-1_unverified.csv
