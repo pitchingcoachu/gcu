@@ -3014,3 +3014,9 @@
 20260214-FranciscoMontaner-1.csv
 # Auto-pruned non-team data
 20260216-NickDenesField-1.csv
+# Auto-pruned non-team data
+20260213-FranciscoMontaner-10.csv
+# Auto-pruned non-team data
+20260214-EarlEWilsonStadium-1.csv
+# Auto-pruned non-team data
+20260217-BushStadium-1.csv
