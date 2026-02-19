@@ -2894,3 +2894,9 @@
 20260218-RiceUniversity-1_unverified.csv
 # Auto-pruned non-team data
 20260218-StephenSchottBBS-1_unverified.csv
+# Auto-pruned non-team data
+20260218-JCLoveFieldatPatPattersonPark-2_unverified.csv
+# Auto-pruned non-team data
+20260218-AnteaterBallpark-1_unverified.csv
+# Auto-pruned non-team data
+20260218-DedeauxField-1_unverified.csv
