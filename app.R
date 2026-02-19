@@ -17359,13 +17359,14 @@ custom_reports_server <- function(id) {
       covered_by_prior_note <- rep(FALSE, rows)
       for (note_row in seq_len(rows)) {
         if (isTRUE(covered_by_prior_note[note_row])) next
-        note_text <- trimws(input[[paste0("row_panel_note_", note_row)]] %||%
-                              cells[[paste0("row_", note_row, "_panel_note")]] %||% "")
+        note_input_val <- input[[paste0("row_panel_note_", note_row)]]
+        note_saved_val <- cells[[paste0("row_", note_row, "_panel_note")]] %||% ""
+        note_text <- trimws(if (!is.null(note_input_val) && nzchar(trimws(note_input_val))) note_input_val else note_saved_val)
         if (!nzchar(note_text)) next
-        note_span <- suppressWarnings(as.integer(
-          input[[paste0("row_panel_note_span_", note_row)]] %||%
-            cells[[paste0("row_", note_row, "_panel_note_span")]] %||% 1
-        ))
+        note_span_input <- input[[paste0("row_panel_note_span_", note_row)]]
+        note_span_saved <- cells[[paste0("row_", note_row, "_panel_note_span")]] %||% 1
+        note_span_raw <- if (!is.null(note_span_input)) note_span_input else note_span_saved
+        note_span <- suppressWarnings(as.integer(note_span_raw))
         if (is.na(note_span) || note_span < 1) note_span <- 1L
         max_span <- max(1L, rows - note_row + 1L)
         note_span <- min(note_span, max_span)
@@ -21593,7 +21594,7 @@ ui <- tagList(
             var drawW = canvas.width * ratio;
             var drawH = canvas.height * ratio;
             var x = (pageW - drawW) / 2;
-            var y = (pageH - drawH) / 2;
+            var y = margin;
 
             if (isDark) {
               pdf.setFillColor(11, 15, 20);
@@ -21677,6 +21678,15 @@ ui <- tagList(
       }
       .creport-pdf-clone .creport-row-note {
         left: 6px !important;
+        z-index: 25 !important;
+        opacity: 1 !important;
+        visibility: visible !important;
+      }
+      .creport-pdf-clone .creport-row-note-text {
+        color: #111111 !important;
+      }
+      .creport-pdf-clone.creport-pdf-dark .creport-row-note-text {
+        color: #f3f4f6 !important;
       }
       .creport-pdf-clone.creport-pdf-light {
         background: #ffffff;
