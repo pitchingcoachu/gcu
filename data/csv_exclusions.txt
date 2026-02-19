@@ -2996,3 +2996,15 @@
 20260215-BrownStroudField-1.csv
 # Auto-pruned non-team data
 20260215-SullivanField-2.csv
+# Auto-pruned non-team data
+20260130-LoyolaNewOrleans-1.csv
+# Auto-pruned non-team data
+20260130-LoyolaNewOrleans-2.csv
+# Auto-pruned non-team data
+20260130-PointLomaNazarene-1.csv
+# Auto-pruned non-team data
+20260130-SammyCoxField-1.csv
+# Auto-pruned non-team data
+20260130-SammyCoxField-2.csv
+# Auto-pruned non-team data
+20260213-NickDenesField-2.csv
