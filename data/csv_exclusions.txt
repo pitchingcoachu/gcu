@@ -2860,3 +2860,5 @@
 20260218-ClarkLeClair-1_unverified.csv
 # Auto-pruned non-team data
 20260218-OleMiss-1_unverified.csv
+# Auto-pruned non-team data
+20260218-MikeDLaneField-1_unverified.csv
