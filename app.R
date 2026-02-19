@@ -21662,13 +21662,14 @@ ui <- tagList(
         margin-left: 0 !important;
       }
       .creport-pdf-clone .creport-row-wrap-has-gutter {
-        padding-left: 40px !important;
+        padding-left: 56px !important;
       }
       .creport-pdf-clone .creport-row-wrap-has-gutter > .row {
-        margin-left: -40px !important;
+        margin-left: -56px !important;
       }
       .creport-pdf-clone .creport-row-note {
-        left: -30px !important;
+        left: 8px !important;
+        width: 40px !important;
         z-index: 25 !important;
         opacity: 1 !important;
         visibility: visible !important;
