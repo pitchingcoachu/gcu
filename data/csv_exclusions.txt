@@ -2852,3 +2852,7 @@
 20260218-UGeorgia-1_unverified.csv
 # Auto-pruned non-team data
 20260218-UNCGreensboro-1_unverified.csv
+# Auto-pruned non-team data
+20260218-SullivanField-1_unverified.csv
+# Auto-pruned non-team data
+20260218-UNC-1_unverified.csv
