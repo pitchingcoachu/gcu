@@ -16765,7 +16765,7 @@ custom_reports_server <- function(id) {
           later::cancel(loading_report_handle)
           loading_report_handle <<- NULL
         }
-        loading_report_handle <<- later::later(function() {
+        apply_loaded_state <- function(attempt = 1L) {
           if (loading_report_cycle != load_cycle) return()
           update_saved_state()
           # Re-assert loaded report metadata after dependent observers settle.
@@ -16775,18 +16775,42 @@ custom_reports_server <- function(id) {
           updateSelectInput(session, "report_type", selected = loaded_type)
           updateSelectInput(session, "report_scope", selected = loaded_scope)
           updateSelectizeInput(session, "report_players", selected = loaded_players)
-          updateSelectInput(session, "report_rows", selected = loaded_rows)
-          updateSelectInput(session, "report_cols", selected = loaded_cols)
+          updateSelectInput(session, "report_rows", selected = as.character(loaded_rows))
+          updateSelectInput(session, "report_cols", selected = as.character(loaded_cols))
           # Re-assert the correct current_cells from the saved report to undo any
           # premature overwrites by the throttled observe (which fires when
           # loading_report flips to FALSE and may read stale input values).
           update_reports_grid(loaded_cells)
+
+          current_rows <- suppressWarnings(as.integer(input$report_rows %||% NA))
+          current_cols <- suppressWarnings(as.integer(input$report_cols %||% NA))
+          current_type <- as.character(input$report_type %||% "")
+          current_scope <- as.character(input$report_scope %||% "")
+          current_title <- trimws(as.character(input$report_title %||% ""))
+
+          inputs_match <- identical(current_rows, loaded_rows) &&
+            identical(current_cols, loaded_cols) &&
+            identical(current_type, loaded_type) &&
+            identical(current_scope, loaded_scope) &&
+            identical(current_title, loaded_title)
+
+          if (!inputs_match && attempt < 12L) {
+            loading_report_handle <<- later::later(function() {
+              apply_loaded_state(attempt + 1L)
+            }, delay = 0.15)
+            return()
+          }
+
           loading_scope_players(loaded_players)
           # Trigger one final repaint after all saved values are flushed.
           new_report_token(as.numeric(Sys.time()))
           loading_report(FALSE)
           loading_report_handle <<- NULL
-        }, delay = 0.8)
+        }
+
+        loading_report_handle <<- later::later(function() {
+          apply_loaded_state(1L)
+        }, delay = 0.2)
       }, once = TRUE)
     }, ignoreInit = TRUE)
     
