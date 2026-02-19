@@ -16570,7 +16570,11 @@ custom_reports_server <- function(id) {
       
       # Set loading flag to prevent observe block from overwriting
       loading_report(TRUE)
-      
+
+      # Store the players from the saved report so get_cell_data_wrapper can use
+      # correct players during load (before input$report_players round-trip completes)
+      loading_scope_players(rep$players %||% character(0))
+
       # FIRST: Update current_cells with saved data (before UI changes)
       loaded_cells <- rep$cells
       if (!is.list(loaded_cells)) loaded_cells <- list()
@@ -16745,11 +16749,16 @@ custom_reports_server <- function(id) {
         loading_report_handle <<- later::later(function() {
           if (loading_report_cycle != load_cycle) return()
           update_saved_state()
+          # Re-assert the correct current_cells from the saved report to undo any
+          # premature overwrites by the throttled observe (which fires when
+          # loading_report flips to FALSE and may read stale input values).
+          update_reports_grid(loaded_cells)
+          loading_scope_players(rep$players %||% character(0))
           # Trigger one final repaint after all saved values are flushed.
           new_report_token(as.numeric(Sys.time()))
           loading_report(FALSE)
           loading_report_handle <<- NULL
-        }, delay = 0.5)
+        }, delay = 0.8)
       }, once = TRUE)
     }, ignoreInit = TRUE)
     
@@ -17082,6 +17091,7 @@ custom_reports_server <- function(id) {
     loading_report_cycle <- 0  # Tracks active loading cycle
     loading_report_handle <- NULL
     new_report_token <- reactiveVal(0)
+    loading_scope_players <- reactiveVal(NULL)  # Stores players from saved report during load
 
     start_loading_cycle <- function() {
       loading_report_cycle <<- loading_report_cycle + 1
@@ -17967,7 +17977,13 @@ custom_reports_server <- function(id) {
         row_player
       } else {
         # Single Player mode - use main player selector
-        single_players <- input$report_players
+        # During loading, use the saved players (before input$report_players round-trip completes)
+        single_players <- if (is_loading_now) {
+          lsp <- loading_scope_players()
+          if (!is.null(lsp) && length(lsp) > 0) lsp else input$report_players
+        } else {
+          input$report_players
+        }
         if (is.null(single_players) || length(single_players) == 0 ||
             all(trimws(single_players) == "")) {
           single_players <- "All"
@@ -19586,8 +19602,12 @@ custom_reports_server <- function(id) {
                   input[[paste0("row_player_", row_num)]]
                 }
                 
-                # Return the actual values
+                # Return the actual values.
+                # Including .report_token ensures this list is never identical() between
+                # report loads, so cell_output_* always re-renders even when chart
+                # type/settings happen to be the same across two different saved reports.
                 list(
+                  .report_token = new_report_token(),
                   type = pick_setting(paste0("cell_type_", settings_id), settings_state$type, ""),
                   filter = pick_setting(paste0("cell_filter_", settings_id), settings_state$filter, "Pitch Types"),
                   mode = pick_setting(paste0("cell_table_mode_", settings_id), settings_state$table_mode),
