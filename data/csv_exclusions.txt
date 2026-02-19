@@ -3020,3 +3020,5 @@
 20260214-EarlEWilsonStadium-1.csv
 # Auto-pruned non-team data
 20260217-BushStadium-1.csv
+# Auto-pruned non-team data
+20260214-DavidStory-1_unverified.csv
