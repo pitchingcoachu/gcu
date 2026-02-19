@@ -2918,3 +2918,73 @@
 20260217-UKentucky-1.csv
 # Auto-pruned non-team data
 20260217-VATech-1.csv
+# Auto-pruned non-team data
+20260213-BrooksField-1.csv
+# Auto-pruned non-team data
+20260213-WinthropUniversity-1.csv
+# Auto-pruned non-team data
+20260217-FriersonField-1.csv
+# Auto-pruned non-team data
+20260218-AnteaterBallpark-1.csv
+# Auto-pruned non-team data
+20260218-BenedettiDiamond-1.csv
+# Auto-pruned non-team data
+20260218-BrooksField-1.csv
+# Auto-pruned non-team data
+20260218-BudMethenyBBStad-1.csv
+# Auto-pruned non-team data
+20260218-ClarkLeClair-1.csv
+# Auto-pruned non-team data
+20260218-CondronBallpark-1.csv
+# Auto-pruned non-team data
+20260218-DedeauxField-1.csv
+# Auto-pruned non-team data
+20260218-DoakField-1.csv
+# Auto-pruned non-team data
+20260218-HardtField-1.csv
+# Auto-pruned non-team data
+20260218-JCLoveFieldatPatPattersonPark-2.csv
+# Auto-pruned non-team data
+20260218-JohnKurtzField-1.csv
+# Auto-pruned non-team data
+20260218-LamarUniversity-1.csv
+# Auto-pruned non-team data
+20260218-LSU-1.csv
+# Auto-pruned non-team data
+20260218-McBean-1.csv
+# Auto-pruned non-team data
+20260218-McBean-2.csv
+# Auto-pruned non-team data
+20260218-MercerUniversity-1.csv
+# Auto-pruned non-team data
+20260218-MikeDLaneField-1.csv
+# Auto-pruned non-team data
+20260218-MSST-1.csv
+# Auto-pruned non-team data
+20260218-OleMiss-1.csv
+# Auto-pruned non-team data
+20260218-PittFieldUOR-1.csv
+# Auto-pruned non-team data
+20260218-RiceUniversity-1.csv
+# Auto-pruned non-team data
+20260218-StephenSchottBBS-1.csv
+# Auto-pruned non-team data
+20260218-SullivanField-1.csv
+# Auto-pruned non-team data
+20260218-SwansonStadium-1.csv
+# Auto-pruned non-team data
+20260218-SwellThomasStadium-1.csv
+# Auto-pruned non-team data
+20260218-UGeorgia-1.csv
+# Auto-pruned non-team data
+20260218-UNC-1.csv
+# Auto-pruned non-team data
+20260218-UNCGreensboro-1.csv
+# Auto-pruned non-team data
+20260218-UofMiami-1.csv
+# Auto-pruned non-team data
+20260218-UofSouthCarolina-1.csv
+# Auto-pruned non-team data
+20260218-USFBaseballStadium-1.csv
+# Auto-pruned non-team data
+20260218-Vanderbilt-1.csv
