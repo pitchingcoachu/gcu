@@ -16898,17 +16898,21 @@ custom_reports_server <- function(id) {
     }
 
     flush_row_note_now <- function(row_num, value = NULL) {
+      if (isTRUE(loading_report())) return(invisible(NULL))
       rows_now <- suppressWarnings(as.integer(input$report_rows))
       if (is.na(rows_now) || rows_now < 1 || row_num < 1 || row_num > rows_now) return(invisible(NULL))
       pending_val <- isolate(input[[paste0("row_panel_note_pending_", row_num)]])
       note_val <- if (!is.null(value)) value else if (!is.null(pending_val)) pending_val else isolate(input[[paste0("row_panel_note_", row_num)]])
       if (is.null(note_val)) return(invisible(NULL))
       cells <- isolate(current_cells())
-      cells[[paste0("row_", row_num, "_panel_note")]] <- note_val
-      current_cells(cells)
+      key <- paste0("row_", row_num, "_panel_note")
+      if (identical(cells[[key]], note_val)) return(invisible(NULL))
+      cells[[key]] <- note_val
+      set_current_cells_if_changed(cells)
     }
 
     flush_row_note_span_now <- function(row_num, value = NULL) {
+      if (isTRUE(loading_report())) return(invisible(NULL))
       rows_now <- suppressWarnings(as.integer(input$report_rows))
       if (is.na(rows_now) || rows_now < 1 || row_num < 1 || row_num > rows_now) return(invisible(NULL))
       max_span <- max(1L, rows_now - row_num + 1L)
@@ -16917,8 +16921,10 @@ custom_reports_server <- function(id) {
       if (is.na(span_val) || span_val < 1) span_val <- 1L
       span_val <- min(span_val, max_span)
       cells <- isolate(current_cells())
-      cells[[paste0("row_", row_num, "_panel_note_span")]] <- span_val
-      current_cells(cells)
+      key <- paste0("row_", row_num, "_panel_note_span")
+      if (identical(cells[[key]], span_val)) return(invisible(NULL))
+      cells[[key]] <- span_val
+      set_current_cells_if_changed(cells)
     }
 
     observeEvent(input$download_report_pdf, {
@@ -17072,8 +17078,14 @@ custom_reports_server <- function(id) {
       loading_report_cycle <<- loading_report_cycle + 1
       loading_report_cycle
     }
+    set_current_cells_if_changed <- function(cells_list) {
+      old_cells <- isolate(current_cells())
+      if (!identical(old_cells, cells_list)) {
+        current_cells(cells_list)
+      }
+    }
     update_reports_grid <- function(cells_list) {
-      current_cells(cells_list)
+      set_current_cells_if_changed(cells_list)
     }
     
     # Keep all per-panel date inputs synced to the global date range whenever it changes.
@@ -17101,6 +17113,7 @@ custom_reports_server <- function(id) {
 
     output$report_pitch_type_legend <- renderUI({
       if (!isTRUE(input$show_pitch_type_key)) return(NULL)
+      if (isTRUE(loading_report())) return(NULL)
       rows <- suppressWarnings(as.integer(input$report_rows))
       cols <- suppressWarnings(as.integer(input$report_cols))
       if (is.na(rows) || is.na(cols) || rows < 1 || cols < 1) return(NULL)
@@ -17702,7 +17715,7 @@ custom_reports_server <- function(id) {
           # Keep UI in sync with stored state
         }
       }
-      current_cells(cells)
+      set_current_cells_if_changed(cells)
     }) %>% throttle(2000)  # Throttle to 2 seconds to reduce saves during rapid changes
     
     # Separate observer to handle title updates with debounce (prevents interruption while typing)
@@ -17719,7 +17732,7 @@ custom_reports_server <- function(id) {
       existing_cell <- cells[[cell_id]] %||% list()
       existing_cell$title <- title_val
       cells[[cell_id]] <- existing_cell
-      current_cells(cells)
+      set_current_cells_if_changed(cells)
     }
 
     created_title_flush_ids <- character(0)
@@ -17734,9 +17747,11 @@ custom_reports_server <- function(id) {
         local({
           rid <- r
           observeEvent(input[[paste0("row_panel_note_blur_", rid)]], {
+            if (isTRUE(loading_report())) return()
             flush_row_note_now(rid, value = input[[paste0("row_panel_note_blur_", rid)]])
           }, ignoreInit = TRUE)
           observeEvent(input[[paste0("row_panel_note_span_", rid)]], {
+            if (isTRUE(loading_report())) return()
             flush_row_note_span_now(rid, value = input[[paste0("row_panel_note_span_", rid)]])
           }, ignoreInit = TRUE)
         })
@@ -17778,6 +17793,7 @@ custom_reports_server <- function(id) {
 
     # Sync titles from cell_titles back to current_cells (so they're saved permanently)
     observe({
+      if (isTRUE(loading_report())) return()
       titles <- cell_titles()
       cells <- isolate(current_cells())
       
@@ -17790,7 +17806,7 @@ custom_reports_server <- function(id) {
           cells[[cell_id]] <- list(title = titles[[cell_id]])
         }
       }
-      current_cells(cells)
+      set_current_cells_if_changed(cells)
     }) %>% debounce(500)  # Reduced to 500ms for faster syncing
     
     # Helper: get filtered dataset for player(s) for a given cell
@@ -18590,7 +18606,7 @@ custom_reports_server <- function(id) {
                 axis.title.x = element_text(color = axis_col),
                 axis.title.y = element_text(color = axis_col)
               ) +
-              labs(title = "Velocity Chart (Game/Inning)", x = "Pitch Count", y = "Velocity (MPH)")
+              labs(x = "Pitch Count", y = "Velocity (MPH)")
 
             # Dashed inning boundary lines (matches Pitching velocity chart behavior for Live-only data).
             if ("SessionType" %in% names(df2) &&
@@ -18679,7 +18695,7 @@ custom_reports_server <- function(id) {
                 axis.title.x = element_text(color = axis_col),
                 axis.title.y = element_text(color = axis_col)
               ) +
-              labs(title = "Average Velocity by Game", x = "Game Date", y = "Velocity (MPH)")
+              labs(x = "Game Date", y = "Velocity (MPH)")
 
             return(girafe_transparent(
               ggobj = p,
@@ -18760,7 +18776,7 @@ custom_reports_server <- function(id) {
               axis.title.x = element_text(color = axis_col),
               axis.title.y = element_text(color = axis_col)
             ) +
-            labs(title = "Average Velocity by Inning", x = "Inning of Appearance", y = "Velocity (MPH)")
+            labs(x = "Inning of Appearance", y = "Velocity (MPH)")
 
           girafe_transparent(
             ggobj = p,
