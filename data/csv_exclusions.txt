@@ -2990,3 +2990,9 @@
 20260218-Vanderbilt-1.csv
 # Auto-pruned non-team data
 20260217-Tankersleyfield-4.csv
+# Auto-pruned non-team data
+20260213-JoeMillerBallpark-1.csv
+# Auto-pruned non-team data
+20260215-BrownStroudField-1.csv
+# Auto-pruned non-team data
+20260215-SullivanField-2.csv
