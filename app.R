@@ -19523,6 +19523,10 @@ custom_reports_server <- function(id) {
               
               # Use reactive to cache expensive computations
               cell_data <- reactive({
+                # Force invalidation when a saved/new report is loaded.
+                new_report_token()
+                is_loading_now <- isTRUE(loading_report())
+
                 # Only re-compute when these specific inputs change
                 # NOTE: Do NOT include cell_title here - it causes re-render on every keystroke
                 
@@ -19537,7 +19541,15 @@ custom_reports_server <- function(id) {
                 } else {
                   id
                 }
-                
+                cells_snapshot <- current_cells()
+                settings_state <- cells_snapshot[[settings_id]]
+                if (!is.list(settings_state)) settings_state <- list()
+
+                pick_setting <- function(input_id, state_val, default_val = NULL) {
+                  if (is_loading_now) return(state_val %||% default_val)
+                  input[[input_id]] %||% state_val %||% default_val
+                }
+
                 # Monitor these inputs to trigger re-rendering
                 input[[paste0("cell_type_", settings_id)]]
                 input[[paste0("cell_filter_", settings_id)]]
@@ -19574,13 +19586,13 @@ custom_reports_server <- function(id) {
                 
                 # Return the actual values
                 list(
-                  type = input[[paste0("cell_type_", settings_id)]],
-                  filter = input[[paste0("cell_filter_", settings_id)]],
-                  mode = input[[paste0("cell_table_mode_", settings_id)]],
-                  color = input[[paste0("cell_color_", settings_id)]],
-                  heat_stat = input[[paste0("cell_heat_stat_", settings_id)]],
-                  velocity_chart = input[[paste0("cell_velocity_chart_", settings_id)]],
-                  custom_cols = input[[paste0("cell_table_custom_cols_", settings_id)]]
+                  type = pick_setting(paste0("cell_type_", settings_id), settings_state$type, ""),
+                  filter = pick_setting(paste0("cell_filter_", settings_id), settings_state$filter, "Pitch Types"),
+                  mode = pick_setting(paste0("cell_table_mode_", settings_id), settings_state$table_mode),
+                  color = pick_setting(paste0("cell_color_", settings_id), settings_state$color, TRUE),
+                  heat_stat = pick_setting(paste0("cell_heat_stat_", settings_id), settings_state$heat_stat, "Frequency"),
+                  velocity_chart = pick_setting(paste0("cell_velocity_chart_", settings_id), settings_state$velocity_chart, "Velocity Chart (Game/Inning)"),
+                  custom_cols = pick_setting(paste0("cell_table_custom_cols_", settings_id), settings_state$table_custom_cols, character(0))
                 )
               })
               
