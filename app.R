@@ -16403,6 +16403,7 @@ custom_reports_ui <- function(id) {
                    uiOutput(ns("row_panel_notes_inputs")),
                    selectInput(ns("report_cols"), "Columns:", choices = 1:5, selected = 1),
                    checkboxInput(ns("use_global_dates"), "Apply one date range to all panels", value = FALSE),
+                   checkboxInput(ns("show_pitch_type_key"), "Show pitch type key", value = TRUE),
                    conditionalPanel(
                      sprintf("input['%s']", ns("use_global_dates")),
                      {
@@ -16592,6 +16593,7 @@ custom_reports_server <- function(id) {
       updateSelectInput(session, "report_rows", selected = rep$rows %||% 1)
       updateSelectInput(session, "report_cols", selected = rep$cols %||% 1)
       updateCheckboxInput(session, "use_global_dates", value = isTRUE(rep$use_global_dates))
+      updateCheckboxInput(session, "show_pitch_type_key", value = if (is.null(rep$show_pitch_type_key)) TRUE else isTRUE(rep$show_pitch_type_key))
       if (!is.null(rep$global_dates) && length(rep$global_dates) == 2) {
         updateDateRangeInput(session, "global_dates", start = rep$global_dates[1], end = rep$global_dates[2])
       }
@@ -17000,6 +17002,7 @@ custom_reports_server <- function(id) {
         rows = as.integer(input$report_rows),
         cols = as.integer(input$report_cols),
         use_global_dates = isTRUE(input$use_global_dates),
+        show_pitch_type_key = isTRUE(input$show_pitch_type_key),
         global_dates = input$global_dates,
         cells = cells,
         school_code = scope
@@ -17036,6 +17039,7 @@ custom_reports_server <- function(id) {
       updateTextInput(session, "report_subtitle", value = "")
       updateSelectInput(session, "saved_report", selected = "")
       updateCheckboxInput(session, "use_global_dates", value = FALSE)
+      updateCheckboxInput(session, "show_pitch_type_key", value = TRUE)
       rows_now <- suppressWarnings(as.integer(input$report_rows))
       if (is.na(rows_now) || rows_now < 1) rows_now <- 1
       for (r in seq_len(rows_now)) {
@@ -17095,24 +17099,8 @@ custom_reports_server <- function(id) {
       }
     })
 
-    show_report_pitch_legend <- reactive({
-      rows <- suppressWarnings(as.integer(input$report_rows))
-      cols <- suppressWarnings(as.integer(input$report_cols))
-      if (is.na(rows) || is.na(cols) || rows < 1 || cols < 1) return(TRUE)
-      cells <- current_cells()
-      for (r in seq_len(rows)) for (c in seq_len(cols)) {
-        cell_id <- paste0("r", r, "c", c)
-        settings_cell_id <- if (identical(input$report_scope, "Multi-Player") && r > 1) paste0("r1c", c) else cell_id
-        saved <- cells[[settings_cell_id]] %||% list()
-        tsel <- input[[paste0("cell_type_", settings_cell_id)]] %||% saved$type %||% ""
-        fsel <- input[[paste0("cell_filter_", settings_cell_id)]] %||% saved$filter %||% "Pitch Types"
-        if (identical(tsel, "Summary Table") && identical(fsel, "Pitch Types")) return(FALSE)
-      }
-      TRUE
-    })
-
     output$report_pitch_type_legend <- renderUI({
-      if (!show_report_pitch_legend()) return(NULL)
+      if (!isTRUE(input$show_pitch_type_key)) return(NULL)
       rows <- suppressWarnings(as.integer(input$report_rows))
       cols <- suppressWarnings(as.integer(input$report_cols))
       if (is.na(rows) || is.na(cols) || rows < 1 || cols < 1) return(NULL)
@@ -21666,15 +21654,18 @@ ui <- tagList(
         width: 100%;
       }
       .creport-pdf-clone [id$='report_canvas_wrapper'] {
-        padding-left: 40px !important;
+        padding-left: 0 !important;
         margin-left: 0 !important;
         overflow: visible !important;
       }
       .creport-pdf-clone [id$='report_canvas'] {
-        margin-left: -40px !important;
+        margin-left: 0 !important;
       }
       .creport-pdf-clone .creport-row-wrap-has-gutter {
-        padding-left: 0 !important;
+        padding-left: 40px !important;
+      }
+      .creport-pdf-clone .creport-row-wrap-has-gutter > .row {
+        margin-left: -40px !important;
       }
       .creport-pdf-clone .creport-row-note {
         left: 6px !important;
