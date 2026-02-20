@@ -16364,6 +16364,48 @@ custom_reports_ui <- function(id) {
   ns <- NS(id)
   fluidPage(
     shinyjs::useShinyjs(),  # Enable shinyjs
+    tags$script(HTML("
+      (function() {
+        function reflowCustomReports(rootId) {
+          var root = rootId ? document.getElementById(rootId) : null;
+          var target = root || document;
+          setTimeout(function() {
+            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
+            try {
+              if (window.HTMLWidgets && typeof window.HTMLWidgets.staticRender === 'function') {
+                window.HTMLWidgets.staticRender();
+              }
+            } catch (e) {}
+            try {
+              if (window.Plotly) {
+                var plots = target.querySelectorAll('.plotly');
+                plots.forEach(function(el) { window.Plotly.Plots.resize(el); });
+              }
+            } catch (e) {}
+            try {
+              if (window.jQuery && jQuery.fn && jQuery.fn.dataTable) {
+                jQuery.fn.dataTable.tables({visible: true, api: true}).columns.adjust().draw(false);
+              }
+            } catch (e) {}
+          }, 120);
+        }
+
+        if (window.Shiny && typeof window.Shiny.addCustomMessageHandler === 'function') {
+          window.Shiny.addCustomMessageHandler('creports_force_reflow', function(message) {
+            var rootId = (message && message.rootId) ? message.rootId : null;
+            reflowCustomReports(rootId);
+            setTimeout(function() { reflowCustomReports(rootId); }, 420);
+          });
+        }
+
+        if (window.jQuery) {
+          jQuery(document).on('shown.bs.tab', 'a[data-toggle=\"tab\"]', function(e) {
+            var val = jQuery(e.target).data('value');
+            if (val === 'Custom Reports') reflowCustomReports(null);
+          });
+        }
+      })();
+    ")),
     div(
       class = "creports-root",
       # Floating show sidebar button (only visible when sidebar is hidden)
@@ -16514,6 +16556,7 @@ custom_reports_server <- function(id) {
         shinyjs::removeClass(selector = paste0("#", ns("main_column")), class = "col-sm-9")
         shinyjs::addClass(selector = paste0("#", ns("main_column")), class = "col-sm-12")
       }
+      session$sendCustomMessage("creports_force_reflow", list(rootId = ns("report_canvas_wrapper")))
     })
     
     # Show sidebar button click
@@ -16524,6 +16567,7 @@ custom_reports_server <- function(id) {
       shinyjs::removeClass(selector = paste0("#", ns("main_column")), class = "col-sm-12")
       shinyjs::addClass(selector = paste0("#", ns("main_column")), class = "col-sm-9")
       updateActionButton(session, "toggle_sidebar", label = "Hide Sidebar")
+      session$sendCustomMessage("creports_force_reflow", list(rootId = ns("report_canvas_wrapper")))
     })
     
     observe({
@@ -19623,7 +19667,16 @@ custom_reports_server <- function(id) {
                 out_id <- paste0("cell_render_", id)
                 
                 # Get data for this cell
-                df_now <- get_cell_data_wrapper(id)
+                df_now <- tryCatch(
+                  get_cell_data_wrapper(id),
+                  error = function(e) {
+                    output[[out_id]] <- renderUI({
+                      div(style = "padding: 20px; text-align: center; color: #b91c1c;",
+                          paste("Chart data error:", e$message))
+                    })
+                    return(data.frame())
+                  }
+                )
                 
                 # If no data, show message
                 if (!nrow(df_now)) {
@@ -19637,12 +19690,19 @@ custom_reports_server <- function(id) {
                 # Wrap in div with unique token to force Shiny to recognize updates
                 div(`data-report-token` = cd$.report_token, render_cell(id))
               })
+              outputOptions(output, paste0("cell_output_", id), suspendWhenHidden = FALSE)
             })
             existing_render <- c(existing_render, cell_id)
           }
         }
       }
       cells_with_render_observers(existing_render)
+    }, ignoreInit = FALSE)
+
+    observeEvent(list(input$report_rows, input$report_cols, new_report_token()), {
+      session$onFlushed(function() {
+        session$sendCustomMessage("creports_force_reflow", list(rootId = ns("report_canvas_wrapper")))
+      }, once = TRUE)
     }, ignoreInit = FALSE)
   })
 }
