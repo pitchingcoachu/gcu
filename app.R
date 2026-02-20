@@ -16599,6 +16599,8 @@ custom_reports_server <- function(id) {
       # FIRST: Update current_cells with saved data (before UI changes)
       loaded_cells <- rep$cells
       if (!is.list(loaded_cells)) loaded_cells <- list()
+      
+      # Update current_cells IMMEDIATELY - this is critical for render_cell() to read correct values
       update_reports_grid(loaded_cells)
       
       # Also populate cell_titles from the loaded report
@@ -16626,7 +16628,8 @@ custom_reports_server <- function(id) {
         updateDateRangeInput(session, "global_dates", start = rep$global_dates[1], end = rep$global_dates[2])
       }
       
-      # Trigger report token update AFTER UI updates to ensure title re-renders
+      # FINALLY: Trigger report token update AFTER current_cells and UI updates
+      # This ensures all reactives see the new data when they invalidate
       new_report_token(as.numeric(Sys.time()))
       
       rows <- loaded_rows
@@ -17702,10 +17705,16 @@ custom_reports_server <- function(id) {
         )
       })
       
+      # Wrap entire grid in a div with unique token to force complete re-render when loading new reports
       div(
-        class = paste("creport-grid", paste0("creport-rows-", rows)),
-        style = sprintf("--creport-rows:%d; --creport-cols:%d;", rows, cols),
-        tagList(grid)
+        `data-report-token` = new_report_token(),
+        `data-report-rows` = rows,
+        `data-report-cols` = cols,
+        div(
+          class = paste("creport-grid", paste0("creport-rows-", rows)),
+          style = sprintf("--creport-rows:%d; --creport-cols:%d;", rows, cols),
+          tagList(grid)
+        )
       )
     })
     
@@ -18112,6 +18121,9 @@ custom_reports_server <- function(id) {
       settings_state <- current_cells()[[settings_cell_id]]
       if (!is.list(settings_state)) settings_state <- list()
 
+      # Always prefer current_cells() state over input values to ensure proper loading
+      # When loading_report() is TRUE, ONLY use current_cells()
+      # When FALSE, use input values but fall back to current_cells() if input is missing
       tsel <- if (isTRUE(loading_report())) {
         settings_state$type %||% ""
       } else {
@@ -18142,25 +18154,13 @@ custom_reports_server <- function(id) {
                                        "Velocity Chart", "Pitch Usage Pie Chart", "Velocity Bar Chart",
                                        "Velocity Distribution", "Spray Chart")
       
-      # Clear previous output properly based on chart type
-      # For ggiraph charts, we need to destroy the observer completely
-      if (is_ggiraph_chart) {
-        # Destroy any existing ggiraph output
-        output[[out_id]] <- NULL
-        # Force a brief delay to allow cleanup before creating new output
-        Sys.sleep(0.01)
-      } else {
-        # For non-ggiraph charts, clear with renderUI
-        output[[out_id]] <- renderUI({ NULL })
-      }
+      # Always clear previous output to ensure clean re-render
+      # Setting to NULL removes any existing reactive observer
+      output[[out_id]] <- NULL
       
       if (!nzchar(tsel)) {
-        if (is_ggiraph_chart) {
-          output[[out_id]] <- NULL
-        } else {
-          output[[out_id]] <- renderUI({ NULL })
-        }
-        return(NULL)
+        output[[out_id]] <- renderUI({ div(style = "padding: 20px; text-align: center; color: #999;", "Select a chart type") })
+        return(uiOutput(ns(out_id)))
       }
       df <- get_cell_data_wrapper(cell_id)
       if (!nrow(df)) {
