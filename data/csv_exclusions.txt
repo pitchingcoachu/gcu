@@ -3072,3 +3072,35 @@
 20260219-USIField-1.csv
 # Auto-pruned non-team data
 20260219-YoungMemorialField-1.csv
+# Auto-pruned non-team data
+20260214-CypressCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260218-MarichFieldLaptop-1_unverified.csv
+# Auto-pruned non-team data
+20260220-Arlington-1_unverified.csv
+# Auto-pruned non-team data
+20260220-CaseWesternReserve-1_unverified.csv
+# Auto-pruned non-team data
+20260220-CatholicUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260220-Cumberlands-1_unverified.csv
+# Auto-pruned non-team data
+20260220-FifthThirdParkSC-1_unverified.csv
+# Auto-pruned non-team data
+20260220-JohnALogan-1_unverified.csv
+# Auto-pruned non-team data
+20260220-MaestriField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-MelchingFielda-1_unverified.csv
+# Auto-pruned non-team data
+20260220-OdessaCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260220-SouthernIdaho-2_unverified.csv
+# Auto-pruned non-team data
+20260220-SpringsBrooksStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-StaufferField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-WeberField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-WoernerField-1_unverified.csv
