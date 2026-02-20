@@ -16600,7 +16600,6 @@ custom_reports_server <- function(id) {
       loaded_cells <- rep$cells
       if (!is.list(loaded_cells)) loaded_cells <- list()
       update_reports_grid(loaded_cells)
-      new_report_token(as.numeric(Sys.time()))
       
       # Also populate cell_titles from the loaded report
       titles <- list()
@@ -16626,6 +16625,9 @@ custom_reports_server <- function(id) {
       if (!is.null(rep$global_dates) && length(rep$global_dates) == 2) {
         updateDateRangeInput(session, "global_dates", start = rep$global_dates[1], end = rep$global_dates[2])
       }
+      
+      # Trigger report token update AFTER UI updates to ensure title re-renders
+      new_report_token(as.numeric(Sys.time()))
       
       rows <- loaded_rows
       cols <- loaded_cols
@@ -16790,6 +16792,7 @@ custom_reports_server <- function(id) {
 
           loading_scope_players(loaded_players)
           # Trigger one final repaint after all saved values are flushed.
+          # This ensures header re-renders with correct title
           new_report_token(as.numeric(Sys.time()))
           loading_report(FALSE)
           loading_report_handle <<- NULL
@@ -17115,6 +17118,9 @@ custom_reports_server <- function(id) {
         flush_row_note_span_now(r, value = 1)
       }
       if (isTRUE(is_admin_local())) updateCheckboxInput(session, "report_global", value = FALSE)
+      
+      # Trigger token update to force header re-render
+      new_report_token(as.numeric(Sys.time()))
 
       loading_report_handle <<- later::later(function() {
         if (loading_report_cycle != new_cycle) return()
@@ -18130,10 +18136,30 @@ custom_reports_server <- function(id) {
         if (is.null(dm) && !is.null(input$dark_mode)) dm <- input$dark_mode
         isTRUE(dm)
       }
-      # clear previous output so switching types always re-renders
-      output[[out_id]] <- renderUI({ NULL })
-      if (!nzchar(tsel)) {
+      
+      # Determine if the chart type uses ggiraph (which needs special handling)
+      is_ggiraph_chart <- tsel %in% c("Movement Plot", "Release Plot", "Location Plot", "Heatmap", 
+                                       "Velocity Chart", "Pitch Usage Pie Chart", "Velocity Bar Chart",
+                                       "Velocity Distribution", "Spray Chart")
+      
+      # Clear previous output properly based on chart type
+      # For ggiraph charts, we need to destroy the observer completely
+      if (is_ggiraph_chart) {
+        # Destroy any existing ggiraph output
+        output[[out_id]] <- NULL
+        # Force a brief delay to allow cleanup before creating new output
+        Sys.sleep(0.01)
+      } else {
+        # For non-ggiraph charts, clear with renderUI
         output[[out_id]] <- renderUI({ NULL })
+      }
+      
+      if (!nzchar(tsel)) {
+        if (is_ggiraph_chart) {
+          output[[out_id]] <- NULL
+        } else {
+          output[[out_id]] <- renderUI({ NULL })
+        }
         return(NULL)
       }
       df <- get_cell_data_wrapper(cell_id)
