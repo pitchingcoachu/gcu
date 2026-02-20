@@ -3110,3 +3110,41 @@
 20260220-JimReevesField-1_unverified.csv
 # Auto-pruned non-team data
 20260220-PittFieldUOR-1_unverified.csv
+# Auto-pruned non-team data
+20260220-700-HughAdamsPark-1_unverified.csv
+# Auto-pruned non-team data
+20260220-700-HughAdamsPark-2_unverified.csv
+# Auto-pruned non-team data
+20260220-BowiesBallpark-1_unverified.csv
+# Auto-pruned non-team data
+20260220-BudMethenyBBStad-1_unverified.csv
+# Auto-pruned non-team data
+20260220-CaseWesternReserve-2_unverified.csv
+# Auto-pruned non-team data
+20260220-DubHerringPark-1_unverified.csv
+# Auto-pruned non-team data
+20260220-FriersonField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-GeorgeFox-1_unverified.csv
+# Auto-pruned non-team data
+20260220-GoldenWestCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260220-GrayMinorStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-NickDenesField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-RussellCarrField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-SammyCoxField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-TedABroerStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260220-TuckerFieldatBarcroftPark-1_unverified.csv
+# Auto-pruned non-team data
+20260220-UGeorgia-1_unverified.csv
+# Auto-pruned non-team data
+20260220-UofSouthCarolina-1_unverified.csv
+# Auto-pruned non-team data
+20260220-USIField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-Vanderbilt-1_unverified.csv
