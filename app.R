@@ -17705,16 +17705,12 @@ custom_reports_server <- function(id) {
         )
       })
       
-      # Wrap entire grid in a div with unique token to force complete re-render when loading new reports
+      # Add token as attribute to force re-render when loading new reports
       div(
+        class = paste("creport-grid", paste0("creport-rows-", rows)),
+        style = sprintf("--creport-rows:%d; --creport-cols:%d;", rows, cols),
         `data-report-token` = new_report_token(),
-        `data-report-rows` = rows,
-        `data-report-cols` = cols,
-        div(
-          class = paste("creport-grid", paste0("creport-rows-", rows)),
-          style = sprintf("--creport-rows:%d; --creport-cols:%d;", rows, cols),
-          tagList(grid)
-        )
+        tagList(grid)
       )
     })
     
@@ -18154,9 +18150,8 @@ custom_reports_server <- function(id) {
                                        "Velocity Chart", "Pitch Usage Pie Chart", "Velocity Bar Chart",
                                        "Velocity Distribution", "Spray Chart")
       
-      # Always clear previous output to ensure clean re-render
-      # Setting to NULL removes any existing reactive observer
-      output[[out_id]] <- NULL
+      # Note: We don't clear outputs here because it's called on every render.
+      # Shiny will automatically replace outputs when we assign new renderXXX functions.
       
       if (!nzchar(tsel)) {
         output[[out_id]] <- renderUI({ div(style = "padding: 20px; text-align: center; color: #999;", "Select a chart type") })
