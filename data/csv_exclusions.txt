@@ -3054,3 +3054,21 @@
 20260219-KellField-2_unverified.csv
 # Auto-pruned non-team data
 20260219-KellField-3_unverified.csv
+# Auto-pruned non-team data
+20260214-RileyPark-2.csv
+# Auto-pruned non-team data
+20260219-705-CalBaptistBaseballField-1.csv
+# Auto-pruned non-team data
+20260219-GeorgeFox-1.csv
+# Auto-pruned non-team data
+20260219-GrierField-1.csv
+# Auto-pruned non-team data
+20260219-KleinFamilyField-1.csv
+# Auto-pruned non-team data
+20260219-PKPark-1.csv
+# Auto-pruned non-team data
+20260219-UArizona-1.csv
+# Auto-pruned non-team data
+20260219-USIField-1.csv
+# Auto-pruned non-team data
+20260219-YoungMemorialField-1.csv
