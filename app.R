@@ -16603,6 +16603,9 @@ custom_reports_server <- function(id) {
       # Update current_cells IMMEDIATELY - this is critical for render_cell() to read correct values
       update_reports_grid(loaded_cells)
       
+      # Force Shiny to flush reactive values
+      session$flushReact()
+      
       # Also populate cell_titles from the loaded report
       titles <- list()
       for (cell_id in names(loaded_cells)) {
