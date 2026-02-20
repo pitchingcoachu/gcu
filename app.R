@@ -16603,9 +16603,6 @@ custom_reports_server <- function(id) {
       # Update current_cells IMMEDIATELY - this is critical for render_cell() to read correct values
       update_reports_grid(loaded_cells)
       
-      # Force Shiny to flush reactive values
-      session$flushReact()
-      
       # Also populate cell_titles from the loaded report
       titles <- list()
       for (cell_id in names(loaded_cells)) {
@@ -19624,12 +19621,16 @@ custom_reports_server <- function(id) {
                 # Get cell data (triggers on chart type/filter/mode changes only)
                 cd <- cell_data()
                 out_id <- paste0("cell_render_", id)
+                
+                # Get data for this cell
                 df_now <- get_cell_data_wrapper(id)
+                
+                # If no data, show message
                 if (!nrow(df_now)) {
-                  output[[out_id]] <- renderUI({
-                    div("No data for selected filters")
-                  })
-                  return(uiOutput(ns(out_id)))
+                  return(div(
+                    style = "padding: 20px; text-align: center; color: #999;",
+                    "No data for selected filters"
+                  ))
                 }
 
                 # Render the chart (title is separate, updated via shinyjs)
