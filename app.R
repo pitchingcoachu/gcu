@@ -16701,8 +16701,8 @@ custom_reports_server <- function(id) {
         for (r in seq_len(rows)) {
           note_val <- cells[[paste0("row_", r, "_panel_note")]] %||% ""
           span_val <- cells[[paste0("row_", r, "_panel_note_span")]] %||% 1
-          span_val <- suppressWarnings(as.integer(span_val))
-          if (is.na(span_val) || span_val < 1) span_val <- 1
+          span_val <- coerce_int_scalar(span_val, default = 1L)
+          if (span_val < 1L) span_val <- 1L
           max_span <- max(1L, rows - r + 1L)
           span_val <- min(span_val, max_span)
           updateTextInput(session, paste0("row_panel_note_", r), value = note_val)
@@ -16938,8 +16938,8 @@ custom_reports_server <- function(id) {
       for (r in seq_len(rows)) {
         note_val <- cells[[paste0("row_", r, "_panel_note")]] %||% ""
         span_val <- cells[[paste0("row_", r, "_panel_note_span")]] %||% 1
-        span_val <- suppressWarnings(as.integer(span_val))
-        if (is.na(span_val) || span_val < 1) span_val <- 1
+        span_val <- coerce_int_scalar(span_val, default = 1L)
+        if (span_val < 1L) span_val <- 1L
         max_span <- max(1L, rows - r + 1L)
         span_val <- min(span_val, max_span)
         updateTextInput(session, paste0("row_panel_note_", r), value = note_val)
@@ -17020,14 +17020,21 @@ custom_reports_server <- function(id) {
       set_current_cells_if_changed(cells)
     }
 
+    coerce_int_scalar <- function(x, default = 1L) {
+      vals <- suppressWarnings(as.integer(x))
+      vals <- vals[!is.na(vals)]
+      if (!length(vals)) return(as.integer(default))
+      as.integer(vals[[1]])
+    }
+
     flush_row_note_span_now <- function(row_num, value = NULL) {
       if (isTRUE(loading_report())) return(invisible(NULL))
       rows_now <- suppressWarnings(as.integer(input$report_rows))
       if (is.na(rows_now) || rows_now < 1 || row_num < 1 || row_num > rows_now) return(invisible(NULL))
       max_span <- max(1L, rows_now - row_num + 1L)
       raw_span <- if (!is.null(value)) value else isolate(input[[paste0("row_panel_note_span_", row_num)]])
-      span_val <- suppressWarnings(as.integer(raw_span))
-      if (is.na(span_val) || span_val < 1) span_val <- 1L
+      span_val <- coerce_int_scalar(raw_span, default = 1L)
+      if (span_val < 1L) span_val <- 1L
       span_val <- min(span_val, max_span)
       cells <- isolate(current_cells())
       key <- paste0("row_", row_num, "_panel_note_span")
@@ -17480,8 +17487,8 @@ custom_reports_server <- function(id) {
         note_span_input <- input[[paste0("row_panel_note_span_", note_row)]]
         note_span_saved <- cells[[paste0("row_", note_row, "_panel_note_span")]] %||% 1
         note_span_raw <- if (!is.null(note_span_input)) note_span_input else note_span_saved
-        note_span <- suppressWarnings(as.integer(note_span_raw))
-        if (is.na(note_span) || note_span < 1) note_span <- 1L
+        note_span <- coerce_int_scalar(note_span_raw, default = 1L)
+        if (note_span < 1L) note_span <- 1L
         max_span <- max(1L, rows - note_row + 1L)
         note_span <- min(note_span, max_span)
         row_note_starts[[note_row]] <- list(text = note_text, span = note_span)
@@ -17549,8 +17556,8 @@ custom_reports_server <- function(id) {
         row_cells <- lapply(seq_len(cols), function(cn) {
           if (col_used[cn]) return(NULL)
           info <- cell_infos[[cn]]
-          span_val <- suppressWarnings(as.integer(info$settings_span %||% info$span %||% 1))
-          if (is.na(span_val) || span_val < 1) span_val <- 1
+          span_val <- coerce_int_scalar(info$settings_span %||% info$span %||% 1, default = 1L)
+          if (span_val < 1L) span_val <- 1L
           max_span <- cols - (cn - 1)
           span_val <- min(span_val, max_span)
           col_idx <- seq.int(cn, cn + span_val - 1)
