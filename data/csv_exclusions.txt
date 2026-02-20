@@ -3148,3 +3148,23 @@
 20260220-USIField-1_unverified.csv
 # Auto-pruned non-team data
 20260220-Vanderbilt-1_unverified.csv
+# Auto-pruned non-team data
+20260220-BuddyBoldingStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-CarterMemorial-1_unverified.csv
+# Auto-pruned non-team data
+20260220-DoakField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-EastTennesseeState-1_unverified.csv
+# Auto-pruned non-team data
+20260220-HarleyPark-1_unverified.csv
+# Auto-pruned non-team data
+20260220-JohnALogan-2_unverified.csv
+# Auto-pruned non-team data
+20260220-SouthernIdaho-3_unverified.csv
+# Auto-pruned non-team data
+20260220-StaufferField-2_unverified.csv
+# Auto-pruned non-team data
+20260220-SullivanField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-SullivanField-2_unverified.csv
