@@ -3104,3 +3104,9 @@
 20260220-WeberField-1_unverified.csv
 # Auto-pruned non-team data
 20260220-WoernerField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-FedExPark-1_unverified.csv
+# Auto-pruned non-team data
+20260220-JimReevesField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-PittFieldUOR-1_unverified.csv
