@@ -16899,6 +16899,7 @@ custom_reports_server <- function(id) {
     
     # Header showing report title + players
     output$report_header <- renderUI({
+      new_report_token()
       title_txt <- trimws(input$report_title)
       subtitle_txt <- trimws(input$report_subtitle %||% "")
       
@@ -18478,143 +18479,43 @@ custom_reports_server <- function(id) {
         })
         return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Heatmap") {
-        output[[out_id]] <- ggiraph::renderGirafe({
-          df_loc <- df
-          if (!nrow(df_loc)) {
-            return(girafe_transparent(ggobj = ggplot() + theme_void()))
-          }
-
-          # Apply Pitch Results filter for heatmap too (use settings_cell_id for filter)
-          df_loc <- apply_pitch_results_filter(df_loc, input[[paste0("cell_results_", settings_cell_id)]])
-
-          if (!nrow(df_loc)) {
-            return(girafe_transparent(ggobj = ggplot() + theme_void()))
-          }
-
-          # Heatmap type selection
-          hm_stat <- input[[paste0("cell_heat_stat_", settings_cell_id)]] %||% "Frequency"
-          plot_obj <- render_heatmap_stat(
-            df_loc, hm_stat,
-            plot_xlim = c(-2.0, 2.0),
-            plot_ylim = c(0.6, 4.2)
-          )
-          return(girafe_transparent(ggobj = plot_obj))
-
-          # Use advanced Pitching Suite heatmap implementation (dead code below)
-          if (hm_stat == "Frequency") {
-            grid <- make_kde_grid(df_loc$PlateLocSide, df_loc$PlateLocHeight, n = 200)
-            
-            if (!nrow(grid)) return(ggplot() + theme_void())
-            
-            # Normalize KDE values to 0-100 scale
-            grid$z <- (grid$z / max(grid$z, na.rm = TRUE)) * 100
-            
-            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr, mark_max = FALSE,
-                             show_scale = TRUE, scale_label = "Pitch Frequency",
-                             scale_limits = c(0, 80)))
-          }
-          
-          # Filter to valid location data for non-Frequency stats
-          df_loc <- df_loc %>% dplyr::filter(is.finite(PlateLocSide), is.finite(PlateLocHeight))
-          if (!nrow(df_loc)) {
-            plot.new(); title("No location data"); return(invisible())
-          }
-          
-          if (hm_stat == "Whiff Rate") {
-            swing_events <- c("StrikeSwinging", "FoulBall", "FoulBallFieldable", 
-                              "FoulBallNotFieldable", "InPlay")
-            swing_mask  <- df_loc$PitchCall %in% swing_events
-            val <- ifelse(swing_mask, ifelse(df_loc$PitchCall == "StrikeSwinging", 1, 0), NA_real_)
-            grid <- make_kde_mean_grid(df_loc$PlateLocSide, df_loc$PlateLocHeight, val)
-            if (!nrow(grid)) return(ggplot() + theme_void())
-            breaks <- c(seq(0, 50, length.out = HEAT_BINS + 1), Inf)
-            
-            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                             breaks = breaks, mark_max = FALSE,
-                             show_scale = TRUE, scale_label = "Whiff Rate %",
-                             scale_limits = c(0, 50)))
-          }
-          
-          if (hm_stat == "GB Rate") {
-            df_bip <- df_loc %>%
-              filter(SessionType == "Live", 
-                     PitchCall == "InPlay",
-                     !is.na(TaggedHitType))
-            
-            if (nrow(df_bip) < 3) {
-              plot.new(); title("Insufficient Live BIP data"); return(invisible())
+        output[[out_id]] <- renderPlot({
+          tryCatch({
+            df_loc <- df
+            if (!nrow(df_loc)) {
+              return(ggplot() + theme_void())
             }
-            
-            val <- ifelse(df_bip$TaggedHitType == "GroundBall", 1, 0)
-            grid <- make_kde_mean_grid(df_bip$PlateLocSide, df_bip$PlateLocHeight, val)
-            if (!nrow(grid)) return(ggplot() + theme_void())
-            
-            breaks <- c(-Inf, seq(0, 70, length.out = HEAT_BINS + 1), Inf)
-            
-            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                             breaks = breaks, mark_max = FALSE,
-                             show_scale = TRUE, scale_label = "GB Rate %",
-                             scale_limits = c(0, 70)))
-          }
-          
-          if (hm_stat == "Contact Rate") {
-            # Contact Rate = 100% - Whiff Rate (guaranteed perfect opposite colors)
-            swing_events <- c("StrikeSwinging", "FoulBall", "FoulBallFieldable", 
-                              "FoulBallNotFieldable", "InPlay")
-            swing_mask  <- df_loc$PitchCall %in% swing_events
-            val <- ifelse(swing_mask, ifelse(df_loc$PitchCall == "StrikeSwinging", 0, 1), NA_real_)
-            grid <- make_kde_mean_grid(df_loc$PlateLocSide, df_loc$PlateLocHeight, val)
-            if (!nrow(grid)) return(ggplot() + theme_void())
-            grid$z <- pmin(pmax(grid$z * 100, 50), 100)
-            breaks <- seq(50, 100, length.out = HEAT_BINS + 1)
-            
-            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                             breaks = breaks, mark_max = FALSE,
-                             show_scale = TRUE, scale_label = "Contact Rate %",
-                             scale_limits = c(50, 100)))
-          }
-          
-          if (hm_stat == "Swing Rate") {
-            swing_events <- c("StrikeSwinging", "FoulBall", "FoulBallFieldable", 
-                              "FoulBallNotFieldable", "InPlay")
-            
-            val <- ifelse(df_loc$PitchCall %in% swing_events, 1, 0)
-            grid <- make_kde_mean_grid(df_loc$PlateLocSide, df_loc$PlateLocHeight, val)
-            if (!nrow(grid)) return(ggplot() + theme_void())
-            breaks <- seq(20, 80, length.out = HEAT_BINS + 1)
-            
-            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                             breaks = breaks, mark_max = FALSE,
-                             show_scale = TRUE, scale_label = "Swing Rate %",
-                             scale_limits = c(20, 80)))
-          }
-          
-          if (hm_stat == "Exit Velocity") {
-            df_bip <- dplyr::filter(
-              df_loc, 
-              SessionType == "Live",
-              PitchCall == "InPlay",
-              is.finite(PlateLocSide), 
-              is.finite(PlateLocHeight),
-              is.finite(ExitSpeed)
+
+            # Apply Pitch Results filter for heatmap too (use settings cell state while loading)
+            results_filter <- if (isTRUE(loading_report())) {
+              settings_state$results %||% NULL
+            } else {
+              input[[paste0("cell_results_", settings_cell_id)]] %||% (settings_state$results %||% NULL)
+            }
+            df_loc <- apply_pitch_results_filter(df_loc, results_filter)
+
+            if (!nrow(df_loc)) {
+              return(ggplot() + theme_void())
+            }
+
+            # Heatmap type selection
+            hm_stat <- if (isTRUE(loading_report())) {
+              settings_state$heat_stat %||% "Frequency"
+            } else {
+              input[[paste0("cell_heat_stat_", settings_cell_id)]] %||% (settings_state$heat_stat %||% "Frequency")
+            }
+            render_heatmap_stat(
+              df_loc, hm_stat,
+              plot_xlim = c(-2.0, 2.0),
+              plot_ylim = c(0.6, 4.2)
             )
-            
-            if (!nrow(df_bip)) return(ggplot() + theme_void())
-            
-            grid <- make_kde_mean_grid(df_bip$PlateLocSide, df_bip$PlateLocHeight, df_bip$ExitSpeed)
-            if (!nrow(grid)) return(ggplot() + theme_void())
-            breaks <- seq(60, 110, length.out = HEAT_BINS + 1)
-            
-            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
-                             breaks = breaks, mark_max = FALSE,
-                             show_scale = TRUE, scale_label = "Exit Velocity (mph)",
-                             scale_limits = c(60, 110)))
-          }
-          
-          # Default fallback
-          girafe_transparent(ggobj = ggplot() + theme_void())
+          }, error = function(e) {
+            ggplot() +
+              annotate("text", x = 0, y = 0, label = "Heatmap render error", size = 4) +
+              theme_void()
+          })
         })
-        return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
+        return(plotOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Velocity Chart") {
         output[[out_id]] <- ggiraph::renderGirafe({
           if (!identical(input$report_type, "Pitching")) return(NULL)
