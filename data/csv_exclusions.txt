@@ -3050,3 +3050,7 @@
 20260219-KleinFamilyField-1_unverified.csv
 # Auto-pruned non-team data
 20260219-UArizona-1_unverified.csv
+# Auto-pruned non-team data
+20260219-KellField-2_unverified.csv
+# Auto-pruned non-team data
+20260219-KellField-3_unverified.csv
