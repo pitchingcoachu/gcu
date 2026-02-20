@@ -16899,10 +16899,10 @@ custom_reports_server <- function(id) {
     
     # Header showing report title + players
     output$report_header <- renderUI({
-      new_report_token()
+      token <- new_report_token()
       title_txt <- trimws(input$report_title)
       subtitle_txt <- trimws(input$report_subtitle %||% "")
-      
+
       # Helper function to format player names from "Last, First" to "First Last"
       format_player_name <- function(p) {
         if (grepl(",", p)) {
@@ -16916,7 +16916,7 @@ custom_reports_server <- function(id) {
           p
         }
       }
-      
+
       # Build player label based on mode - DON'T show player names in Multi-Player
       player_lbl <- if (input$report_scope == "Multi-Player") {
         NULL  # Don't show player names in Multi-Player mode
@@ -16930,9 +16930,10 @@ custom_reports_server <- function(id) {
           "No players selected"
         }
       }
-      
+
       tagList(
         div(
+          `data-report-token` = token,
           style = "margin-top:-88px; margin-bottom:24px;",
           h3(style = "margin-top:0; margin-bottom:2px; text-align:center; font-size:34px;",
              if (nzchar(title_txt)) title_txt else "Custom Report"),
@@ -18479,11 +18480,11 @@ custom_reports_server <- function(id) {
         })
         return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Heatmap") {
-        output[[out_id]] <- renderPlot({
+        output[[out_id]] <- ggiraph::renderGirafe({
           tryCatch({
             df_loc <- df
             if (!nrow(df_loc)) {
-              return(ggplot() + theme_void())
+              return(girafe_transparent(ggobj = ggplot() + theme_void()))
             }
 
             # Apply Pitch Results filter for heatmap too (use settings cell state while loading)
@@ -18495,7 +18496,7 @@ custom_reports_server <- function(id) {
             df_loc <- apply_pitch_results_filter(df_loc, results_filter)
 
             if (!nrow(df_loc)) {
-              return(ggplot() + theme_void())
+              return(girafe_transparent(ggobj = ggplot() + theme_void()))
             }
 
             # Heatmap type selection
@@ -18504,18 +18505,19 @@ custom_reports_server <- function(id) {
             } else {
               input[[paste0("cell_heat_stat_", settings_cell_id)]] %||% (settings_state$heat_stat %||% "Frequency")
             }
-            render_heatmap_stat(
+            plot_obj <- render_heatmap_stat(
               df_loc, hm_stat,
               plot_xlim = c(-2.0, 2.0),
               plot_ylim = c(0.6, 4.2)
             )
+            girafe_transparent(ggobj = plot_obj)
           }, error = function(e) {
-            ggplot() +
+            girafe_transparent(ggobj = ggplot() +
               annotate("text", x = 0, y = 0, label = "Heatmap render error", size = 4) +
-              theme_void()
+              theme_void())
           })
         })
-        return(plotOutput(ns(out_id), height = "280px"))
+        return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Velocity Chart") {
         output[[out_id]] <- ggiraph::renderGirafe({
           if (!identical(input$report_type, "Pitching")) return(NULL)
@@ -19605,9 +19607,10 @@ custom_reports_server <- function(id) {
                   })
                   return(uiOutput(ns(out_id)))
                 }
-                
+
                 # Render the chart (title is separate, updated via shinyjs)
-                render_cell(id)
+                # Wrap in div with unique token to force Shiny to recognize updates
+                div(`data-report-token` = cd$.report_token, render_cell(id))
               })
             })
             existing_render <- c(existing_render, cell_id)
