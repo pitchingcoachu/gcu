@@ -3020,3 +3020,23 @@
 20260214-EarlEWilsonStadium-1.csv
 # Auto-pruned non-team data
 20260217-BushStadium-1.csv
+# Auto-pruned non-team data
+20260214-DavidStory-1_unverified.csv
+# Auto-pruned non-team data
+20260219-BowiesBallpark-1_unverified.csv
+# Auto-pruned non-team data
+20260219-DavidStory-1_unverified.csv
+# Auto-pruned non-team data
+20260219-GeorgeFox-1_unverified.csv
+# Auto-pruned non-team data
+20260219-GrierField-1_unverified.csv
+# Auto-pruned non-team data
+20260219-GulfCoastState-1_unverified.csv
+# Auto-pruned non-team data
+20260219-PKPark-1_unverified.csv
+# Auto-pruned non-team data
+20260219-USIField-1_unverified.csv
+# Auto-pruned non-team data
+20260219-WinterholterField-1_unverified.csv
+# Auto-pruned non-team data
+20260219-YoungMemorialField-1_unverified.csv
