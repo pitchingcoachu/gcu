@@ -16486,6 +16486,12 @@ custom_reports_server <- function(id) {
       cr <- custom_reports_store()
       if (!nm %in% names(cr)) return()
       rep <- cr[[nm]]
+      if (!is.list(rep)) {
+        message("Skipping malformed saved report '", nm, "': expected list payload.")
+        return()
+      }
+      rep_cells <- rep$cells
+      if (!is.list(rep_cells)) rep_cells <- list()
       if (isTRUE(is_admin_local())) {
         updateCheckboxInput(session, "report_global", value = identical(rep$school_code, GLOBAL_SCOPE))
       }
@@ -16494,21 +16500,16 @@ custom_reports_server <- function(id) {
       loading_report(TRUE)
       
       # FIRST: Update current_cells with saved data (before UI changes)
-      update_reports_grid(rep$cells %||% list())
+      update_reports_grid(rep_cells)
       new_report_token(as.numeric(Sys.time()))
       
       # Also populate cell_titles from the loaded report
       titles <- list()
-      for (cell_id in names(rep$cells)) {
-<<<<<<< HEAD
-        saved_cell <- rep$cells[[cell_id]]
+      for (cell_id in names(rep_cells)) {
+        saved_cell <- rep_cells[[cell_id]]
         if (!is.list(saved_cell)) next
         if (!is.null(saved_cell$title)) {
           titles[[cell_id]] <- saved_cell$title
-=======
-        if (!is.null(rep$cells[[cell_id]]$title)) {
-          titles[[cell_id]] <- rep$cells[[cell_id]]$title
->>>>>>> f8124e46bc36113b53c2eb9ceadb932308a1c331
         }
       }
       cell_titles(titles)
@@ -16531,7 +16532,7 @@ custom_reports_server <- function(id) {
       rows <- rep$rows %||% 1
       cols <- rep$cols %||% 1
       scope <- rep$scope %||% "Single Player"
-      cells <- rep$cells %||% list()
+      cells <- rep_cells
 
       update_saved_state <- function() {
         for (r in seq_len(rows)) {
