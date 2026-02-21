@@ -3406,3 +3406,49 @@
 20260220-UofSanDiego-4_unverified.csv
 # Auto-pruned non-team data
 20260220-EarlEWilsonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-AnteaterBallpark-1_unverified.csv
+# Auto-pruned non-team data
+20260220-BaumStadium-1.csv
+# Auto-pruned non-team data
+20260220-CarsonNewman-1_unverified.csv
+# Auto-pruned non-team data
+20260220-CondronBallpark-1.csv
+# Auto-pruned non-team data
+20260220-DedeauxField-1.csv
+# Auto-pruned non-team data
+20260220-DellDiamond-2.csv
+# Auto-pruned non-team data
+20260220-FifthThirdParkSC-1.csv
+# Auto-pruned non-team data
+20260220-FifthThirdParkSC-2.csv
+# Auto-pruned non-team data
+20260220-GaryWright-1_unverified.csv
+# Auto-pruned non-team data
+20260220-GeorgeFox-2_unverified.csv
+# Auto-pruned non-team data
+20260220-GoldenWestCollege-2_unverified.csv
+# Auto-pruned non-team data
+20260220-JackCoombs-1.csv
+# Auto-pruned non-team data
+20260220-KingsmoreStadium-1.csv
+# Auto-pruned non-team data
+20260220-LindseyNelsonStadium-1.csv
+# Auto-pruned non-team data
+20260220-PhoenixMunicipal-1.csv
+# Auto-pruned non-team data
+20260220-SouthernWesleyan-1_unverified.csv
+# Auto-pruned non-team data
+20260220-SwellThomasStadium-1.csv
+# Auto-pruned non-team data
+20260220-Texas-1.csv
+# Auto-pruned non-team data
+20260220-TreveccaNazareneBC-1_unverified.csv
+# Auto-pruned non-team data
+20260220-UCLA-1.csv
+# Auto-pruned non-team data
+20260220-UofHouston-1.csv
+# Auto-pruned non-team data
+20260220-Vanderbilt-1.csv
+# Auto-pruned non-team data
+20260220-VATech-1.csv
