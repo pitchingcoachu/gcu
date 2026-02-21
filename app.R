@@ -3511,7 +3511,7 @@ make_session_logs_table <- function(df) {
           d$PlateLocHeight>= zb  & d$PlateLocHeight<= zt, 1.47,
         ifelse(
           d$PlateLocSide >= -1.5 & d$PlateLocSide <= 1.5 &
-            d$PlateLocHeight>= (2.65 - 1.5) & d$PlateLocHeight <= (2.65 + 1.5),
+            d$PlateLocHeight>= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & d$PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
           0.73, 0
         )
       )
@@ -3552,7 +3552,7 @@ make_session_logs_table <- function(df) {
         ),
         `Comp%`  = .s_safe_div(
           sum(d$PlateLocSide >= -1.5 & d$PlateLocSide <= 1.5 &
-                d$PlateLocHeight >= (2.65 - 1.5) & d$PlateLocHeight <= (2.65 + 1.5), na.rm = TRUE),
+                d$PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & d$PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5), na.rm = TRUE),
           nrow(d)
         ),
         `Strike%`= .s_safe_div(
@@ -3607,7 +3607,7 @@ assign_where <- function(vec, cond, value) {
 inzone_label <- function(side, height) {
   comp   <- !is.na(side) & !is.na(height) &
     side >= -1.5 & side <= 1.5 &
-    height >= (2.65 - 1.5) & height <= (2.65 + 1.5)
+    height >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & height <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
   inzone <- !is.na(side) & !is.na(height) &
     side >= ZONE_LEFT & side <= ZONE_RIGHT &
     height >= ZONE_BOTTOM & height <= ZONE_TOP
@@ -4342,8 +4342,8 @@ ZONE_TOP    <-  3.6
 # Competitive rectangle (same as your dashed box)
 COMP_LEFT   <- -1.5
 COMP_RIGHT  <-  1.5
-COMP_BOTTOM <-  2.65 - 1.5   # 1.15
-COMP_TOP    <-  2.65 + 1.5   # 4.15
+COMP_BOTTOM <-  ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5
+COMP_TOP    <-  ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5
 
 # Map (Balls, Strikes) to Ahead / Even / Behind like your count filter
 count_state_vec <- function(b, s) {
@@ -4696,7 +4696,7 @@ enforce_inzone <- function(df, choice) {
     df[!in_zone, , drop = FALSE]
   } else if (identical(choice, "Competitive")) {
     comp <- (x >= -1.5 & x <= 1.5 &
-               y >= (2.65 - 1.5) & y <= (2.65 + 1.5))
+               y >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & y <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5))
     df[comp, , drop = FALSE]
   } else {
     df
@@ -7905,7 +7905,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         x=c(-0.75,0.75,0.75,0.00,-0.75),
         y=c(1.05,1.05,1.15,1.25,1.15)-0.5
       )
-      cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+      cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
       sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
       c(list(
         geom_polygon(data = home, aes(x, y), fill = NA, color = line_col),
@@ -8660,7 +8660,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       
       home <- data.frame(x=c(-0.75,0.75,0.75,0.00,-0.75),
                          y=c(1.05,1.05,1.15,1.25,1.15)-0.5)
-      cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+      cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
       sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
       
       df_known <- dplyr::filter(df_i, !is.na(Result))
@@ -11090,7 +11090,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       
       # Overlays (same geometry you use elsewhere)
       home <- data.frame(x = c(-0.75,0.75,0.75,0.00,-0.75), y = c(1.05,1.05,1.15,1.25,1.15) - 0.5)
-      cz   <- data.frame(xmin = -1.5, xmax =  1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+      cz   <- data.frame(xmin = -1.5, xmax =  1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
       sz   <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
       
       cols <- .safe_heat_cols(256)
@@ -11132,7 +11132,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
                                    Result = factor(compute_result(PitchCall, PlayResult), levels = result_levels))
       
       home <- data.frame(x=c(-0.75,0.75,0.75,0.00,-0.75), y=c(1.05,1.05,1.15,1.25,1.15)-0.5)
-      cz   <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+      cz   <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
       sz   <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
       
       df_known <- dplyr::filter(df_i, !is.na(Result))
@@ -12035,7 +12035,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       
       home <- data.frame(x=c(-0.75,0.75,0.75,0.00,-0.75),
                          y=c(1.05,1.05,1.15,1.25,1.15)-0.5)
-      cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+      cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
       sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
       
       p <- ggplot() +
@@ -14605,7 +14605,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
         )
       home <- data.frame(x = c(-0.75,0.75,0.75,0.00,-0.75),
                          y = c(1.05,1.05,1.15,1.25,1.15) - 0.5)
-      cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+      cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
       sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
       line_col <- if (dark_on) "#ffffff" else "black"
       df_known <- dplyr::filter(df_i, !is.na(Result))
@@ -15498,7 +15498,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
             df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP, 1.47,
           ifelse(
             df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
-              df$PlateLocHeight >= (2.65 - 1.5) & df$PlateLocHeight <= (2.65 + 1.5),
+              df$PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & df$PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
             0.73, 0
           )
         )
@@ -18366,7 +18366,7 @@ custom_reports_server <- function(id) {
             types_chr <- as.character(intersect(names(cols), unique(df_loc$SplitColumn)))
             home <- data.frame(x = c(-0.75, 0.75, 0.75, 0.00, -0.75),
                                y = c(1.05, 1.05, 1.15, 1.25, 1.15) - 0.5)
-            cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+            cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
             sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
             p <- ggplot() +
               geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
@@ -24162,7 +24162,7 @@ deg_to_clock <- function(x) {
       x = c(-0.75, 0.75, 0.75, 0, -0.75),
       y = c(1.05, 1.05, 1.15, 1.25, 1.15) - 0.5
     )
-    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
     sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
 
     p <- ggplot() +
@@ -28078,7 +28078,7 @@ deg_to_clock <- function(x) {
           df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP, 1.47,
         ifelse(
           df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
-            df$PlateLocHeight >= (2.65 - 1.5) & df$PlateLocHeight <= (2.65 + 1.5),
+            df$PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & df$PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
           0.73, 0
         )
       )
@@ -28634,7 +28634,7 @@ deg_to_clock <- function(x) {
       x = c(-0.75, 0.75, 0.75, 0, -0.75),
       y = c(1.05, 1.05, 1.15, 1.25, 1.15) - 0.5
     )
-    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
     sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
     
     df_known <- df_i %>% dplyr::filter(!is.na(Result))
@@ -28934,7 +28934,7 @@ deg_to_clock <- function(x) {
             df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP, 1.47,
           ifelse(
             df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
-              df$PlateLocHeight >= (2.65 - 1.5) & df$PlateLocHeight <= (2.65 + 1.5),
+              df$PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & df$PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
             0.73, 0
           )
         )
@@ -30380,7 +30380,7 @@ deg_to_clock <- function(x) {
           df$PlateLocHeight >= ZONE_BOTTOM & df$PlateLocHeight <= ZONE_TOP, 1.47,
         ifelse(
           df$PlateLocSide >= -1.5 & df$PlateLocSide <= 1.5 &
-            df$PlateLocHeight >= (2.65 - 1.5) & df$PlateLocHeight <= (2.65 + 1.5),
+            df$PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & df$PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
           0.73, 0
         )
       )
@@ -31527,7 +31527,7 @@ deg_to_clock <- function(x) {
   .abp_geom_zone <- function(color = "black") {
     home <- data.frame(x=c(-0.75,0.75,0.75,0.00,-0.75),
                        y=c(1.05, 1.05,1.15,1.25, 1.15)-0.5)
-    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
     sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
     c(list(
       geom_polygon(data = home, aes(x, y), fill = NA, color = color),
@@ -33357,7 +33357,7 @@ deg_to_clock <- function(x) {
     
     home <- data.frame(x = c(-0.75, 0.75, 0.75, 0.00, -0.75),
                        y = c(1.05, 1.05, 1.15, 1.25, 1.15) - 0.5)
-    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
     sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
     
     df_known <- dplyr::filter(df_i, !is.na(Result))
@@ -33545,7 +33545,7 @@ deg_to_clock <- function(x) {
     
     home <- data.frame(x=c(-0.75,0.75,0.75,0.00,-0.75),
                        y=c(1.05,1.05,1.15,1.25,1.15)-0.5)
-    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
     sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
     
     p <- ggplot() +
@@ -33742,7 +33742,7 @@ deg_to_clock <- function(x) {
     trend_plot(
       df,
       PlateLocSide >= -1.5 & PlateLocSide <= 1.5 &
-        PlateLocHeight >= (2.65 - 1.5) & PlateLocHeight <= (2.65 + 1.5),
+        PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
       "Comp %", "Percentage",
       function(x) mean(x, na.rm = TRUE) * 100,
       digits = 1
@@ -33783,7 +33783,7 @@ deg_to_clock <- function(x) {
                           PlateLocHeight >= ZONE_BOTTOM & PlateLocHeight <= ZONE_TOP, 1.47,
                         ifelse(
                           PlateLocSide >= -1.5 & PlateLocSide <= 1.5 &
-                            PlateLocHeight >= (2.65 - 1.5) & PlateLocHeight <= (2.65 + 1.5),
+                            PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
                           0.73, 0
                         )
                       ) * 100)
@@ -33812,7 +33812,7 @@ deg_to_clock <- function(x) {
             PlateLocHeight >= ZONE_BOTTOM & PlateLocHeight <= ZONE_TOP, 1.47,
           ifelse(
             PlateLocSide >= -1.5 & PlateLocSide <= 1.5 &
-              PlateLocHeight >= (2.65 - 1.5) & PlateLocHeight <= (2.65 + 1.5),
+              PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
             0.73, 0
           )
         ) * 100
@@ -33859,7 +33859,7 @@ deg_to_clock <- function(x) {
                           PlateLocHeight >= ZONE_BOTTOM & PlateLocHeight <= ZONE_TOP, 1.47,
                         ifelse(
                           PlateLocSide >= -1.5 & PlateLocSide <= 1.5 &
-                            PlateLocHeight >= (2.65 - 1.5) & PlateLocHeight <= (2.65 + 1.5),
+                            PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
                           0.73, 0
                         )
                       ) * 100)
@@ -34468,7 +34468,7 @@ deg_to_clock <- function(x) {
         1.47,  # Strike zone score
         ifelse(
           data$PlateLocSide >= -1.5 & data$PlateLocSide <= 1.5 &
-            data$PlateLocHeight >= (2.65 - 1.5) & data$PlateLocHeight <= (2.65 + 1.5),
+            data$PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & data$PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
           0.73,   # Competitive zone score
           0       # Outside competitive zone
         )
@@ -34533,7 +34533,7 @@ deg_to_clock <- function(x) {
         `Comp%` = as.numeric(ifelse(
           !is.na(PlateLocSide) & !is.na(PlateLocHeight) &
             PlateLocSide >= -1.5 & PlateLocSide <= 1.5 &
-            PlateLocHeight >= (2.65 - 1.5) & PlateLocHeight <= (2.65 + 1.5),
+            PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5),
           100, 0
         )),
         `Strike%` = as.numeric(ifelse(
@@ -34726,7 +34726,7 @@ deg_to_clock <- function(x) {
             valid_locations <- sum(!is.na(PlateLocSide) & !is.na(PlateLocHeight), na.rm = TRUE)
             in_comp <- sum(!is.na(PlateLocSide) & !is.na(PlateLocHeight) &
                              PlateLocSide >= -1.5 & PlateLocSide <= 1.5 &
-                             PlateLocHeight >= (2.65 - 1.5) & PlateLocHeight <= (2.65 + 1.5), na.rm = TRUE)
+                             PlateLocHeight >= (((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5) & PlateLocHeight <= (((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5), na.rm = TRUE)
             if (valid_locations > 0) (in_comp / valid_locations) * 100 else NA_real_
           },
           `CSW%` = {
@@ -36193,7 +36193,7 @@ deg_to_clock <- function(x) {
     types_chr <- intersect(names(cols), unique(df$TaggedPitchType))
     home <- data.frame(x = c(-0.75, 0.75, 0.75, 0.00, -0.75),
                        y = c(1.05, 1.05, 1.15, 1.25, 1.15) - 0.5)
-    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
+    cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = ((ZONE_BOTTOM + ZONE_TOP) / 2) - 1.5, ymax = ((ZONE_BOTTOM + ZONE_TOP) / 2) + 1.5)
     sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
     df_known <- dplyr::filter(df, !is.na(Result))
     df_other <- dplyr::filter(df,  is.na(Result))
