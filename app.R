@@ -2651,6 +2651,24 @@ sanitize_for_dt <- function(dfx) {
   dfx
 }
 
+# Use half-up rounding for displayed metrics to avoid banker's rounding drift.
+round_half_up <- function(x, digits = 0) {
+  x <- suppressWarnings(as.numeric(x))
+  scale <- 10^digits
+  sign(x) * floor(abs(x) * scale + 0.5 + 1e-12) / scale
+}
+
+fmt_pct_ratio <- function(num, den, digits = 1) {
+  num <- suppressWarnings(as.numeric(num))
+  den <- suppressWarnings(as.numeric(den))
+  ok <- is.finite(num) & is.finite(den) & den > 0
+  out <- rep("", max(length(num), length(den)))
+  if (!any(ok)) return(out)
+  val <- 100 * num / den
+  out[ok] <- paste0(format(round_half_up(val[ok], digits), nsmall = digits, trim = TRUE), "%")
+  out
+}
+
 format_decimal_columns <- function(df) {
   if (!is.data.frame(df) || !nrow(df)) return(df)
 
@@ -2678,7 +2696,7 @@ format_decimal_columns <- function(df) {
     scale100 <- if (all(is.na(v) | v <= 1.5, na.rm = TRUE)) 100 else 1
     sapply(v, function(val) {
       if (!is.finite(val)) return("")
-      paste0(round(val * scale100, 1), "%")
+      paste0(format(round_half_up(val * scale100, 1), nsmall = 1, trim = TRUE), "%")
     }, USE.NAMES = FALSE)
   }
 
@@ -3278,8 +3296,7 @@ get_process_thresholds <- function(column_name, pitch_type) {
   ifelse(is.finite(den) & den != 0, num/den, NA_real_)
 }
 .s_fmt_pct1 <- function(num, den) {
-  p <- .s_safe_div(num, den)
-  ifelse(is.finite(p), paste0(round(100*p, 1), "%"), "")
+  fmt_pct_ratio(num, den, digits = 1)
 }
 .s_ip_fmt <- function(ip_num) {
   if (!is.finite(ip_num)) return(NA_character_)
@@ -3645,7 +3662,8 @@ fmt_rate3 <- function(x) {
 fmt_num2  <- function(x) ifelse(is.finite(x), sprintf("%.2f", x), "")
 fmt_pct1  <- function(num, den) {
   num <- suppressWarnings(as.numeric(num)); den <- suppressWarnings(as.numeric(den))
-  if (is.finite(den) && den > 0 && is.finite(num)) paste0(round(100*num/den, 1), "%") else ""
+  out <- fmt_pct_ratio(num, den, digits = 1)
+  if (length(out)) out[[1]] else ""
 }
 
 make_hover_tt <- function(df) {
@@ -5899,7 +5917,8 @@ compute_usage_by_count <- function(df, original_df = NULL) {
   
   pct_string <- function(num, den) {
     if (is.na(den) || den <= 0) return("0.0%")
-    paste0(round(100 * num / den, 1), "%")
+    out <- fmt_pct_ratio(num, den, digits = 1)
+    if (length(out)) out[[1]] else "0.0%"
   }
   
   calc_usage <- function(dfi) {
@@ -6242,9 +6261,7 @@ compute_process_results <- function(df, mode = "All") {
 safe_pct <- function(num, den) {
   num <- suppressWarnings(as.numeric(num))
   den <- suppressWarnings(as.numeric(den))
-  ifelse(is.finite(den) & den > 0 & is.finite(num),
-         paste0(round(100 * num / den, 1), "%"),
-         "")
+  fmt_pct_ratio(num, den, digits = 1)
 }
 
 count_state_mask <- function(balls, strikes, states) {
@@ -12098,7 +12115,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       build_row <- function(df) {
         safe_pct <- function(num, den) {
           num <- suppressWarnings(as.numeric(num)); den <- suppressWarnings(as.numeric(den))
-          ifelse(is.finite(den) & den > 0 & is.finite(num), paste0(round(100*num/den, 1), "%"), "")
+          fmt_pct_ratio(num, den, digits = 1)
         }
         scores <- ifelse(
           df$PlateLocSide >= ZONE_LEFT & df$PlateLocSide <= ZONE_RIGHT &
@@ -13021,7 +13038,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
           }
           safe_pct <- function(num, den) {
             num <- suppressWarnings(as.numeric(num)); den <- suppressWarnings(as.numeric(den))
-            out <- ifelse(is.finite(den) & den > 0 & is.finite(num), paste0(round(100*num/den, 1), "%"), "")
+            out <- fmt_pct_ratio(num, den, digits = 1)
             scalar_chr(out)
           }
           nz_mean_local <- function(x) {
@@ -28834,9 +28851,7 @@ deg_to_clock <- function(x) {
   safe_pct <- function(num, den) {
     num <- suppressWarnings(as.numeric(num))
     den <- suppressWarnings(as.numeric(den))
-    ifelse(is.finite(den) & den > 0 & is.finite(num),
-           paste0(round(100 * num / den, 1), "%"),
-           "")
+    fmt_pct_ratio(num, den, digits = 1)
   }
   nz_mean <- function(x) {
     x <- suppressWarnings(as.numeric(x))
