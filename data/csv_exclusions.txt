@@ -3242,3 +3242,19 @@
 20260220-TarletonBBComplex-1_unverified.csv
 # Auto-pruned non-team data
 20260220-UCSanDiego-1_unverified.csv
+# Auto-pruned non-team data
+20260220-AbileneChristian-1_unverified.csv
+# Auto-pruned non-team data
+20260220-GeorgiaState-1_unverified.csv
+# Auto-pruned non-team data
+20260220-MikeDLaneField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-NickDenesField-3_unverified.csv
+# Auto-pruned non-team data
+20260220-SpringsBrooksStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260220-SusanKSmithBaseballComplex-3_unverified.csv
+# Auto-pruned non-team data
+20260220-SwellThomasStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-VATech-1_unverified.csv
