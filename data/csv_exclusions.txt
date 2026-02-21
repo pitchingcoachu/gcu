@@ -3378,3 +3378,15 @@
 20260220-UofHouston-1_unverified.csv
 # Auto-pruned non-team data
 20260220-UofMiami-1_unverified.csv
+# Auto-pruned non-team data
+20260220-705-CalBaptistBaseballField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-DedeauxField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-KleinFamilyField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-PeteBeidenField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-UArizona-1_unverified.csv
+# Auto-pruned non-team data
+20260220-UCLA-1_unverified.csv
