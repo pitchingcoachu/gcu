@@ -3168,3 +3168,47 @@
 20260220-SullivanField-1_unverified.csv
 # Auto-pruned non-team data
 20260220-SullivanField-2_unverified.csv
+# Auto-pruned non-team data
+20260220-BallparkAtPatriotPoint-1_unverified.csv
+# Auto-pruned non-team data
+20260220-BaumStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-BrooksField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-Cumberlands-2_unverified.csv
+# Auto-pruned non-team data
+20260220-DanLawField-2_unverified.csv
+# Auto-pruned non-team data
+20260220-DellDiamond-1_unverified.csv
+# Auto-pruned non-team data
+20260220-EagleFieldJMU-1_unverified.csv
+# Auto-pruned non-team data
+20260220-EvansvilleU-1_unverified.csv
+# Auto-pruned non-team data
+20260220-GeorgiaTech-1_unverified.csv
+# Auto-pruned non-team data
+20260220-HennonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-JackCoombs-1_unverified.csv
+# Auto-pruned non-team data
+20260220-KellField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-LamarHennonField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-RaymondHand-1_unverified.csv
+# Auto-pruned non-team data
+20260220-ReeseField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-StickWilliamsField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-UNCGreensboro-1_unverified.csv
+# Auto-pruned non-team data
+20260220-WeberField-2_unverified.csv
+# Auto-pruned non-team data
+20260220-WilliamCarey-1_unverified.csv
+# Auto-pruned non-team data
+20260220-WinthropUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260220-WoernerField-2_unverified.csv
+# Auto-pruned non-team data
+20260220-YoungMemorialField-1_unverified.csv
