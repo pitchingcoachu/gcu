@@ -16843,6 +16843,29 @@ custom_reports_server <- function(id) {
           new_report_token(as.numeric(Sys.time()))
           loading_report(FALSE)
           loading_report_handle <<- NULL
+
+          # After loading_report(FALSE) and the final new_report_token() change,
+          # report_canvas re-renders one last time, which resets every
+          # cell_title_display_* element back to an empty string.  The title
+          # observers won't fire again (they don't depend on new_report_token()),
+          # so we explicitly re-apply all cell titles once the client has had
+          # time to process and render the new DOM (~500 ms).
+          local({
+            my_cycle <- load_cycle
+            later::later(function() {
+              if (loading_report_cycle != my_cycle) return()
+              titles_snap <- isolate(cell_titles())
+              for (cid in names(titles_snap)) {
+                local({
+                  cid_l  <- cid
+                  tv     <- titles_snap[[cid_l]] %||% ""
+                  if (nzchar(tv)) {
+                    shinyjs::html(paste0("cell_title_display_", cid_l), tv)
+                  }
+                })
+              }
+            }, delay = 0.6)
+          })
         }
 
         loading_report_handle <<- later::later(function() {
@@ -17455,12 +17478,19 @@ custom_reports_server <- function(id) {
         rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
         cells <- current_cells()  # React to cell changes including span
         is_multi_player <- input$report_scope == "Multi-Player"
-        
-        # Add reactive dependency on all span inputs to trigger re-render when span changes
-        for (r in seq_len(rows)) {
-          for (c in seq_len(cols)) {
-            cell_id <- paste0("r", r, "c", c)
-            input[[paste0("cell_span_", cell_id)]]
+
+        # Add reactive dependency on all span inputs to trigger re-render when span changes.
+        # Skip this during a report load: update_saved_state() is called up to 8 times and
+        # sends updateNumericInput for every cell span.  Each round-trip would otherwise
+        # trigger an extra report_canvas re-render, clearing cell_title_display elements and
+        # interrupting in-flight girafe renders.  new_report_token() already drives the
+        # two intentional re-renders (T=0 and T≈1.25 s) during a load.
+        if (!isTRUE(loading_report())) {
+          for (r in seq_len(rows)) {
+            for (c in seq_len(cols)) {
+              cell_id <- paste0("r", r, "c", c)
+              input[[paste0("cell_span_", cell_id)]]
+            }
           }
         }
         
@@ -19558,21 +19588,34 @@ custom_reports_server <- function(id) {
                 new_report_token()
                 is_loading_now <- isTRUE(loading_report())
 
-                # Only re-compute when these specific inputs change
                 # NOTE: Do NOT include cell_title here - it causes re-render on every keystroke
-                
+
                 # For Multi-Player mode, rows 2+ should use Row 1's settings
-                is_multi_player <- input$report_scope == "Multi-Player"
                 row_num <- as.integer(sub("r(\\d+)c\\d+", "\\1", id))
                 col_num <- as.integer(sub("r\\d+c(\\d+)", "\\1", id))
-                
+
+                # During loading, isolate input$report_scope and current_cells() so that
+                # round-trips from updateSelectInput / update_reports_grid() do NOT
+                # re-invalidate this reactive.  new_report_token() is the sole trigger
+                # while loading_report() is TRUE, preventing chart renders from being
+                # interrupted mid-flight by input updates (which caused blank charts).
+                is_multi_player <- if (is_loading_now) {
+                  isolate(input$report_scope == "Multi-Player")
+                } else {
+                  input$report_scope == "Multi-Player"
+                }
+
                 # Determine which cell's inputs to monitor
                 settings_id <- if (is_multi_player && row_num > 1) {
                   paste0("r1c", col_num)
                 } else {
                   id
                 }
-                cells_snapshot <- current_cells()
+                cells_snapshot <- if (is_loading_now) {
+                  isolate(current_cells())
+                } else {
+                  current_cells()
+                }
                 settings_state <- cells_snapshot[[settings_id]]
                 if (!is.list(settings_state)) settings_state <- list()
 
@@ -19581,40 +19624,42 @@ custom_reports_server <- function(id) {
                   input[[input_id]] %||% state_val %||% default_val
                 }
 
-                # Monitor these inputs to trigger re-rendering
-                input[[paste0("cell_type_", settings_id)]]
-                input[[paste0("cell_filter_", settings_id)]]
-                input[[paste0("cell_table_mode_", settings_id)]]
-                input[[paste0("cell_color_", settings_id)]]
-                input[[paste0("cell_heat_stat_", settings_id)]]
-                input[[paste0("cell_velocity_chart_", settings_id)]]
-                input[[paste0("cell_table_custom_cols_", settings_id)]]
-                
-                # Also monitor filter values to trigger data updates
-                input[[paste0("cell_dates_", settings_id)]]
-                input[[paste0("cell_session_", settings_id)]]
-                input[[paste0("cell_pitch_types_", settings_id)]]
-                input[[paste0("cell_batter_side_", settings_id)]]
-                input[[paste0("cell_pitcher_hand_", settings_id)]]
-                input[[paste0("cell_results_", settings_id)]]
-                input[[paste0("cell_qp_", settings_id)]]
-                input[[paste0("cell_count_", settings_id)]]
-                input[[paste0("cell_after_count_", settings_id)]]
-                input[[paste0("cell_zone_", settings_id)]]
-                input[[paste0("cell_velo_min_", settings_id)]]
-                input[[paste0("cell_velo_max_", settings_id)]]
-                input[[paste0("cell_ivb_min_", settings_id)]]
-                input[[paste0("cell_ivb_max_", settings_id)]]
-                input[[paste0("cell_hb_min_", settings_id)]]
-                input[[paste0("cell_hb_max_", settings_id)]]
-                input$use_global_dates
-                input$global_dates
-                
-                # For Multi-Player mode, also monitor the row player selection
-                if (is_multi_player) {
-                  input[[paste0("row_player_", row_num)]]
+                # Monitor cell-level inputs to trigger re-rendering — but ONLY when not
+                # loading.  While a saved report is loading, update_saved_state() fires
+                # up to 8 times and sends updateSelectInput/updateNumericInput for every
+                # cell.  Each round-trip would otherwise re-invalidate this reactive and
+                # cancel the in-flight girafe render, resulting in blank chart panels.
+                if (!is_loading_now) {
+                  input[[paste0("cell_type_", settings_id)]]
+                  input[[paste0("cell_filter_", settings_id)]]
+                  input[[paste0("cell_table_mode_", settings_id)]]
+                  input[[paste0("cell_color_", settings_id)]]
+                  input[[paste0("cell_heat_stat_", settings_id)]]
+                  input[[paste0("cell_velocity_chart_", settings_id)]]
+                  input[[paste0("cell_table_custom_cols_", settings_id)]]
+                  input[[paste0("cell_dates_", settings_id)]]
+                  input[[paste0("cell_session_", settings_id)]]
+                  input[[paste0("cell_pitch_types_", settings_id)]]
+                  input[[paste0("cell_batter_side_", settings_id)]]
+                  input[[paste0("cell_pitcher_hand_", settings_id)]]
+                  input[[paste0("cell_results_", settings_id)]]
+                  input[[paste0("cell_qp_", settings_id)]]
+                  input[[paste0("cell_count_", settings_id)]]
+                  input[[paste0("cell_after_count_", settings_id)]]
+                  input[[paste0("cell_zone_", settings_id)]]
+                  input[[paste0("cell_velo_min_", settings_id)]]
+                  input[[paste0("cell_velo_max_", settings_id)]]
+                  input[[paste0("cell_ivb_min_", settings_id)]]
+                  input[[paste0("cell_ivb_max_", settings_id)]]
+                  input[[paste0("cell_hb_min_", settings_id)]]
+                  input[[paste0("cell_hb_max_", settings_id)]]
+                  input$use_global_dates
+                  input$global_dates
+                  if (is_multi_player) {
+                    input[[paste0("row_player_", row_num)]]
+                  }
                 }
-                
+
                 # Return the actual values.
                 # Including .report_token ensures this list is never identical() between
                 # report loads, so cell_output_* always re-renders even when chart
