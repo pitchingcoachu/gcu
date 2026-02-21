@@ -3228,3 +3228,17 @@
 20260220-RussellCarrField-2_unverified.csv
 # Auto-pruned non-team data
 20260220-UNCCharlotte-1_unverified.csv
+# Auto-pruned non-team data
+20260220-ClarkLeClair-1_unverified.csv
+# Auto-pruned non-team data
+20260220-Liberty-1_unverified.csv
+# Auto-pruned non-team data
+20260220-OdessaCollege-2_unverified.csv
+# Auto-pruned non-team data
+20260220-PioneerPark-1_unverified.csv
+# Auto-pruned non-team data
+20260220-SouthwesternOregonStadium-3_unverified.csv
+# Auto-pruned non-team data
+20260220-TarletonBBComplex-1_unverified.csv
+# Auto-pruned non-team data
+20260220-UCSanDiego-1_unverified.csv
