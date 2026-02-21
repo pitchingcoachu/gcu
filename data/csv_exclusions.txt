@@ -3346,3 +3346,35 @@
 20260220-WarriorField-1_unverified.csv
 # Auto-pruned non-team data
 20260220-WilliamCarey-2_unverified.csv
+# Auto-pruned non-team data
+20260220-121Financial-5_unverified.csv
+# Auto-pruned non-team data
+20260220-AlumniField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-Arlington-3_unverified.csv
+# Auto-pruned non-team data
+20260220-BenMeyerDiamond-1_unverified.csv
+# Auto-pruned non-team data
+20260220-CatholicUniversity-2_unverified.csv
+# Auto-pruned non-team data
+20260220-CatholicUniversity-3_unverified.csv
+# Auto-pruned non-team data
+20260220-DellDiamond-2_unverified.csv
+# Auto-pruned non-team data
+20260220-FedExPark-2_unverified.csv
+# Auto-pruned non-team data
+20260220-GeorgiaTech-3_unverified.csv
+# Auto-pruned non-team data
+20260220-JoeMillerBallpark-1_unverified.csv
+# Auto-pruned non-team data
+20260220-LouisianaLafayette-1_unverified.csv
+# Auto-pruned non-team data
+20260220-PhoenixMunicipal-1_unverified.csv
+# Auto-pruned non-team data
+20260220-Texas-1_unverified.csv
+# Auto-pruned non-team data
+20260220-TexasStateUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260220-UofHouston-1_unverified.csv
+# Auto-pruned non-team data
+20260220-UofMiami-1_unverified.csv
