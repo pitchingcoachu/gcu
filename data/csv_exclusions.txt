@@ -3212,3 +3212,19 @@
 20260220-WoernerField-2_unverified.csv
 # Auto-pruned non-team data
 20260220-YoungMemorialField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-Arlington-2_unverified.csv
+# Auto-pruned non-team data
+20260220-BobSteinStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-BushStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-GaryHoganField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-HighPointUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260220-KingsmoreStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-RussellCarrField-2_unverified.csv
+# Auto-pruned non-team data
+20260220-UNCCharlotte-1_unverified.csv
