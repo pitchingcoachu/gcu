@@ -3258,3 +3258,17 @@
 20260220-SwellThomasStadium-1_unverified.csv
 # Auto-pruned non-team data
 20260220-VATech-1_unverified.csv
+# Auto-pruned non-team data
+20260220-FifthThirdParkSC-2_unverified.csv
+# Auto-pruned non-team data
+20260220-FriersonField-2_unverified.csv
+# Auto-pruned non-team data
+20260220-LindseyNelsonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-PKPark-1_unverified.csv
+# Auto-pruned non-team data
+20260220-PomonaPitzer-1_unverified.csv
+# Auto-pruned non-team data
+20260220-RonaldGallagherStad-1_unverified.csv
+# Auto-pruned non-team data
+20260220-SammyCoxField-2_unverified.csv
