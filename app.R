@@ -16860,12 +16860,13 @@ custom_reports_server <- function(id) {
                   cid_l  <- cid
                   tv     <- titles_snap[[cid_l]] %||% ""
                   if (nzchar(tv)) {
-                    # Must pass session= explicitly: later::later runs outside
-                    # Shiny's reactive context, so shinyjs can't auto-discover
-                    # the session.  The module session also provides the correct
-                    # namespace for the ID via session$ns().
-                    shinyjs::html(paste0("cell_title_display_", cid_l), tv,
-                                  session = session)
+                    # later::later runs outside Shiny's default reactive domain.
+                    # Re-bind the module session domain so shinyjs can resolve
+                    # session/namespace without using unsupported session= args.
+                    shiny::withReactiveDomain(
+                      session,
+                      shinyjs::html(paste0("cell_title_display_", cid_l), tv)
+                    )
                   }
                 })
               }
