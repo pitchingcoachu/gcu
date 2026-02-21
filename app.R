@@ -124,6 +124,41 @@ ZONE_RIGHT <- 0.83
 ZONE_BOTTOM <- 1.5
 ZONE_TOP <- 3.5
 
+zone_nine_square_layers <- function(color = "black", linewidth = 0.5, alpha = 1) {
+  dx <- (ZONE_RIGHT - ZONE_LEFT) / 3
+  dy <- (ZONE_TOP - ZONE_BOTTOM) / 3
+  grid_vertical <- data.frame(
+    x = c(ZONE_LEFT + dx, ZONE_LEFT + 2 * dx),
+    xend = c(ZONE_LEFT + dx, ZONE_LEFT + 2 * dx),
+    y = ZONE_BOTTOM,
+    yend = ZONE_TOP
+  )
+  grid_horizontal <- data.frame(
+    x = ZONE_LEFT,
+    xend = ZONE_RIGHT,
+    y = c(ZONE_BOTTOM + dy, ZONE_BOTTOM + 2 * dy),
+    yend = c(ZONE_BOTTOM + dy, ZONE_BOTTOM + 2 * dy)
+  )
+  list(
+    geom_segment(
+      data = grid_vertical,
+      aes(x = x, xend = xend, y = y, yend = yend),
+      inherit.aes = FALSE,
+      color = color,
+      linewidth = linewidth,
+      alpha = alpha
+    ),
+    geom_segment(
+      data = grid_horizontal,
+      aes(x = x, xend = xend, y = y, yend = yend),
+      inherit.aes = FALSE,
+      color = color,
+      linewidth = linewidth,
+      alpha = alpha
+    )
+  )
+}
+
 # Frequency (keep multi-color)
 heat_pal_freq <- function(n = HEAT_BINS) colorRampPalette(
   c("white","pink","red")
@@ -3898,6 +3933,26 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
         pitch_type = pt
       )
     }))
+    zone_dx <- (ZONE_RIGHT - ZONE_LEFT) / 3
+    zone_dy <- (ZONE_TOP - ZONE_BOTTOM) / 3
+    strike_zone_grid_all <- do.call(rbind, lapply(pitch_types, function(pt) {
+      rbind(
+        data.frame(
+          x = c(ZONE_LEFT + zone_dx, ZONE_LEFT + 2 * zone_dx),
+          xend = c(ZONE_LEFT + zone_dx, ZONE_LEFT + 2 * zone_dx),
+          y = ZONE_BOTTOM,
+          yend = ZONE_TOP,
+          pitch_type = pt
+        ),
+        data.frame(
+          x = ZONE_LEFT,
+          xend = ZONE_RIGHT,
+          y = c(ZONE_BOTTOM + zone_dy, ZONE_BOTTOM + 2 * zone_dy),
+          yend = c(ZONE_BOTTOM + zone_dy, ZONE_BOTTOM + 2 * zone_dy),
+          pitch_type = pt
+        )
+      )
+    }))
     
     home_plate_all <- do.call(rbind, lapply(pitch_types, function(pt) {
       data.frame(
@@ -3929,6 +3984,13 @@ create_qp_locations_plot <- function(data, count_state, pitcher_hand, batter_han
       geom_rect(data = strike_zone_all, 
                 aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 fill = NA, color = line_col, linewidth = 1) +
+      geom_segment(
+        data = strike_zone_grid_all,
+        aes(x = x, xend = xend, y = y, yend = yend),
+        inherit.aes = FALSE,
+        color = line_col,
+        linewidth = 0.5
+      ) +
       # Add pitched balls with interactive tooltips and pitch type colors
       {if (nrow(state_data_with_result) > 0) {
         ggiraph::geom_point_interactive(
@@ -4532,6 +4594,12 @@ session_cols_for_mode <- function(dark_on = FALSE) {
 # Filters
 # ---- Filters: Zone & In-Zone ----
 
+pitching_zone_location_choices <- c(
+  "All",
+  "Upper Half", "Bottom Half", "Glove Side Half", "Arm Side Half",
+  "Upper 3rd", "Bottom 3rd", "Glove Side 3rd", "Arm Side 3rd"
+)
+
 # Multi-select halves/thirds with INTERSECTION logic, bounded to the strike zone
 # ---- Filters: Zone bands that extend beyond the zone ----
 # Halves/Thirds act as threshold lines:
@@ -4539,10 +4607,10 @@ session_cols_for_mode <- function(dark_on = FALSE) {
 #   - Bottom Half     => y <= mid_y      (and below the zone)
 #   - Upper 3rd       => y >= B + 2*dy   (and above the zone)
 #   - Bottom 3rd      => y <= B + dy     (and below the zone)
-#   - Left Half       => x <= mid_x      (and left of the zone)
-#   - Right Half      => x >= mid_x      (and right of the zone)
-#   - Left 3rd        => x <= L + dx     (and left of the zone)
-#   - Right 3rd       => x >= L + 2*dx   (and right of the zone)
+#   - Glove Side Half => x <= mid_x for RHP, x >= mid_x for LHP
+#   - Arm Side Half   => x >= mid_x for RHP, x <= mid_x for LHP
+#   - Glove Side 3rd  => x <= L + dx for RHP, x >= L + 2*dx for LHP
+#   - Arm Side 3rd    => x >= L + 2*dx for RHP, x <= L + dx for LHP
 # Multiple selections are ANDed together (intersection).
 enforce_zone <- function(df, choice) {
   # Pass-through if nothing picked or "All"
@@ -4567,6 +4635,12 @@ enforce_zone <- function(df, choice) {
   mask_vert <- rep(TRUE, length(x))
   mask_horz <- rep(TRUE, length(x))
   
+  # Handedness per pitch for glove/arm-side mapping (default unknown to right-handed mapping)
+  throws_vec <- if ("PitcherThrows" %in% names(df)) as.character(df$PitcherThrows) else rep(NA_character_, length(x))
+  throws_norm <- toupper(substr(trimws(throws_vec), 1, 1))
+  is_lefty <- throws_norm == "L"
+  ifelse_hand <- function(left_cond, right_cond) ifelse(is_lefty, left_cond, right_cond)
+  
   # Apply each token as a threshold restriction
   for (tok in choice) {
     if (tok %in% c("Upper Half", "Bottom Half", "Upper 3rd", "Bottom 3rd")) {
@@ -4577,12 +4651,22 @@ enforce_zone <- function(df, choice) {
                      "Bottom 3rd"  = (y <= (B + dy))
       )
       mask_vert <- mask_vert & cond
-    } else if (tok %in% c("Left Half", "Right Half", "Left 3rd", "Right 3rd")) {
+    } else if (tok %in% c(
+      "Left Half", "Right Half", "Left 3rd", "Right 3rd",
+      "Glove Side Half", "Arm Side Half", "Glove Side 3rd", "Arm Side 3rd",
+      "Glove Side", "Arm Side"
+    )) {
       cond <- switch(tok,
                      "Left Half"  = (x <= mid_x),
                      "Right Half" = (x >= mid_x),
                      "Left 3rd"   = (x <= (L + dx)),
-                     "Right 3rd"  = (x >= (L + 2*dx))
+                     "Right 3rd"  = (x >= (L + 2*dx)),
+                     "Glove Side Half" = ifelse_hand(x >= mid_x, x <= mid_x),
+                     "Arm Side Half"   = ifelse_hand(x <= mid_x, x >= mid_x),
+                     "Glove Side 3rd"  = ifelse_hand(x >= (L + 2*dx), x <= (L + dx)),
+                     "Arm Side 3rd"    = ifelse_hand(x <= (L + dx), x >= (L + 2*dx)),
+                     "Glove Side"      = ifelse_hand(x >= mid_x, x <= mid_x),
+                     "Arm Side"        = ifelse_hand(x <= mid_x, x >= mid_x)
       )
       mask_horz <- mask_horz & cond
     } else {
@@ -6786,9 +6870,7 @@ pitch_ui <- function(show_header = FALSE) {
         ),
         selectInput(
           "zoneLoc", "Zone Location:",
-          choices = c("All",
-                      "Upper Half","Bottom Half","Left Half","Right Half",
-                      "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
+          choices = pitching_zone_location_choices,
           selected = "All",
           multiple = TRUE
         ),
@@ -7297,9 +7379,7 @@ mod_hit_ui <- function(id, show_header = FALSE) {
         ),
         selectInput(
           ns("zoneLoc"), "Zone Location:",
-          choices = c("All",
-                      "Upper Half","Bottom Half","Left Half","Right Half",
-                      "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
+          choices = pitching_zone_location_choices,
           selected = "All",
           multiple = TRUE
         ),
@@ -7827,13 +7907,13 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       )
       cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
       sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
-      list(
+      c(list(
         geom_polygon(data = home, aes(x, y), fill = NA, color = line_col),
         geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   fill = NA, color = line_col, linetype = "dashed"),
         geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   fill = NA, color = line_col)
-      )
+      ), zone_nine_square_layers(color = line_col))
     }
     
     # ---------- AB Report: date choices + default ----------
@@ -8592,6 +8672,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
                   fill = NA, color = line_col, linetype = "dashed") +
         geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   fill = NA, color = line_col) +
+        zone_nine_square_layers(color = line_col) +
         ggiraph::geom_point_interactive(
           data = df_other,
           aes(PlateLocSide, PlateLocHeight,
@@ -10161,9 +10242,7 @@ mod_catch_ui <- function(id, show_header = FALSE) {
                     choices = c("All", levels(pitch_data$TaggedPitchType)), selected = "All", multiple = TRUE),
         selectInput(
           ns("zoneLoc"), "Zone Location:",
-          choices = c("All",
-                      "Upper Half","Bottom Half","Left Half","Right Half",
-                      "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
+          choices = pitching_zone_location_choices,
           selected = "All",
           multiple = TRUE
         ),
@@ -11025,6 +11104,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
                   fill = NA, color = line_col, linetype = "dashed", linewidth = 0.6) +
         geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   fill = NA, color = line_col, linewidth = 0.8) +
+        zone_nine_square_layers(color = line_col, linewidth = 0.45) +
         coord_fixed(ratio = 1, xlim = c(lims[1], lims[2]), ylim = c(lims[3], lims[4])) +
         labs(title = "Called-Strike%", x = NULL, y = NULL) +
         theme_void() +
@@ -11062,6 +11142,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
         geom_polygon(data = home, aes(x, y), fill = NA, color = line_col) +
         geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = NA, color = line_col, linetype = "dashed") +
         geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = NA, color = line_col) +
+        zone_nine_square_layers(color = line_col) +
         ggiraph::geom_point_interactive(
           data = df_other,
           aes(PlateLocSide, PlateLocHeight, color = TaggedPitchType, fill = TaggedPitchType, tooltip = tt, data_id = rid),
@@ -11110,9 +11191,7 @@ mod_camps_ui <- function(id, show_header = FALSE) {
         selectInput(ns("pitchType"),  "Pitch Type:",    choices = "All", selected = "All", multiple = TRUE),
         selectInput(
           ns("zoneLoc"), "Zone Location:",
-          choices = c("All",
-                      "Upper Half","Bottom Half","Left Half","Right Half",
-                      "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
+          choices = pitching_zone_location_choices,
           selected = "All", multiple = TRUE
         ),
         selectInput(ns("inZone"),     "In Zone:",       choices = c("All","Yes","No","Competitive"), selected = "All"),
@@ -11965,6 +12044,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
                   fill = NA, color = line_col, linetype = "dashed") +
         geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   fill = NA, color = line_col) +
+        zone_nine_square_layers(color = line_col) +
         ggiraph::geom_point_interactive(
           data = df,
           aes(PlateLocSide, PlateLocHeight, color = TaggedPitchType,
@@ -12510,9 +12590,7 @@ mod_leader_ui <- function(id, show_header = FALSE) {
         selectInput(ns("pitchType"),  "Pitch Type:",    choices = c("All", levels(pitch_data$TaggedPitchType)), selected = "All", multiple = TRUE),
         selectInput(
           ns("zoneLoc"), "Zone Location:",
-          choices = c("All",
-                      "Upper Half","Bottom Half","Left Half","Right Half",
-                      "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
+          choices = pitching_zone_location_choices,
           selected = "All", multiple = TRUE
         ),
         selectInput(ns("inZone"),     "In Zone:",       choices = c("All","Yes","No","Competitive"), selected = "All"),
@@ -13737,9 +13815,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
               ),
               selectInput(
                 ns("cmpA_zone"),"Zone Location:",
-                choices = c("All",
-                            "Upper Half","Bottom Half","Left Half","Right Half",
-                            "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
+                choices = pitching_zone_location_choices,
                 selected = "All",
                 multiple = TRUE
               ),
@@ -13841,9 +13917,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
               ),
               selectInput(
                 ns("cmpB_zone"),"Zone Location:",
-                choices = c("All",
-                            "Upper Half","Bottom Half","Left Half","Right Half",
-                            "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
+                choices = pitching_zone_location_choices,
                 selected = "All",
                 multiple = TRUE
               ),
@@ -14542,6 +14616,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
                   inherit.aes = FALSE, fill = NA, color = line_col, linetype = "dashed") +
         geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   inherit.aes = FALSE, fill = NA, color = line_col) +
+        zone_nine_square_layers(color = line_col) +
         ggiraph::geom_point_interactive(
           data = df_other,
           aes(PlateLocSide, PlateLocHeight,
@@ -16591,6 +16666,9 @@ custom_reports_server <- function(id) {
             if (!is.null(saved_cell$filter_select)) {
               updateSelectizeInput(session, paste0("cell_filter_select_", cell_id), selected = saved_cell$filter_select)
             }
+            if (!is.null(saved_cell$note_text)) {
+              updateTextAreaInput(session, paste0("cell_note_", cell_id), value = saved_cell$note_text)
+            }
             if (!is.null(saved_cell$span) && length(saved_cell$span) == 1 && !is.na(saved_cell$span)) {
               updateNumericInput(session, paste0("cell_span_", cell_id), value = saved_cell$span)
             }
@@ -17320,6 +17398,7 @@ custom_reports_server <- function(id) {
             type = "", 
             filter = "Pitch Types", 
             title = "",
+            note_text = "",
             show_controls = TRUE,
             table_mode = "Stuff",
             table_custom_cols = character(0),
@@ -17422,9 +17501,9 @@ custom_reports_server <- function(id) {
                                  ),
                                  selectInput(ns(paste0("cell_type_", info$cell_id)), "Content:", 
                                              choices = if (identical(input$report_type, "Pitching")) {
-                                               c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Velocity Chart", "Pitch Usage Pie Chart", "Pitch Usage Bar Chart", "Velocity Bar Chart", "Velocity Distribution", "Summary Table", "Spray Chart")
+                                               c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Velocity Chart", "Pitch Usage Pie Chart", "Pitch Usage Bar Chart", "Velocity Bar Chart", "Velocity Distribution", "Summary Table", "Spray Chart", "Note Section")
                                              } else {
-                                               c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart")
+                                               c("", "Movement Plot", "Release Plot", "Location Plot", "Heatmap", "Summary Table", "Spray Chart", "Note Section")
                                              },
                                              selected = info$sel$type),
                                  {
@@ -17500,16 +17579,28 @@ custom_reports_server <- function(id) {
                                      selected = info$sel$velocity_chart %||% "Velocity Chart (Game/Inning)"
                                    )
                                  ),
-                                 selectizeInput(
-                                   ns(paste0("cell_filter_select_", info$cell_id)),
-                                   "Filters to show:",
-                                   choices = c("Dates","Session Type","Pitch Types","Batter Hand","Pitcher Hand","Pitch Results","QP Locations",
-                                               "Count","After Count","Zone Location","Velo Min/Max","IVB Min/Max","HB Min/Max"),
-                                   selected = info$sel$filter_select %||% c("Dates","Session Type","Pitch Types"),
-                                   multiple = TRUE,
-                                   options = list(plugins = list("remove_button"))
+                                 conditionalPanel(
+                                   sprintf("input['%s'] == 'Note Section'", ns(paste0("cell_type_", info$cell_id))),
+                                   tags$div(
+                                     style = "font-size:12px; color:#666; margin-top:4px;",
+                                     "Type your note in the box below."
+                                   )
                                  ),
-                                 uiOutput(ns(paste0("cell_filters_", info$cell_id)))
+                                 conditionalPanel(
+                                   sprintf("input['%s'] != 'Note Section'", ns(paste0("cell_type_", info$cell_id))),
+                                   tagList(
+                                     selectizeInput(
+                                       ns(paste0("cell_filter_select_", info$cell_id)),
+                                       "Filters to show:",
+                                       choices = c("Dates","Session Type","Pitch Types","Batter Hand","Pitcher Hand","Pitch Results","QP Locations",
+                                                   "Count","After Count","Zone Location","Velo Min/Max","IVB Min/Max","HB Min/Max"),
+                                       selected = info$sel$filter_select %||% c("Dates","Session Type","Pitch Types"),
+                                       multiple = TRUE,
+                                       options = list(plugins = list("remove_button"))
+                                     ),
+                                     uiOutput(ns(paste0("cell_filters_", info$cell_id)))
+                                   )
+                                 )
                                )
                              )
                            ),
@@ -17606,6 +17697,7 @@ custom_reports_server <- function(id) {
             type = update_if_exists(input[[paste0("cell_type_", id)]], existing_cell$type, ""),
             filter = update_if_exists(input[[paste0("cell_filter_", id)]], existing_cell$filter, "Pitch Types"),
             title = title_vals[[id]] %||% existing_cell$title %||% "",  # Prefer latest debounced title
+            note_text = update_if_exists(input[[paste0("cell_note_", id)]], existing_cell$note_text, ""),
             show_controls = update_if_exists(input[[paste0("cell_show_controls_", id)]], existing_cell$show_controls, TRUE),
             table_mode = update_if_exists(input[[paste0("cell_table_mode_", id)]], existing_cell$table_mode, "Stuff"),
             table_custom_cols = update_if_exists(input[[paste0("cell_table_custom_cols_", id)]], existing_cell$table_custom_cols, character(0)),
@@ -17961,6 +18053,21 @@ custom_reports_server <- function(id) {
         output[[out_id]] <- renderUI({ NULL })
         return(NULL)
       }
+      if (tsel == "Note Section") {
+        output[[out_id]] <- renderUI({
+          cell_state <- current_cells()[[cell_id]] %||% list()
+          note_val <- input[[paste0("cell_note_", cell_id)]] %||% cell_state$note_text %||% ""
+          textAreaInput(
+            ns(paste0("cell_note_", cell_id)),
+            label = NULL,
+            value = note_val,
+            width = "100%",
+            height = "260px",
+            placeholder = "Type notes here..."
+          )
+        })
+        return(uiOutput(ns(out_id)))
+      }
       df <- get_cell_data_wrapper(cell_id)
       if (!nrow(df)) {
         output[[out_id]] <- renderUI({ div("No data") })
@@ -18267,6 +18374,7 @@ custom_reports_server <- function(id) {
                         fill = NA, color = line_col, linetype = "dashed", inherit.aes = FALSE) +
               geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                         fill = NA, color = line_col, inherit.aes = FALSE) +
+              zone_nine_square_layers(color = line_col) +
               ggiraph::geom_point_interactive(
                 data = df_other,
                 aes(PlateLocSide, PlateLocHeight,
@@ -19426,6 +19534,7 @@ custom_reports_server <- function(id) {
                 input[[paste0("cell_heat_stat_", settings_id)]]
                 input[[paste0("cell_velocity_chart_", settings_id)]]
                 input[[paste0("cell_table_custom_cols_", settings_id)]]
+                input[[paste0("cell_note_", id)]]
                 
                 # Also monitor filter values to trigger data updates
                 input[[paste0("cell_dates_", settings_id)]]
@@ -19460,7 +19569,8 @@ custom_reports_server <- function(id) {
                   color = input[[paste0("cell_color_", settings_id)]],
                   heat_stat = input[[paste0("cell_heat_stat_", settings_id)]],
                   velocity_chart = input[[paste0("cell_velocity_chart_", settings_id)]],
-                  custom_cols = input[[paste0("cell_table_custom_cols_", settings_id)]]
+                  custom_cols = input[[paste0("cell_table_custom_cols_", settings_id)]],
+                  note_text = input[[paste0("cell_note_", id)]]
                 )
               })
               
@@ -19505,6 +19615,10 @@ custom_reports_server <- function(id) {
                 # Get cell data (triggers on chart type/filter/mode changes only)
                 cd <- cell_data()
                 out_id <- paste0("cell_render_", id)
+                if (identical(cd$type, "Note Section")) {
+                  render_cell(id)
+                  return(uiOutput(ns(out_id)))
+                }
                 df_now <- get_cell_data_wrapper(id)
                 if (!nrow(df_now)) {
                   output[[out_id]] <- renderUI({
@@ -24057,6 +24171,7 @@ deg_to_clock <- function(x) {
                 inherit.aes = FALSE, fill = NA, linetype = "dashed", color = line_col) +
       geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 inherit.aes = FALSE, fill = NA, color = line_col) +
+      zone_nine_square_layers(color = line_col) +
       coord_fixed(ratio = 1, xlim = c(-2.5, 2.5), ylim = c(0, 4.5)) +
       theme_void() +
       theme(
@@ -28531,6 +28646,7 @@ deg_to_clock <- function(x) {
                 inherit.aes = FALSE, fill = NA, linetype = "dashed", color = line_col) +
       geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 inherit.aes = FALSE, fill = NA, color = line_col) +
+      zone_nine_square_layers(color = line_col) +
       
       # filled circles for "no result" rows
       ggiraph::geom_point_interactive(
@@ -31413,13 +31529,13 @@ deg_to_clock <- function(x) {
                        y=c(1.05, 1.05,1.15,1.25, 1.15)-0.5)
     cz <- data.frame(xmin = -1.5, xmax = 1.5, ymin = 2.65 - 1.5, ymax = 2.65 + 1.5)
     sz <- data.frame(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP)
-    list(
+    c(list(
       geom_polygon(data = home, aes(x, y), fill = NA, color = color),
       geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 fill = NA, color = color, linetype = "dashed"),
       geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 fill = NA, color = color)
-    )
+    ), zone_nine_square_layers(color = color))
   }
   
   # All game dates where the selected pitcher has ≥1 completed PA (across any batters)
@@ -33253,6 +33369,7 @@ deg_to_clock <- function(x) {
                 fill = NA, color = line_col, linetype = "dashed", inherit.aes = FALSE) +
       geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 fill = NA, color = line_col, inherit.aes = FALSE) +
+      zone_nine_square_layers(color = line_col) +
       
       ggiraph::geom_point_interactive(
         data = df_other,
@@ -33437,6 +33554,7 @@ deg_to_clock <- function(x) {
                 fill = NA, color = line_col, linetype = "dashed") +
       geom_rect(data = sz, aes(xmin=xmin,xmax=xmax,ymin=ymin,ymax=ymax),
                 fill = NA, color = line_col) +
+      zone_nine_square_layers(color = line_col) +
       
       # visible points (unknown result as solid circle)
       ggiraph::geom_point_interactive(
@@ -36086,6 +36204,7 @@ deg_to_clock <- function(x) {
                 fill = NA, color = line_col, linetype = "dashed", inherit.aes = FALSE) +
       geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 fill = NA, color = line_col, inherit.aes = FALSE) +
+      zone_nine_square_layers(color = line_col) +
       
       ggiraph::geom_point_interactive(
         data = df_other,
