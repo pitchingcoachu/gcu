@@ -3674,3 +3674,9 @@
 20260221-TuckerFieldatBarcroftPark-1_unverified.csv
 # Auto-pruned non-team data
 20260221-WoernerField-2_unverified.csv
+# Auto-pruned non-team data
+20260221-CSUBallparkNielsen-1_unverified.csv
+# Auto-pruned non-team data
+20260221-SpringsBrooksStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260221-StaufferField-1_unverified.csv
