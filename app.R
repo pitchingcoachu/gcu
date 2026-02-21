@@ -4966,6 +4966,18 @@ usage_by_type <- function(df) {
 library(readr)
 library(stringr)   # explicit, even though tidyverse includes it
 
+# Startup timing checkpoints for deploy-time diagnostics.
+startup_time_origin <- Sys.time()
+startup_time_last <- startup_time_origin
+log_startup_timing <- function(label) {
+  now <- Sys.time()
+  step_secs <- as.numeric(difftime(now, startup_time_last, units = "secs"))
+  total_secs <- as.numeric(difftime(now, startup_time_origin, units = "secs"))
+  message(sprintf("⏱️ [startup] %s | step=%.2fs total=%.2fs", label, step_secs, total_secs))
+  startup_time_last <<- now
+}
+log_startup_timing("Begin data import")
+
 # Point to the app's local data folder (works locally & on shinyapps.io)
 data_parent <- normalizePath(file.path(getwd(), "data"), mustWork = TRUE)
 
@@ -4977,6 +4989,7 @@ all_csvs <- list.files(
   full.names = TRUE
 )
 all_csvs <- all_csvs[ grepl("([/\\\\]practice[/\\\\])|([/\\\\]v3[/\\\\])", tolower(all_csvs)) ]
+log_startup_timing(sprintf("Discovered %d practice/v3 CSV files", length(all_csvs)))
 
 if (!length(all_csvs)) stop("No CSVs found under: ", data_parent)
 
@@ -5253,6 +5266,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
 
 
 pitch_data <- purrr::map_dfr(all_csvs, read_one)
+log_startup_timing(sprintf("Read %d CSV files into pitch_data (%d rows)", length(all_csvs), nrow(pitch_data)))
 
 # Ensure required columns exist since downstream code expects them
 # ------ add to need_cols ------
@@ -5318,6 +5332,7 @@ pitch_data <- pitch_data %>%
   ) %>%
   dplyr::filter(!is.na(TaggedPitchType) & tolower(TaggedPitchType) != "undefined") %>%
   force_pitch_levels()
+log_startup_timing(sprintf("Completed type normalization/filtering (%d rows)", nrow(pitch_data)))
 
 # ---- Attach Cloudinary video URLs when available ----
 video_map_path <- file.path(data_parent, "video_map.csv")
@@ -5395,12 +5410,15 @@ if (length(video_maps) > 0) {
     }
   }
 }
+log_startup_timing("Completed video map merge/attachment")
 
 pitch_data <- ensure_pitch_keys(pitch_data)
+log_startup_timing("Computed/validated PitchKey values")
 rows_before_dedupe <- nrow(pitch_data)
 pitch_data <- deduplicate_pitch_rows(pitch_data)
 rows_after_dedupe <- nrow(pitch_data)
 rows_removed_dedupe <- rows_before_dedupe - rows_after_dedupe
+log_startup_timing(sprintf("Deduplicated pitch rows (removed=%d)", rows_removed_dedupe))
 
 # Friendly load message
 counts <- table(pitch_data$SessionType, useNA = "no")
@@ -5426,6 +5444,7 @@ lookup_table <- if (file.exists("lookup_table.csv")) {
 pitch_data <- dplyr::left_join(pitch_data, lookup_table, by = "Pitcher") %>%
   dplyr::mutate(Email = dplyr::coalesce(Email, Email_lookup)) %>%
   dplyr::select(-Email_lookup)
+log_startup_timing("Joined lookup_table and finalized Email")
 
 
 # (keep your name_map construction the same)
@@ -5596,48 +5615,14 @@ ALLOWED_CAMPERS <- school_setting("allowed_campers", c(
 # NEW: normalize for case, spaces, punctuation (so "D.J." == "DJ")
 norm_name_ci <- function(x) gsub("[^a-z]", "", tolower(trimws(as.character(x))))
 
-school_marker_tokens <- function() {
-  extra <- school_setting("team_code_markers", character(0))
-  toks <- unique(toupper(trimws(c(TEAM_CODE, school_display_name, extra))))
-  toks[nzchar(toks)]
-}
-
-row_matches_school_markers <- function(df, cols, tokens = school_marker_tokens()) {
-  cols <- intersect(cols, names(df))
-  if (!length(cols) || !length(tokens) || !nrow(df)) return(rep(FALSE, nrow(df)))
-  out <- rep(FALSE, nrow(df))
-  tokens <- toupper(trimws(as.character(tokens)))
-  tokens <- unique(tokens[nzchar(tokens)])
-  for (col in cols) {
-    vals <- toupper(trimws(as.character(df[[col]])))
-    hit <- vals %in% tokens
-    out <- out | hit
-  }
-  out
-}
-
 live_bp_mask <- function(df) {
   if (!nrow(df)) return(logical(0))
-  is_live <- as.character(df$SessionType) == "Live"
-  p_cols <- intersect(c("PitcherTeam", "PitcherTeamCode", "PitcherTeamForeignID"), names(df))
-  b_cols <- intersect(c("BatterTeam", "BatterTeamCode", "BatterTeamForeignID"), names(df))
-  if (!length(p_cols)) p_cols <- intersect(c("HomeTeam", "AwayTeam", "HomeTeamForeignID", "AwayTeamForeignID"), names(df))
-  if (!length(b_cols)) b_cols <- intersect(c("HomeTeam", "AwayTeam", "HomeTeamForeignID", "AwayTeamForeignID"), names(df))
-  p_mark <- row_matches_school_markers(df, p_cols)
-  b_mark <- row_matches_school_markers(df, b_cols)
-  is_live & p_mark & b_mark
+  as.character(df$SessionType) == "Live"
 }
 
 season_mask <- function(df) {
   if (!nrow(df)) return(logical(0))
-  is_live <- as.character(df$SessionType) == "Live"
-  p_cols <- intersect(c("PitcherTeam", "PitcherTeamCode", "PitcherTeamForeignID"), names(df))
-  b_cols <- intersect(c("BatterTeam", "BatterTeamCode", "BatterTeamForeignID"), names(df))
-  if (!length(p_cols)) p_cols <- intersect(c("HomeTeam", "AwayTeam", "HomeTeamForeignID", "AwayTeamForeignID"), names(df))
-  if (!length(b_cols)) b_cols <- intersect(c("HomeTeam", "AwayTeam", "HomeTeamForeignID", "AwayTeamForeignID"), names(df))
-  p_mark <- row_matches_school_markers(df, p_cols)
-  b_mark <- row_matches_school_markers(df, b_cols)
-  is_live & xor(p_mark, b_mark)
+  as.character(df$SessionType) == "Live"
 }
 
 normalize_session_filter_value <- function(session_value) {
@@ -5668,69 +5653,7 @@ session_type_choices <- function() {
   c("Season", "Bullpen", "Live BP" = "Live", "All")
 }
 
-verify_allowed_players_by_school <- function(df, player_col, allowed_names, label = "players") {
-  allowed_names <- unique(as.character(allowed_names))
-  allowed_names <- allowed_names[nzchar(trimws(allowed_names))]
-  if (!length(allowed_names)) return(allowed_names)
-  if (!player_col %in% names(df)) return(character(0))
-
-  marker_cols <- intersect(c(
-    "PitcherTeam", "BatterTeam", "CatcherTeam",
-    "HomeTeam", "AwayTeam",
-    "HomeTeamForeignID", "AwayTeamForeignID", "GameForeignID"
-  ), names(df))
-  if (!length(marker_cols)) {
-    message("No team marker columns found for ", label, " verification; keeping configured list as-is.")
-    return(allowed_names)
-  }
-
-  tokens <- school_marker_tokens()
-  if (!length(tokens)) {
-    message("No school marker tokens configured; keeping configured ", label, " list as-is.")
-    return(allowed_names)
-  }
-
-  allowed_norm <- unique(norm_name_ci(allowed_names))
-  dat <- df %>%
-    dplyr::mutate(.player_norm = norm_name_ci(.data[[player_col]])) %>%
-    dplyr::filter(.player_norm %in% allowed_norm)
-  if (!nrow(dat)) return(character(0))
-
-  row_has_school <- rep(FALSE, nrow(dat))
-  tokens <- toupper(trimws(as.character(tokens)))
-  tokens <- unique(tokens[nzchar(tokens)])
-  for (col in marker_cols) {
-    vals <- toupper(trimws(as.character(dat[[col]])))
-    col_has <- vals %in% tokens
-    row_has_school <- row_has_school | col_has
-  }
-
-  verified_norm <- unique(dat$.player_norm[row_has_school])
-  verified <- allowed_names[norm_name_ci(allowed_names) %in% verified_norm]
-  verified <- unique(verified)
-
-  dropped <- setdiff(allowed_names, verified)
-  if (length(dropped)) {
-    message(
-      "School-code verification removed ", length(dropped),
-      " configured ", label, " with no matching school marker rows."
-    )
-  }
-  verified
-}
-
-# Enforce team-code evidence for configured school player lists.
-verification_pool_v3 <- pitch_data %>%
-  dplyr::filter(
-    SessionType == "Live" |
-      grepl("[/\\\\]v3[/\\\\]", tolower(as.character(SourceFile)))
-  )
-ALLOWED_PITCHERS <- verify_allowed_players_by_school(
-  verification_pool_v3, player_col = "Pitcher", allowed_names = ALLOWED_PITCHERS, label = "pitchers"
-)
-ALLOWED_HITTERS <- verify_allowed_players_by_school(
-  verification_pool_v3, player_col = "Batter", allowed_names = ALLOWED_HITTERS, label = "hitters"
-)
+# Marker-based school verification removed: keep configured allowed player lists as-is.
 
 # Keep the full dataset for Hitting & global refs
 # but build a PITCHING-ONLY copy that is filtered to the whitelist
@@ -6828,7 +6751,7 @@ pitch_ui <- function(show_header = FALSE) {
         selectInput(
           "sessionType", "Session Type:",
           choices = session_type_choices(),
-          selected = "Season"
+          selected = "All"
         ),
         selectInput(
           "withVideo", "With Video:",
@@ -7669,7 +7592,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         }
         if ("Session Type" %in% sel) {
           out <- c(out, list(
-            selectInput(ns(paste0("cell_session_", cell_id)), "Session Type:", choices = session_type_choices(), selected = "Season")
+            selectInput(ns(paste0("cell_session_", cell_id)), "Session Type:", choices = session_type_choices(), selected = "All")
           ))
         }
         if ("Pitch Types" %in% sel) {
@@ -10222,7 +10145,7 @@ mod_catch_ui <- function(id, show_header = FALSE) {
     sidebarLayout(
       sidebarPanel(
         # Exact same main sidebar as Pitching, but with Catcher selector
-        selectInput(ns("sessionType"), "Session Type:", choices = session_type_choices(), selected = "Season"),
+        selectInput(ns("sessionType"), "Session Type:", choices = session_type_choices(), selected = "All"),
         selectInput(ns("catcher"), "Select Catcher:", choices = c("All" = "All", catcher_map), selected = "All"),
         selectInput(
           ns("teamType"), "Team:",
@@ -12578,7 +12501,7 @@ mod_leader_ui <- function(id, show_header = FALSE) {
         selectInput(ns("teamType"), "Team:", choices = TEAM_CHOICES, selected = "All"),
         
         # --- Common filters (apply to all domains) ---
-        selectInput(ns("sessionType"), "Session Type:", choices = session_type_choices(), selected = "Season"),
+        selectInput(ns("sessionType"), "Session Type:", choices = session_type_choices(), selected = "All"),
         dateRangeInput(ns("dates"), "Date Range:",
                        start = max(pitch_data$Date, na.rm = TRUE),
                        end   = max(pitch_data$Date, na.rm = TRUE),
@@ -13740,7 +13663,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
               selectInput(
                 ns("cmpA_sessionType"), "Session Type:",
                 choices  = session_type_choices(),
-                selected = "Season"
+                selected = "All"
               ),
               dateRangeInput(
                 ns("cmpA_dates"), "Date Range:",
@@ -13845,7 +13768,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
               selectInput(
                 ns("cmpB_sessionType"), "Session Type:",
                 choices  = session_type_choices(),
-                selected = "Season"
+                selected = "All"
               ),
               dateRangeInput(
                 ns("cmpB_dates"), "Date Range:",
@@ -16364,48 +16287,6 @@ custom_reports_ui <- function(id) {
   ns <- NS(id)
   fluidPage(
     shinyjs::useShinyjs(),  # Enable shinyjs
-    tags$script(HTML("
-      (function() {
-        function reflowCustomReports(rootId) {
-          var root = rootId ? document.getElementById(rootId) : null;
-          var target = root || document;
-          setTimeout(function() {
-            try { window.dispatchEvent(new Event('resize')); } catch (e) {}
-            try {
-              if (window.HTMLWidgets && typeof window.HTMLWidgets.staticRender === 'function') {
-                window.HTMLWidgets.staticRender();
-              }
-            } catch (e) {}
-            try {
-              if (window.Plotly) {
-                var plots = target.querySelectorAll('.plotly');
-                plots.forEach(function(el) { window.Plotly.Plots.resize(el); });
-              }
-            } catch (e) {}
-            try {
-              if (window.jQuery && jQuery.fn && jQuery.fn.dataTable) {
-                jQuery.fn.dataTable.tables({visible: true, api: true}).columns.adjust().draw(false);
-              }
-            } catch (e) {}
-          }, 120);
-        }
-
-        if (window.Shiny && typeof window.Shiny.addCustomMessageHandler === 'function') {
-          window.Shiny.addCustomMessageHandler('creports_force_reflow', function(message) {
-            var rootId = (message && message.rootId) ? message.rootId : null;
-            reflowCustomReports(rootId);
-            setTimeout(function() { reflowCustomReports(rootId); }, 420);
-          });
-        }
-
-        if (window.jQuery) {
-          jQuery(document).on('shown.bs.tab', 'a[data-toggle=\"tab\"]', function(e) {
-            var val = jQuery(e.target).data('value');
-            if (val === 'Custom Reports') reflowCustomReports(null);
-          });
-        }
-      })();
-    ")),
     div(
       class = "creports-root",
       # Floating show sidebar button (only visible when sidebar is hidden)
@@ -16556,7 +16437,6 @@ custom_reports_server <- function(id) {
         shinyjs::removeClass(selector = paste0("#", ns("main_column")), class = "col-sm-9")
         shinyjs::addClass(selector = paste0("#", ns("main_column")), class = "col-sm-12")
       }
-      session$sendCustomMessage("creports_force_reflow", list(rootId = ns("report_canvas_wrapper")))
     })
     
     # Show sidebar button click
@@ -16567,7 +16447,6 @@ custom_reports_server <- function(id) {
       shinyjs::removeClass(selector = paste0("#", ns("main_column")), class = "col-sm-12")
       shinyjs::addClass(selector = paste0("#", ns("main_column")), class = "col-sm-9")
       updateActionButton(session, "toggle_sidebar", label = "Hide Sidebar")
-      session$sendCustomMessage("creports_force_reflow", list(rootId = ns("report_canvas_wrapper")))
     })
     
     observe({
@@ -16607,79 +16486,45 @@ custom_reports_server <- function(id) {
       cr <- custom_reports_store()
       if (!nm %in% names(cr)) return()
       rep <- cr[[nm]]
-      if (!is.list(rep)) return()
-      scalar_chr <- function(x, default = "") {
-        if (is.null(x) || length(x) < 1 || all(is.na(x))) return(default)
-        as.character(x[[1]])
-      }
-      scalar_int <- function(x, default = 1L, min_val = 1L, max_val = 15L) {
-        out <- suppressWarnings(as.integer(x[[1]]))
-        if (is.null(out) || length(out) < 1 || is.na(out)) out <- as.integer(default)
-        out <- max(as.integer(min_val), out)
-        out <- min(as.integer(max_val), out)
-        out
-      }
-      loaded_title <- scalar_chr(rep$title, "")
-      loaded_subtitle <- scalar_chr(rep$subtitle, "")
-      loaded_team <- scalar_chr(rep$team, "All")
-      loaded_type <- scalar_chr(rep$type, "Pitching")
-      if (!loaded_type %in% c("Pitching", "Hitting")) loaded_type <- "Pitching"
-      loaded_scope <- scalar_chr(rep$scope, "Single Player")
-      if (!loaded_scope %in% c("Single Player", "Multi-Player")) loaded_scope <- "Single Player"
-      loaded_players <- rep$players %||% character(0)
-      loaded_rows <- scalar_int(rep$rows, default = 1L, min_val = 1L, max_val = 15L)
-      loaded_cols <- scalar_int(rep$cols, default = 1L, min_val = 1L, max_val = 5L)
       if (isTRUE(is_admin_local())) {
         updateCheckboxInput(session, "report_global", value = identical(rep$school_code, GLOBAL_SCOPE))
       }
       
       # Set loading flag to prevent observe block from overwriting
       loading_report(TRUE)
-
-      # Store the players from the saved report so get_cell_data_wrapper can use
-      # correct players during load (before input$report_players round-trip completes)
-      loading_scope_players(loaded_players)
-
-      # FIRST: Update current_cells with saved data (before UI changes)
-      loaded_cells <- rep$cells
-      if (!is.list(loaded_cells)) loaded_cells <- list()
       
-      # Update current_cells IMMEDIATELY - this is critical for render_cell() to read correct values
-      update_reports_grid(loaded_cells)
+      # FIRST: Update current_cells with saved data (before UI changes)
+      update_reports_grid(rep$cells %||% list())
+      new_report_token(as.numeric(Sys.time()))
       
       # Also populate cell_titles from the loaded report
       titles <- list()
-      for (cell_id in names(loaded_cells)) {
-        cell_obj <- loaded_cells[[cell_id]]
-        if (is.list(cell_obj) && !is.null(cell_obj$title)) {
-          titles[[cell_id]] <- cell_obj$title
+      for (cell_id in names(rep$cells)) {
+        if (!is.null(rep$cells[[cell_id]]$title)) {
+          titles[[cell_id]] <- rep$cells[[cell_id]]$title
         }
       }
       cell_titles(titles)
       
       # THEN: Update all UI elements (this will trigger renderUI which reads from current_cells)
-      updateTextInput(session, "report_title", value = loaded_title)
-      updateTextInput(session, "report_subtitle", value = loaded_subtitle)
-      updateSelectInput(session, "report_team", selected = loaded_team)
-      updateSelectInput(session, "report_type", selected = loaded_type)
-      updateSelectInput(session, "report_scope", selected = loaded_scope)
-      updateSelectizeInput(session, "report_players", selected = loaded_players)
-      updateSelectInput(session, "report_rows", selected = loaded_rows)
-      updateSelectInput(session, "report_cols", selected = loaded_cols)
+      updateTextInput(session, "report_title", value = rep$title %||% "")
+      updateTextInput(session, "report_subtitle", value = rep$subtitle %||% "")
+      updateSelectInput(session, "report_team", selected = rep$team %||% "All")
+      updateSelectInput(session, "report_type", selected = rep$type %||% "Pitching")
+      updateSelectInput(session, "report_scope", selected = rep$scope %||% "Single Player")
+      updateSelectizeInput(session, "report_players", selected = rep$players %||% character(0))
+      updateSelectInput(session, "report_rows", selected = rep$rows %||% 1)
+      updateSelectInput(session, "report_cols", selected = rep$cols %||% 1)
       updateCheckboxInput(session, "use_global_dates", value = isTRUE(rep$use_global_dates))
       updateCheckboxInput(session, "show_pitch_type_key", value = if (is.null(rep$show_pitch_type_key)) TRUE else isTRUE(rep$show_pitch_type_key))
       if (!is.null(rep$global_dates) && length(rep$global_dates) == 2) {
         updateDateRangeInput(session, "global_dates", start = rep$global_dates[1], end = rep$global_dates[2])
       }
       
-      # FINALLY: Trigger report token update AFTER current_cells and UI updates
-      # This ensures all reactives see the new data when they invalidate
-      new_report_token(as.numeric(Sys.time()))
-      
-      rows <- loaded_rows
-      cols <- loaded_cols
-      scope <- loaded_scope
-      cells <- loaded_cells
+      rows <- rep$rows %||% 1
+      cols <- rep$cols %||% 1
+      scope <- rep$scope %||% "Single Player"
+      cells <- rep$cells %||% list()
 
       update_saved_state <- function() {
         for (r in seq_len(rows)) {
@@ -16701,8 +16546,8 @@ custom_reports_server <- function(id) {
         for (r in seq_len(rows)) {
           note_val <- cells[[paste0("row_", r, "_panel_note")]] %||% ""
           span_val <- cells[[paste0("row_", r, "_panel_note_span")]] %||% 1
-          span_val <- coerce_int_scalar(span_val, default = 1L)
-          if (span_val < 1L) span_val <- 1L
+          span_val <- suppressWarnings(as.integer(span_val))
+          if (is.na(span_val) || span_val < 1) span_val <- 1
           max_span <- max(1L, rows - r + 1L)
           span_val <- min(span_val, max_span)
           updateTextInput(session, paste0("row_panel_note_", r), value = note_val)
@@ -16712,7 +16557,6 @@ custom_reports_server <- function(id) {
           for (c in seq_len(cols)) {
             cell_id <- paste0("r", r, "c", c)
             saved_cell <- cells[[cell_id]]
-            if (!is.list(saved_cell)) next
             if (is.null(saved_cell)) next
             if (!is.null(saved_cell$type)) {
               updateSelectInput(session, paste0("cell_type_", cell_id), selected = saved_cell$type)
@@ -16814,70 +16658,12 @@ custom_reports_server <- function(id) {
           later::cancel(loading_report_handle)
           loading_report_handle <<- NULL
         }
-        apply_loaded_state <- function(attempt = 1L) {
+        loading_report_handle <<- later::later(function() {
           if (loading_report_cycle != load_cycle) return()
           update_saved_state()
-          # Re-assert loaded report metadata after dependent observers settle.
-          updateTextInput(session, "report_title", value = loaded_title)
-          updateTextInput(session, "report_subtitle", value = loaded_subtitle)
-          updateSelectInput(session, "report_team", selected = loaded_team)
-          updateSelectInput(session, "report_type", selected = loaded_type)
-          updateSelectInput(session, "report_scope", selected = loaded_scope)
-          updateSelectizeInput(session, "report_players", selected = loaded_players)
-          updateSelectInput(session, "report_rows", selected = as.character(loaded_rows))
-          updateSelectInput(session, "report_cols", selected = as.character(loaded_cols))
-          # Re-assert the correct current_cells from the saved report to undo any
-          # premature overwrites by the throttled observe (which fires when
-          # loading_report flips to FALSE and may read stale input values).
-          update_reports_grid(loaded_cells)
-          if (attempt < 8L) {
-            loading_report_handle <<- later::later(function() {
-              apply_loaded_state(attempt + 1L)
-            }, delay = 0.15)
-            return()
-          }
-
-          loading_scope_players(loaded_players)
-          # Trigger one final repaint after all saved values are flushed.
-          # This ensures header re-renders with correct title
-          new_report_token(as.numeric(Sys.time()))
           loading_report(FALSE)
           loading_report_handle <<- NULL
-
-          # After loading_report(FALSE) and the final new_report_token() change,
-          # report_canvas re-renders one last time, which resets every
-          # cell_title_display_* element back to an empty string.  The title
-          # observers won't fire again (they don't depend on new_report_token()),
-          # so we explicitly re-apply all cell titles once the client has had
-          # time to process and render the new DOM (~500 ms).
-          local({
-            my_cycle <- load_cycle
-            later::later(function() {
-              if (loading_report_cycle != my_cycle) return()
-              titles_snap <- isolate(cell_titles())
-              for (cid in names(titles_snap)) {
-                local({
-                  cid_l  <- cid
-                  tv     <- titles_snap[[cid_l]] %||% ""
-                  if (nzchar(tv)) {
-                    # later::later runs outside Shiny's default reactive domain.
-                    # Use a fully namespaced id + asis=TRUE so shinyjs doesn't
-                    # need to infer session/domain.
-                    shinyjs::html(
-                      id = session$ns(paste0("cell_title_display_", cid_l)),
-                      html = tv,
-                      asis = TRUE
-                    )
-                  }
-                })
-              }
-            }, delay = 0.6)
-          })
-        }
-
-        loading_report_handle <<- later::later(function() {
-          apply_loaded_state(1L)
-        }, delay = 0.2)
+        }, delay = 0.5)
       }, once = TRUE)
     }, ignoreInit = TRUE)
     
@@ -16968,8 +16754,8 @@ custom_reports_server <- function(id) {
       for (r in seq_len(rows)) {
         note_val <- cells[[paste0("row_", r, "_panel_note")]] %||% ""
         span_val <- cells[[paste0("row_", r, "_panel_note_span")]] %||% 1
-        span_val <- coerce_int_scalar(span_val, default = 1L)
-        if (span_val < 1L) span_val <- 1L
+        span_val <- suppressWarnings(as.integer(span_val))
+        if (is.na(span_val) || span_val < 1) span_val <- 1
         max_span <- max(1L, rows - r + 1L)
         span_val <- min(span_val, max_span)
         updateTextInput(session, paste0("row_panel_note_", r), value = note_val)
@@ -16979,10 +16765,9 @@ custom_reports_server <- function(id) {
     
     # Header showing report title + players
     output$report_header <- renderUI({
-      token <- new_report_token()
       title_txt <- trimws(input$report_title)
       subtitle_txt <- trimws(input$report_subtitle %||% "")
-
+      
       # Helper function to format player names from "Last, First" to "First Last"
       format_player_name <- function(p) {
         if (grepl(",", p)) {
@@ -16996,7 +16781,7 @@ custom_reports_server <- function(id) {
           p
         }
       }
-
+      
       # Build player label based on mode - DON'T show player names in Multi-Player
       player_lbl <- if (input$report_scope == "Multi-Player") {
         NULL  # Don't show player names in Multi-Player mode
@@ -17010,10 +16795,9 @@ custom_reports_server <- function(id) {
           "No players selected"
         }
       }
-
+      
       tagList(
         div(
-          `data-report-token` = token,
           style = "margin-top:-88px; margin-bottom:24px;",
           h3(style = "margin-top:0; margin-bottom:2px; text-align:center; font-size:34px;",
              if (nzchar(title_txt)) title_txt else "Custom Report"),
@@ -17037,40 +16821,27 @@ custom_reports_server <- function(id) {
     }
 
     flush_row_note_now <- function(row_num, value = NULL) {
-      if (isTRUE(loading_report())) return(invisible(NULL))
       rows_now <- suppressWarnings(as.integer(input$report_rows))
       if (is.na(rows_now) || rows_now < 1 || row_num < 1 || row_num > rows_now) return(invisible(NULL))
       pending_val <- isolate(input[[paste0("row_panel_note_pending_", row_num)]])
       note_val <- if (!is.null(value)) value else if (!is.null(pending_val)) pending_val else isolate(input[[paste0("row_panel_note_", row_num)]])
       if (is.null(note_val)) return(invisible(NULL))
       cells <- isolate(current_cells())
-      key <- paste0("row_", row_num, "_panel_note")
-      if (identical(cells[[key]], note_val)) return(invisible(NULL))
-      cells[[key]] <- note_val
-      set_current_cells_if_changed(cells)
-    }
-
-    coerce_int_scalar <- function(x, default = 1L) {
-      vals <- suppressWarnings(as.integer(x))
-      vals <- vals[!is.na(vals)]
-      if (!length(vals)) return(as.integer(default))
-      as.integer(vals[[1]])
+      cells[[paste0("row_", row_num, "_panel_note")]] <- note_val
+      current_cells(cells)
     }
 
     flush_row_note_span_now <- function(row_num, value = NULL) {
-      if (isTRUE(loading_report())) return(invisible(NULL))
       rows_now <- suppressWarnings(as.integer(input$report_rows))
       if (is.na(rows_now) || rows_now < 1 || row_num < 1 || row_num > rows_now) return(invisible(NULL))
       max_span <- max(1L, rows_now - row_num + 1L)
       raw_span <- if (!is.null(value)) value else isolate(input[[paste0("row_panel_note_span_", row_num)]])
-      span_val <- coerce_int_scalar(raw_span, default = 1L)
-      if (span_val < 1L) span_val <- 1L
+      span_val <- suppressWarnings(as.integer(raw_span))
+      if (is.na(span_val) || span_val < 1) span_val <- 1L
       span_val <- min(span_val, max_span)
       cells <- isolate(current_cells())
-      key <- paste0("row_", row_num, "_panel_note_span")
-      if (identical(cells[[key]], span_val)) return(invisible(NULL))
-      cells[[key]] <- span_val
-      set_current_cells_if_changed(cells)
+      cells[[paste0("row_", row_num, "_panel_note_span")]] <- span_val
+      current_cells(cells)
     }
 
     observeEvent(input$download_report_pdf, {
@@ -17202,9 +16973,6 @@ custom_reports_server <- function(id) {
         flush_row_note_span_now(r, value = 1)
       }
       if (isTRUE(is_admin_local())) updateCheckboxInput(session, "report_global", value = FALSE)
-      
-      # Trigger token update to force header re-render
-      new_report_token(as.numeric(Sys.time()))
 
       loading_report_handle <<- later::later(function() {
         if (loading_report_cycle != new_cycle) return()
@@ -17222,20 +16990,13 @@ custom_reports_server <- function(id) {
     loading_report_cycle <- 0  # Tracks active loading cycle
     loading_report_handle <- NULL
     new_report_token <- reactiveVal(0)
-    loading_scope_players <- reactiveVal(NULL)  # Stores players from saved report during load
 
     start_loading_cycle <- function() {
       loading_report_cycle <<- loading_report_cycle + 1
       loading_report_cycle
     }
-    set_current_cells_if_changed <- function(cells_list) {
-      old_cells <- isolate(current_cells())
-      if (!identical(old_cells, cells_list)) {
-        current_cells(cells_list)
-      }
-    }
     update_reports_grid <- function(cells_list) {
-      set_current_cells_if_changed(cells_list)
+      current_cells(cells_list)
     }
     
     # Keep all per-panel date inputs synced to the global date range whenever it changes.
@@ -17263,7 +17024,6 @@ custom_reports_server <- function(id) {
 
     output$report_pitch_type_legend <- renderUI({
       if (!isTRUE(input$show_pitch_type_key)) return(NULL)
-      if (isTRUE(loading_report())) return(NULL)
       rows <- suppressWarnings(as.integer(input$report_rows))
       cols <- suppressWarnings(as.integer(input$report_cols))
       if (is.na(rows) || is.na(cols) || rows < 1 || cols < 1) return(NULL)
@@ -17485,19 +17245,12 @@ custom_reports_server <- function(id) {
         rows <- as.integer(input$report_rows); cols <- as.integer(input$report_cols)
         cells <- current_cells()  # React to cell changes including span
         is_multi_player <- input$report_scope == "Multi-Player"
-
-        # Add reactive dependency on all span inputs to trigger re-render when span changes.
-        # Skip this during a report load: update_saved_state() is called up to 8 times and
-        # sends updateNumericInput for every cell span.  Each round-trip would otherwise
-        # trigger an extra report_canvas re-render, clearing cell_title_display elements and
-        # interrupting in-flight girafe renders.  new_report_token() already drives the
-        # two intentional re-renders (T=0 and T≈1.25 s) during a load.
-        if (!isTRUE(loading_report())) {
-          for (r in seq_len(rows)) {
-            for (c in seq_len(cols)) {
-              cell_id <- paste0("r", r, "c", c)
-              input[[paste0("cell_span_", cell_id)]]
-            }
+        
+        # Add reactive dependency on all span inputs to trigger re-render when span changes
+        for (r in seq_len(rows)) {
+          for (c in seq_len(cols)) {
+            cell_id <- paste0("r", r, "c", c)
+            input[[paste0("cell_span_", cell_id)]]
           }
         }
         
@@ -17524,8 +17277,8 @@ custom_reports_server <- function(id) {
         note_span_input <- input[[paste0("row_panel_note_span_", note_row)]]
         note_span_saved <- cells[[paste0("row_", note_row, "_panel_note_span")]] %||% 1
         note_span_raw <- if (!is.null(note_span_input)) note_span_input else note_span_saved
-        note_span <- coerce_int_scalar(note_span_raw, default = 1L)
-        if (note_span < 1L) note_span <- 1L
+        note_span <- suppressWarnings(as.integer(note_span_raw))
+        if (is.na(note_span) || note_span < 1) note_span <- 1L
         max_span <- max(1L, rows - note_row + 1L)
         note_span <- min(note_span, max_span)
         row_note_starts[[note_row]] <- list(text = note_text, span = note_span)
@@ -17553,9 +17306,7 @@ custom_reports_server <- function(id) {
         # Build cells for this row
         cell_infos <- lapply(seq_len(cols), function(cn) {
           cell_id <- paste0("r", r, "c", cn)
-          sel <- cells[[cell_id]]
-          if (!is.list(sel)) sel <- list()
-          sel <- modifyList(list(
+          sel <- cells[[cell_id]] %||% list(
             type = "", 
             filter = "Pitch Types", 
             title = "",
@@ -17567,10 +17318,9 @@ custom_reports_server <- function(id) {
             velocity_chart = "Velocity Chart (Game/Inning)",
             filter_select = c("Dates","Session Type","Pitch Types"),
             span = 1
-          ), sel)
+          )
           settings_cell_id <- if (is_multi_player && r > 1) paste0("r1c", cn) else cell_id
-          settings_sel <- cells[[settings_cell_id]]
-          if (!is.list(settings_sel)) settings_sel <- sel
+          settings_sel <- cells[[settings_cell_id]] %||% sel
           cell_type_selected <- input[[paste0("cell_type_", settings_cell_id)]] %||% settings_sel$type %||% ""
           is_summary_table <- identical(cell_type_selected, "Summary Table")
           is_controlled_row <- is_multi_player && r > 1
@@ -17593,8 +17343,8 @@ custom_reports_server <- function(id) {
         row_cells <- lapply(seq_len(cols), function(cn) {
           if (col_used[cn]) return(NULL)
           info <- cell_infos[[cn]]
-          span_val <- coerce_int_scalar(info$settings_span %||% info$span %||% 1, default = 1L)
-          if (span_val < 1L) span_val <- 1L
+          span_val <- suppressWarnings(as.integer(info$settings_span %||% info$span %||% 1))
+          if (is.na(span_val) || span_val < 1) span_val <- 1
           max_span <- cols - (cn - 1)
           span_val <- min(span_val, max_span)
           col_idx <- seq.int(cn, cn + span_val - 1)
@@ -17793,11 +17543,9 @@ custom_reports_server <- function(id) {
         )
       })
       
-      # Add token as attribute to force re-render when loading new reports
       div(
         class = paste("creport-grid", paste0("creport-rows-", rows)),
         style = sprintf("--creport-rows:%d; --creport-cols:%d;", rows, cols),
-        `data-report-token` = new_report_token(),
         tagList(grid)
       )
     })
@@ -17834,8 +17582,7 @@ custom_reports_server <- function(id) {
           id <- paste0("r", r, "c", c)
           
           # Get existing cell data or create new
-          existing_cell <- cells[[id]]
-          if (!is.list(existing_cell)) existing_cell <- list()
+          existing_cell <- cells[[id]] %||% list()
           
           # Helper function to update value only if input exists, otherwise keep existing
           update_if_exists <- function(input_val, existing_val, default_val = NULL) {
@@ -17878,7 +17625,7 @@ custom_reports_server <- function(id) {
           # Keep UI in sync with stored state
         }
       }
-      set_current_cells_if_changed(cells)
+      current_cells(cells)
     }) %>% throttle(2000)  # Throttle to 2 seconds to reduce saves during rapid changes
     
     # Separate observer to handle title updates with debounce (prevents interruption while typing)
@@ -17895,7 +17642,7 @@ custom_reports_server <- function(id) {
       existing_cell <- cells[[cell_id]] %||% list()
       existing_cell$title <- title_val
       cells[[cell_id]] <- existing_cell
-      set_current_cells_if_changed(cells)
+      current_cells(cells)
     }
 
     created_title_flush_ids <- character(0)
@@ -17910,11 +17657,9 @@ custom_reports_server <- function(id) {
         local({
           rid <- r
           observeEvent(input[[paste0("row_panel_note_blur_", rid)]], {
-            if (isTRUE(loading_report())) return()
             flush_row_note_now(rid, value = input[[paste0("row_panel_note_blur_", rid)]])
           }, ignoreInit = TRUE)
           observeEvent(input[[paste0("row_panel_note_span_", rid)]], {
-            if (isTRUE(loading_report())) return()
             flush_row_note_span_now(rid, value = input[[paste0("row_panel_note_span_", rid)]])
           }, ignoreInit = TRUE)
         })
@@ -17956,7 +17701,6 @@ custom_reports_server <- function(id) {
 
     # Sync titles from cell_titles back to current_cells (so they're saved permanently)
     observe({
-      if (isTRUE(loading_report())) return()
       titles <- cell_titles()
       cells <- isolate(current_cells())
       
@@ -17969,7 +17713,7 @@ custom_reports_server <- function(id) {
           cells[[cell_id]] <- list(title = titles[[cell_id]])
         }
       }
-      set_current_cells_if_changed(cells)
+      current_cells(cells)
     }) %>% debounce(500)  # Reduced to 500ms for faster syncing
     
     # Helper: get filtered dataset for player(s) for a given cell
@@ -18100,30 +17844,18 @@ custom_reports_server <- function(id) {
     
     # Wrapper that extracts inputs and calls cached function
     get_cell_data_wrapper <- function(cell_id) {
-      is_loading_now <- isTRUE(loading_report())
-
       # Determine which player(s) to use
       players <- if (input$report_scope == "Multi-Player") {
         # Extract row number from cell_id (e.g., "r1c2" -> row 1)
         row_num <- as.integer(sub("r(\\d+)c.*", "\\1", cell_id))
-        row_player <- if (is_loading_now) {
-          current_cells()[[paste0("row_", row_num, "_player")]]
-        } else {
-          input[[paste0("row_player_", row_num)]] %||% current_cells()[[paste0("row_", row_num, "_player")]]
-        }
+        row_player <- input[[paste0("row_player_", row_num)]]
         if (is.null(row_player) || !nzchar(row_player)) {
           return(data.frame())  # No player selected for this row
         }
         row_player
       } else {
         # Single Player mode - use main player selector
-        # During loading, use the saved players (before input$report_players round-trip completes)
-        single_players <- if (is_loading_now) {
-          lsp <- loading_scope_players()
-          if (!is.null(lsp) && length(lsp) > 0) lsp else input$report_players
-        } else {
-          input$report_players
-        }
+        single_players <- input$report_players
         if (is.null(single_players) || length(single_players) == 0 ||
             all(trimws(single_players) == "")) {
           single_players <- "All"
@@ -18150,14 +17882,9 @@ custom_reports_server <- function(id) {
         cell_id
       }
       
-      cell_state <- current_cells()[[filter_cell_id]]
-      if (!is.list(cell_state)) cell_state <- list()
+      cell_state <- current_cells()[[filter_cell_id]] %||% list()
       use_global_dates <- isTRUE(input$use_global_dates)
       global_dates <- input$global_dates
-      pick_filter_val <- function(input_id, state_val, default_val = NULL) {
-        if (is_loading_now) return(state_val %||% default_val)
-        input[[input_id]] %||% state_val %||% default_val
-      }
 
       get_cell_data(
         cell_id = cell_id,
@@ -18166,23 +17893,23 @@ custom_reports_server <- function(id) {
         dates = if (use_global_dates && !is.null(global_dates) && length(global_dates) == 2) {
           global_dates
         } else {
-          pick_filter_val(paste0("cell_dates_", filter_cell_id), cell_state$dates)
+          input[[paste0("cell_dates_", filter_cell_id)]] %||% cell_state$dates
         },
-        session = pick_filter_val(paste0("cell_session_", filter_cell_id), cell_state$session, "All"),
-        pitch_types = pick_filter_val(paste0("cell_pitch_types_", filter_cell_id), cell_state$pitch_types),
-        batter_side = pick_filter_val(paste0("cell_batter_side_", filter_cell_id), cell_state$batter_side),
-        pitcher_hand = pick_filter_val(paste0("cell_pitcher_hand_", filter_cell_id), cell_state$pitcher_hand),
-        results = pick_filter_val(paste0("cell_results_", filter_cell_id), cell_state$results),
-        qp = pick_filter_val(paste0("cell_qp_", filter_cell_id), cell_state$qp),
-        count = pick_filter_val(paste0("cell_count_", filter_cell_id), cell_state$count),
-        after_count = pick_filter_val(paste0("cell_after_count_", filter_cell_id), cell_state$after_count),
-        zone = pick_filter_val(paste0("cell_zone_", filter_cell_id), cell_state$zone),
-        velo_min = pick_filter_val(paste0("cell_velo_min_", filter_cell_id), cell_state$velo_min),
-        velo_max = pick_filter_val(paste0("cell_velo_max_", filter_cell_id), cell_state$velo_max),
-        ivb_min = pick_filter_val(paste0("cell_ivb_min_", filter_cell_id), cell_state$ivb_min),
-        ivb_max = pick_filter_val(paste0("cell_ivb_max_", filter_cell_id), cell_state$ivb_max),
-        hb_min = pick_filter_val(paste0("cell_hb_min_", filter_cell_id), cell_state$hb_min),
-        hb_max = pick_filter_val(paste0("cell_hb_max_", filter_cell_id), cell_state$hb_max)
+        session = input[[paste0("cell_session_", filter_cell_id)]] %||% cell_state$session %||% "All",
+        pitch_types = input[[paste0("cell_pitch_types_", filter_cell_id)]] %||% cell_state$pitch_types,
+        batter_side = input[[paste0("cell_batter_side_", filter_cell_id)]] %||% cell_state$batter_side,
+        pitcher_hand = input[[paste0("cell_pitcher_hand_", filter_cell_id)]] %||% cell_state$pitcher_hand,
+        results = input[[paste0("cell_results_", filter_cell_id)]] %||% cell_state$results,
+        qp = input[[paste0("cell_qp_", filter_cell_id)]] %||% cell_state$qp,
+        count = input[[paste0("cell_count_", filter_cell_id)]] %||% cell_state$count,
+        after_count = input[[paste0("cell_after_count_", filter_cell_id)]] %||% cell_state$after_count,
+        zone = input[[paste0("cell_zone_", filter_cell_id)]] %||% cell_state$zone,
+        velo_min = input[[paste0("cell_velo_min_", filter_cell_id)]] %||% cell_state$velo_min,
+        velo_max = input[[paste0("cell_velo_max_", filter_cell_id)]] %||% cell_state$velo_max,
+        ivb_min = input[[paste0("cell_ivb_min_", filter_cell_id)]] %||% cell_state$ivb_min,
+        ivb_max = input[[paste0("cell_ivb_max_", filter_cell_id)]] %||% cell_state$ivb_max,
+        hb_min = input[[paste0("cell_hb_min_", filter_cell_id)]] %||% cell_state$hb_min,
+        hb_max = input[[paste0("cell_hb_max_", filter_cell_id)]] %||% cell_state$hb_max
       )
     }
     
@@ -18201,23 +17928,9 @@ custom_reports_server <- function(id) {
         # Use this cell's own settings
         cell_id
       }
-
-      settings_state <- current_cells()[[settings_cell_id]]
-      if (!is.list(settings_state)) settings_state <- list()
-
-      # Always prefer current_cells() state over input values to ensure proper loading
-      # When loading_report() is TRUE, ONLY use current_cells()
-      # When FALSE, use input values but fall back to current_cells() if input is missing
-      tsel <- if (isTRUE(loading_report())) {
-        settings_state$type %||% ""
-      } else {
-        input[[paste0("cell_type_", settings_cell_id)]] %||% settings_state$type %||% ""
-      }
-      fsel <- if (isTRUE(loading_report())) {
-        settings_state$filter %||% "Pitch Types"
-      } else {
-        input[[paste0("cell_filter_", settings_cell_id)]] %||% settings_state$filter %||% "Pitch Types"
-      }
+      
+      tsel <- input[[paste0("cell_type_", settings_cell_id)]] %||% ""
+      fsel <- input[[paste0("cell_filter_", settings_cell_id)]] %||% "Pitch Types"
       out_id <- paste0("cell_render_", cell_id)
       tooltip_css_local <- if (exists("tooltip_css", inherits = TRUE)) tooltip_css else
         "color:#fff !important;font-weight:600;padding:6px;border-radius:8px;text-shadow:0 1px 1px rgba(0,0,0,.4);"
@@ -18232,18 +17945,11 @@ custom_reports_server <- function(id) {
         if (is.null(dm) && !is.null(input$dark_mode)) dm <- input$dark_mode
         isTRUE(dm)
       }
-      
-      # Determine if the chart type uses ggiraph (which needs special handling)
-      is_ggiraph_chart <- tsel %in% c("Movement Plot", "Release Plot", "Location Plot", "Heatmap", 
-                                       "Velocity Chart", "Pitch Usage Pie Chart", "Velocity Bar Chart",
-                                       "Velocity Distribution", "Spray Chart")
-      
-      # Note: We don't clear outputs here because it's called on every render.
-      # Shiny will automatically replace outputs when we assign new renderXXX functions.
-      
+      # clear previous output so switching types always re-renders
+      output[[out_id]] <- renderUI({ NULL })
       if (!nzchar(tsel)) {
-        output[[out_id]] <- renderUI({ div(style = "padding: 20px; text-align: center; color: #999;", "Select a chart type") })
-        return(uiOutput(ns(out_id)))
+        output[[out_id]] <- renderUI({ NULL })
+        return(NULL)
       }
       df <- get_cell_data_wrapper(cell_id)
       if (!nrow(df)) {
@@ -18589,56 +18295,152 @@ custom_reports_server <- function(id) {
         })
         return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Heatmap") {
-        output[[out_id]] <- ggiraph::renderGirafe({
-          tryCatch({
-            df_loc <- df
-            if (!nrow(df_loc)) {
-              return(girafe_transparent(ggobj = ggplot() + theme_void()))
+        output[[out_id]] <- renderPlot({
+          df_loc <- df
+          if (!nrow(df_loc)) {
+            plot.new(); title("No data"); return(invisible())
+          }
+          
+          # Apply Pitch Results filter for heatmap too (use settings_cell_id for filter)
+          df_loc <- apply_pitch_results_filter(df_loc, input[[paste0("cell_results_", settings_cell_id)]])
+          
+          if (!nrow(df_loc)) {
+            plot.new(); title("No data after filters"); return(invisible())
+          }
+          
+          # Heatmap type selection
+          hm_stat <- input[[paste0("cell_heat_stat_", settings_cell_id)]] %||% "Frequency"
+          plot_obj <- render_heatmap_stat(
+            df_loc, hm_stat,
+            plot_xlim = c(-2.0, 2.0),
+            plot_ylim = c(0.6, 4.2)
+          )
+          print(plot_obj)
+          return(invisible())
+          
+          # Use advanced Pitching Suite heatmap implementation
+          if (hm_stat == "Frequency") {
+            grid <- make_kde_grid(df_loc$PlateLocSide, df_loc$PlateLocHeight, n = 200)
+            
+            if (!nrow(grid)) return(ggplot() + theme_void())
+            
+            # Normalize KDE values to 0-100 scale
+            grid$z <- (grid$z / max(grid$z, na.rm = TRUE)) * 100
+            
+            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "Pitch Frequency",
+                             scale_limits = c(0, 80)))
+          }
+          
+          # Filter to valid location data for non-Frequency stats
+          df_loc <- df_loc %>% dplyr::filter(is.finite(PlateLocSide), is.finite(PlateLocHeight))
+          if (!nrow(df_loc)) {
+            plot.new(); title("No location data"); return(invisible())
+          }
+          
+          if (hm_stat == "Whiff Rate") {
+            swing_events <- c("StrikeSwinging", "FoulBall", "FoulBallFieldable", 
+                              "FoulBallNotFieldable", "InPlay")
+            swing_mask  <- df_loc$PitchCall %in% swing_events
+            val <- ifelse(swing_mask, ifelse(df_loc$PitchCall == "StrikeSwinging", 1, 0), NA_real_)
+            grid <- make_kde_mean_grid(df_loc$PlateLocSide, df_loc$PlateLocHeight, val)
+            if (!nrow(grid)) return(ggplot() + theme_void())
+            breaks <- c(seq(0, 50, length.out = HEAT_BINS + 1), Inf)
+            
+            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
+                             breaks = breaks, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "Whiff Rate %",
+                             scale_limits = c(0, 50)))
+          }
+          
+          if (hm_stat == "GB Rate") {
+            df_bip <- df_loc %>%
+              filter(SessionType == "Live", 
+                     PitchCall == "InPlay",
+                     !is.na(TaggedHitType))
+            
+            if (nrow(df_bip) < 3) {
+              plot.new(); title("Insufficient Live BIP data"); return(invisible())
             }
-
-            # Apply Pitch Results filter for heatmap too (use settings cell state while loading)
-            results_filter <- if (isTRUE(loading_report())) {
-              settings_state$results %||% NULL
-            } else {
-              input[[paste0("cell_results_", settings_cell_id)]] %||% (settings_state$results %||% NULL)
-            }
-            df_loc <- apply_pitch_results_filter(df_loc, results_filter)
-
-            if (!nrow(df_loc)) {
-              return(girafe_transparent(ggobj = ggplot() + theme_void()))
-            }
-
-            # Heatmap type selection
-            hm_stat <- if (isTRUE(loading_report())) {
-              settings_state$heat_stat %||% "Frequency"
-            } else {
-              input[[paste0("cell_heat_stat_", settings_cell_id)]] %||% (settings_state$heat_stat %||% "Frequency")
-            }
-            plot_obj <- render_heatmap_stat(
-              df_loc, hm_stat,
-              plot_xlim = c(-2.0, 2.0),
-              plot_ylim = c(0.6, 4.2)
+            
+            val <- ifelse(df_bip$TaggedHitType == "GroundBall", 1, 0)
+            grid <- make_kde_mean_grid(df_bip$PlateLocSide, df_bip$PlateLocHeight, val)
+            if (!nrow(grid)) return(ggplot() + theme_void())
+            
+            breaks <- c(-Inf, seq(0, 70, length.out = HEAT_BINS + 1), Inf)
+            
+            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
+                             breaks = breaks, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "GB Rate %",
+                             scale_limits = c(0, 70)))
+          }
+          
+          if (hm_stat == "Contact Rate") {
+            # Contact Rate = 100% - Whiff Rate (guaranteed perfect opposite colors)
+            swing_events <- c("StrikeSwinging", "FoulBall", "FoulBallFieldable", 
+                              "FoulBallNotFieldable", "InPlay")
+            swing_mask  <- df_loc$PitchCall %in% swing_events
+            val <- ifelse(swing_mask, ifelse(df_loc$PitchCall == "StrikeSwinging", 0, 1), NA_real_)
+            grid <- make_kde_mean_grid(df_loc$PlateLocSide, df_loc$PlateLocHeight, val)
+            if (!nrow(grid)) return(ggplot() + theme_void())
+            grid$z <- pmin(pmax(grid$z * 100, 50), 100)
+            breaks <- seq(50, 100, length.out = HEAT_BINS + 1)
+            
+            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
+                             breaks = breaks, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "Contact Rate %",
+                             scale_limits = c(50, 100)))
+          }
+          
+          if (hm_stat == "Swing Rate") {
+            swing_events <- c("StrikeSwinging", "FoulBall", "FoulBallFieldable", 
+                              "FoulBallNotFieldable", "InPlay")
+            
+            val <- ifelse(df_loc$PitchCall %in% swing_events, 1, 0)
+            grid <- make_kde_mean_grid(df_loc$PlateLocSide, df_loc$PlateLocHeight, val)
+            if (!nrow(grid)) return(ggplot() + theme_void())
+            breaks <- seq(20, 80, length.out = HEAT_BINS + 1)
+            
+            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
+                             breaks = breaks, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "Swing Rate %",
+                             scale_limits = c(20, 80)))
+          }
+          
+          if (hm_stat == "Exit Velocity") {
+            df_bip <- dplyr::filter(
+              df_loc, 
+              SessionType == "Live",
+              PitchCall == "InPlay",
+              is.finite(PlateLocSide), 
+              is.finite(PlateLocHeight),
+              is.finite(ExitSpeed)
             )
-            girafe_transparent(ggobj = plot_obj)
-          }, error = function(e) {
-            girafe_transparent(ggobj = ggplot() +
-              annotate("text", x = 0, y = 0, label = "Heatmap render error", size = 4) +
-              theme_void())
-          })
-        })
-        return(ggiraph::girafeOutput(ns(out_id), height = "280px"))
+            
+            if (!nrow(df_bip)) return(ggplot() + theme_void())
+            
+            grid <- make_kde_mean_grid(df_bip$PlateLocSide, df_bip$PlateLocHeight, df_bip$ExitSpeed)
+            if (!nrow(grid)) return(ggplot() + theme_void())
+            breaks <- seq(60, 110, length.out = HEAT_BINS + 1)
+            
+            return(draw_heat(grid, bins = HEAT_BINS, pal_fun = heat_pal_bwr_no_white, 
+                             breaks = breaks, mark_max = FALSE,
+                             show_scale = TRUE, scale_label = "Exit Velocity (mph)",
+                             scale_limits = c(60, 110)))
+          }
+          
+          # Default fallback
+          ggplot() + theme_void()
+        }, bg = "transparent")
+        return(plotOutput(ns(out_id), height = "280px"))
       } else if (tsel == "Velocity Chart") {
         output[[out_id]] <- ggiraph::renderGirafe({
           if (!identical(input$report_type, "Pitching")) return(NULL)
           df_vel <- df %>% dplyr::filter(!is.na(RelSpeed), !is.na(TaggedPitchType))
           if (!nrow(df_vel)) return(NULL)
 
-          velocity_choice <- if (isTRUE(loading_report())) {
-            settings_state$velocity_chart %||% "Velocity Chart (Game/Inning)"
-          } else {
-            input[[paste0("cell_velocity_chart_", settings_cell_id)]] %||%
-              (settings_state$velocity_chart %||% "Velocity Chart (Game/Inning)")
-          }
+          velocity_choice <- input[[paste0("cell_velocity_chart_", settings_cell_id)]] %||%
+            (current_cells()[[settings_cell_id]]$velocity_chart %||% "Velocity Chart (Game/Inning)")
 
           dark_on <- is_dark_mode_local()
           axis_col <- if (dark_on) "#e5e7eb" else "black"
@@ -18711,7 +18513,7 @@ custom_reports_server <- function(id) {
                 axis.title.x = element_text(color = axis_col),
                 axis.title.y = element_text(color = axis_col)
               ) +
-              labs(x = "Pitch Count", y = "Velocity (MPH)")
+              labs(title = "Velocity Chart (Game/Inning)", x = "Pitch Count", y = "Velocity (MPH)")
 
             # Dashed inning boundary lines (matches Pitching velocity chart behavior for Live-only data).
             if ("SessionType" %in% names(df2) &&
@@ -18800,7 +18602,7 @@ custom_reports_server <- function(id) {
                 axis.title.x = element_text(color = axis_col),
                 axis.title.y = element_text(color = axis_col)
               ) +
-              labs(x = "Game Date", y = "Velocity (MPH)")
+              labs(title = "Average Velocity by Game", x = "Game Date", y = "Velocity (MPH)")
 
             return(girafe_transparent(
               ggobj = p,
@@ -18881,7 +18683,7 @@ custom_reports_server <- function(id) {
               axis.title.x = element_text(color = axis_col),
               axis.title.y = element_text(color = axis_col)
             ) +
-            labs(x = "Inning of Appearance", y = "Velocity (MPH)")
+            labs(title = "Average Velocity by Inning", x = "Inning of Appearance", y = "Velocity (MPH)")
 
           girafe_transparent(
             ggobj = p,
@@ -19591,95 +19393,64 @@ custom_reports_server <- function(id) {
               
               # Use reactive to cache expensive computations
               cell_data <- reactive({
-                # Force invalidation when a saved/new report is loaded.
-                new_report_token()
-                is_loading_now <- isTRUE(loading_report())
-
+                # Only re-compute when these specific inputs change
                 # NOTE: Do NOT include cell_title here - it causes re-render on every keystroke
-
+                
                 # For Multi-Player mode, rows 2+ should use Row 1's settings
+                is_multi_player <- input$report_scope == "Multi-Player"
                 row_num <- as.integer(sub("r(\\d+)c\\d+", "\\1", id))
                 col_num <- as.integer(sub("r\\d+c(\\d+)", "\\1", id))
-
-                # During loading, isolate input$report_scope and current_cells() so that
-                # round-trips from updateSelectInput / update_reports_grid() do NOT
-                # re-invalidate this reactive.  new_report_token() is the sole trigger
-                # while loading_report() is TRUE, preventing chart renders from being
-                # interrupted mid-flight by input updates (which caused blank charts).
-                is_multi_player <- if (is_loading_now) {
-                  isolate(input$report_scope == "Multi-Player")
-                } else {
-                  input$report_scope == "Multi-Player"
-                }
-
+                
                 # Determine which cell's inputs to monitor
                 settings_id <- if (is_multi_player && row_num > 1) {
                   paste0("r1c", col_num)
                 } else {
                   id
                 }
-                cells_snapshot <- if (is_loading_now) {
-                  isolate(current_cells())
-                } else {
-                  current_cells()
+                
+                # Monitor these inputs to trigger re-rendering
+                input[[paste0("cell_type_", settings_id)]]
+                input[[paste0("cell_filter_", settings_id)]]
+                input[[paste0("cell_table_mode_", settings_id)]]
+                input[[paste0("cell_color_", settings_id)]]
+                input[[paste0("cell_heat_stat_", settings_id)]]
+                input[[paste0("cell_velocity_chart_", settings_id)]]
+                input[[paste0("cell_table_custom_cols_", settings_id)]]
+                
+                # Also monitor filter values to trigger data updates
+                input[[paste0("cell_dates_", settings_id)]]
+                input[[paste0("cell_session_", settings_id)]]
+                input[[paste0("cell_pitch_types_", settings_id)]]
+                input[[paste0("cell_batter_side_", settings_id)]]
+                input[[paste0("cell_pitcher_hand_", settings_id)]]
+                input[[paste0("cell_results_", settings_id)]]
+                input[[paste0("cell_qp_", settings_id)]]
+                input[[paste0("cell_count_", settings_id)]]
+                input[[paste0("cell_after_count_", settings_id)]]
+                input[[paste0("cell_zone_", settings_id)]]
+                input[[paste0("cell_velo_min_", settings_id)]]
+                input[[paste0("cell_velo_max_", settings_id)]]
+                input[[paste0("cell_ivb_min_", settings_id)]]
+                input[[paste0("cell_ivb_max_", settings_id)]]
+                input[[paste0("cell_hb_min_", settings_id)]]
+                input[[paste0("cell_hb_max_", settings_id)]]
+                input$use_global_dates
+                input$global_dates
+                
+                # For Multi-Player mode, also monitor the row player selection
+                if (is_multi_player) {
+                  input[[paste0("row_player_", row_num)]]
                 }
-                settings_state <- cells_snapshot[[settings_id]]
-                if (!is.list(settings_state)) settings_state <- list()
-
-                pick_setting <- function(input_id, state_val, default_val = NULL) {
-                  if (is_loading_now) return(state_val %||% default_val)
-                  input[[input_id]] %||% state_val %||% default_val
-                }
-
-                # Monitor cell-level inputs to trigger re-rendering — but ONLY when not
-                # loading.  While a saved report is loading, update_saved_state() fires
-                # up to 8 times and sends updateSelectInput/updateNumericInput for every
-                # cell.  Each round-trip would otherwise re-invalidate this reactive and
-                # cancel the in-flight girafe render, resulting in blank chart panels.
-                if (!is_loading_now) {
-                  input[[paste0("cell_type_", settings_id)]]
-                  input[[paste0("cell_filter_", settings_id)]]
-                  input[[paste0("cell_table_mode_", settings_id)]]
-                  input[[paste0("cell_color_", settings_id)]]
-                  input[[paste0("cell_heat_stat_", settings_id)]]
-                  input[[paste0("cell_velocity_chart_", settings_id)]]
-                  input[[paste0("cell_table_custom_cols_", settings_id)]]
-                  input[[paste0("cell_dates_", settings_id)]]
-                  input[[paste0("cell_session_", settings_id)]]
-                  input[[paste0("cell_pitch_types_", settings_id)]]
-                  input[[paste0("cell_batter_side_", settings_id)]]
-                  input[[paste0("cell_pitcher_hand_", settings_id)]]
-                  input[[paste0("cell_results_", settings_id)]]
-                  input[[paste0("cell_qp_", settings_id)]]
-                  input[[paste0("cell_count_", settings_id)]]
-                  input[[paste0("cell_after_count_", settings_id)]]
-                  input[[paste0("cell_zone_", settings_id)]]
-                  input[[paste0("cell_velo_min_", settings_id)]]
-                  input[[paste0("cell_velo_max_", settings_id)]]
-                  input[[paste0("cell_ivb_min_", settings_id)]]
-                  input[[paste0("cell_ivb_max_", settings_id)]]
-                  input[[paste0("cell_hb_min_", settings_id)]]
-                  input[[paste0("cell_hb_max_", settings_id)]]
-                  input$use_global_dates
-                  input$global_dates
-                  if (is_multi_player) {
-                    input[[paste0("row_player_", row_num)]]
-                  }
-                }
-
-                # Return the actual values.
-                # Including .report_token ensures this list is never identical() between
-                # report loads, so cell_output_* always re-renders even when chart
-                # type/settings happen to be the same across two different saved reports.
+                
+                # Return the actual values
                 list(
-                  .report_token = new_report_token(),
-                  type = pick_setting(paste0("cell_type_", settings_id), settings_state$type, ""),
-                  filter = pick_setting(paste0("cell_filter_", settings_id), settings_state$filter, "Pitch Types"),
-                  mode = pick_setting(paste0("cell_table_mode_", settings_id), settings_state$table_mode),
-                  color = pick_setting(paste0("cell_color_", settings_id), settings_state$color, TRUE),
-                  heat_stat = pick_setting(paste0("cell_heat_stat_", settings_id), settings_state$heat_stat, "Frequency"),
-                  velocity_chart = pick_setting(paste0("cell_velocity_chart_", settings_id), settings_state$velocity_chart, "Velocity Chart (Game/Inning)"),
-                  custom_cols = pick_setting(paste0("cell_table_custom_cols_", settings_id), settings_state$table_custom_cols, character(0))
+                  type = input[[paste0("cell_type_", settings_id)]],
+                  filter = input[[paste0("cell_filter_", settings_id)]],
+                  mode = input[[paste0("cell_table_mode_", settings_id)]],
+                  color = input[[paste0("cell_color_", settings_id)]],
+                  heat_stat = input[[paste0("cell_heat_stat_", settings_id)]],
+                  velocity_chart = input[[paste0("cell_velocity_chart_", settings_id)]],
+                  custom_cols = input[[paste0("cell_table_custom_cols_", settings_id)]]
                 )
               })
               
@@ -19724,44 +19495,23 @@ custom_reports_server <- function(id) {
                 # Get cell data (triggers on chart type/filter/mode changes only)
                 cd <- cell_data()
                 out_id <- paste0("cell_render_", id)
-                
-                # Get data for this cell
-                df_now <- tryCatch(
-                  get_cell_data_wrapper(id),
-                  error = function(e) {
-                    output[[out_id]] <- renderUI({
-                      div(style = "padding: 20px; text-align: center; color: #b91c1c;",
-                          paste("Chart data error:", e$message))
-                    })
-                    return(data.frame())
-                  }
-                )
-                
-                # If no data, show message
+                df_now <- get_cell_data_wrapper(id)
                 if (!nrow(df_now)) {
-                  return(div(
-                    style = "padding: 20px; text-align: center; color: #999;",
-                    "No data for selected filters"
-                  ))
+                  output[[out_id]] <- renderUI({
+                    div("No data for selected filters")
+                  })
+                  return(uiOutput(ns(out_id)))
                 }
-
+                
                 # Render the chart (title is separate, updated via shinyjs)
-                # Wrap in div with unique token to force Shiny to recognize updates
-                div(`data-report-token` = cd$.report_token, render_cell(id))
+                render_cell(id)
               })
-              outputOptions(output, paste0("cell_output_", id), suspendWhenHidden = FALSE)
             })
             existing_render <- c(existing_render, cell_id)
           }
         }
       }
       cells_with_render_observers(existing_render)
-    }, ignoreInit = FALSE)
-
-    observeEvent(list(input$report_rows, input$report_cols, new_report_token()), {
-      session$onFlushed(function() {
-        session$sendCustomMessage("creports_force_reflow", list(rootId = ns("report_canvas_wrapper")))
-      }, once = TRUE)
     }, ignoreInit = FALSE)
   })
 }
@@ -19822,7 +19572,7 @@ player_plans_ui <- function() {
           
           selectInput("pp_session_type", "Session Type:",
                       choices = session_type_choices(),
-                      selected = "Season"),
+                      selected = "All"),
           
           dateRangeInput("pp_date_range", "Date Range:",
                          start = Sys.Date() - 30,
@@ -21647,9 +21397,6 @@ ui <- tagList(
           var clone = target.cloneNode(true);
           clone.classList.add('creport-pdf-clone');
           clone.classList.add(isDark ? 'creport-pdf-dark' : 'creport-pdf-light');
-          if (clone.querySelector('.creport-row-note')) {
-            clone.classList.add('creport-pdf-has-row-notes');
-          }
 
           // Keep PDF panel sizing identical to live dashboard sizing.
           var liveGrid = target.querySelector('.creport-grid');
@@ -21837,14 +21584,11 @@ ui <- tagList(
       .creport-pdf-clone [id$='report_canvas'] {
         margin-left: 0 !important;
       }
-      .creport-pdf-clone.creport-pdf-has-row-notes [id$='report_canvas_wrapper'] {
-        padding-left: 56px !important;
-      }
-      .creport-pdf-clone.creport-pdf-has-row-notes [id$='report_canvas'] {
-        margin-left: -56px !important;
-      }
       .creport-pdf-clone .creport-row-wrap-has-gutter {
         padding-left: 56px !important;
+      }
+      .creport-pdf-clone .creport-row-wrap-has-gutter > .row {
+        margin-left: -56px !important;
       }
       .creport-pdf-clone .creport-row-note {
         left: 8px !important;
@@ -21852,17 +21596,6 @@ ui <- tagList(
         z-index: 25 !important;
         opacity: 1 !important;
         visibility: visible !important;
-      }
-      .creport-pdf-clone .creport-row-wrap {
-        margin-bottom: 30px !important;
-      }
-      .creport-pdf-clone .creport-row-wrap:last-child {
-        margin-bottom: 0 !important;
-      }
-      .creport-pdf-clone .creport-cell-toolbar,
-      .creport-pdf-clone .creport-controls-toggle,
-      .creport-pdf-clone .creport-hidden-toggle {
-        display: none !important;
       }
       .creport-pdf-clone .creport-row-note-text {
         color: #111111 !important;
@@ -27324,7 +27057,7 @@ deg_to_clock <- function(x) {
     # pull current filters
     ds <- input$dates[1]; de <- input$dates[2]
     pit <- input$pitcher %or% "All"
-    st  <- input$sessionType %or% "Season"
+    st  <- input$sessionType %or% "All"
     sui <- current_suite()
     pag <- current_page()
     
@@ -27627,7 +27360,7 @@ deg_to_clock <- function(x) {
     # --- context for the note ---
     ds <- input$dates[1]; de <- input$dates[2]
     pit <- input$pitcher     %or% "All"
-    st  <- input$sessionType %or% "Season"
+    st  <- input$sessionType %or% "All"
     sui <- current_suite();  pag <- current_page()
     page_combo <- paste0(sui, "::", pag %or% "")
     
