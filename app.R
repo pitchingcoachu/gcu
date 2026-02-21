@@ -2809,7 +2809,7 @@ safe_make_summary <- function(df, group_col = "TaggedPitchType") {
   })
 }
 
-datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, default_visible = names(df), mode = NULL, enable_colors = TRUE) {
+datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, default_visible = names(df), mode = NULL, enable_colors = TRUE, pin_all_row = FALSE, pin_col = "Player") {
   # Enhanced error handling wrapper with validation
   tryCatch({
     # Validate input before processing
@@ -2819,6 +2819,11 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
     
     df <- sanitize_for_dt(df)
     df <- format_decimal_columns(df)
+    
+    if (isTRUE(pin_all_row) && pin_col %in% names(df)) {
+      pin_vals <- toupper(trimws(as.character(df[[pin_col]])))
+      df[["..pin_all"]] <- ifelse(pin_vals == "ALL", 0L, 1L)
+    }
     
     # Wrap blank_ea_except_all in tryCatch to handle column mismatches gracefully
     df <- tryCatch({
@@ -2842,6 +2847,10 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
     if (length(hide_idx)) {
       defs <- c(defs, list(list(visible = FALSE, targets = hide_idx)))
     }
+    pin_idx <- which(names(df) == "..pin_all") - 1
+    if (length(pin_idx)) {
+      defs <- c(defs, list(list(visible = FALSE, targets = pin_idx, searchable = FALSE)))
+    }
     idx_hash <- which(names(df) == "#") - 1
     if (length(idx_hash)) {
       defs <- c(defs, list(list(
@@ -2854,34 +2863,46 @@ datatable_with_colvis <- function(df, lock = character(0), remember = TRUE, defa
     
     build_dt <- function(data) {
       data <- as.data.frame(data, stringsAsFactors = FALSE, check.names = FALSE)
+      opts <- list(
+        dom           = "Bfrtip",
+        buttons       = list(
+          "pageLength",
+          list(extend = "colvis", text = "Columns", columns = colvis_idx, postfixButtons = list("colvisRestore"))
+        ),
+        ordering      = TRUE,
+        orderMulti    = TRUE,
+        orderClasses  = TRUE,
+        colReorder    = TRUE,
+        fixedHeader   = TRUE,
+        stateSave     = remember,
+        stateDuration = -1,
+        pageLength    = 10,
+        autoWidth     = FALSE,    # Changed from TRUE - lets DataTables calculate proper widths
+        scrollX       = TRUE,      # Enable horizontal scrolling
+        scrollCollapse = TRUE,     # Allow scroll container to collapse
+        columnDefs    = defs
+      )
+      if (length(pin_idx)) {
+        opts$orderFixed <- list(pre = list(list(pin_idx[[1]], "asc")))
+      }
       DT::datatable(
         data,
         rownames   = FALSE,
         extensions = c("Buttons","ColReorder","FixedHeader"),
         escape     = FALSE,
-        options = list(
-          dom           = "Bfrtip",
-          buttons       = list(
-            "pageLength",
-            list(extend = "colvis", text = "Columns", columns = colvis_idx, postfixButtons = list("colvisRestore"))
-          ),
-          ordering      = TRUE,
-          orderMulti    = TRUE,
-          orderClasses  = TRUE,
-          colReorder    = TRUE,
-          fixedHeader   = TRUE,
-          stateSave     = remember,
-          stateDuration = -1,
-          pageLength    = 10,
-          autoWidth     = FALSE,    # Changed from TRUE - lets DataTables calculate proper widths
-          scrollX       = TRUE,      # Enable horizontal scrolling
-          scrollCollapse = TRUE,     # Allow scroll container to collapse
-          columnDefs    = defs
-        )
+        options = opts
       )
     }
     
     dt <- build_dt(df)
+    if (isTRUE(pin_all_row) && pin_col %in% names(df)) {
+      dt <- dt %>%
+        DT::formatStyle(
+          pin_col,
+          target = "row",
+          fontWeight = DT::styleEqual("All", "700")
+        )
+    }
     
     color_modes <- c("Process","Live","Results","Bullpen")
     if (identical(mode, "Usage")) {
@@ -12900,6 +12921,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       
       df <- df %>% dplyr::filter(!is.na(.data[[player_col]]) & nzchar(.data[[player_col]]))
       by_player <- split(df, df[[player_col]])
+      by_player <- c(list(All = df), by_player)
       
       res_mode <- resolve_table_mode_global(input$lbMode, input$lbCustomCols)
       mode <- res_mode$mode
@@ -12920,7 +12942,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
           }
         }
         
-        rows <- lapply(by_player, function(dfi) {
+        rows <- lapply(names(by_player), function(player_name) {
+          dfi <- by_player[[player_name]]
           all_ip <- ip_calculation(dfi)
           all_p <- nrow(dfi)
           # Completed BF calculation (shared)
@@ -12944,7 +12967,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
           p_per_bf <- if (all_bf > 0) as.character(round(all_p / all_bf, 1)) else ""
           
           tibble::tibble(
-            Player = as.character(dfi[[player_col]][1]),
+            Player = player_name,
             IP = all_ip,
             P = all_p,
             BF = all_bf,
@@ -12972,7 +12995,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
             remember        = FALSE,
             default_visible = visible_set,
             mode            = "Raw Data",
-            enable_colors   = use_colors
+            enable_colors   = use_colors,
+            pin_all_row     = TRUE
           )
         }, error = function(e) {
           message("lbTable Raw Data error: ", conditionMessage(e))
@@ -13100,7 +13124,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         
         original_data <- if (identical(mode, "Usage")) filtered_lb_before_pitch_type() else NULL
         
-        rows <- lapply(by_player, function(dfi) {
+        rows <- lapply(names(by_player), function(player_name) {
+          dfi <- by_player[[player_name]]
           # Flatten any list-cols that break downstream summaries
           dfi <- dfi %>% dplyr::mutate(dplyr::across(where(is.list), ~unlist(.x)))
           base_row <- build_all_row(dfi)
@@ -13137,15 +13162,19 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
             }
           }
           out_row <- dplyr::bind_cols(
-            tibble::tibble(Player = as.character(dfi[[player_col]][1])),
+            tibble::tibble(Player = player_name),
             base_row,
             extras_all
           )
           if (identical(mode, "Usage")) {
-            player_val <- as.character(dfi[[player_col]][1])
-            original_player <- if (!is.null(original_data)) {
+            original_player <- if (is.null(original_data)) {
+              NULL
+            } else if (identical(player_name, "All")) {
+              original_data
+            } else {
+              player_val <- player_name
               original_data[original_data[[player_col]] == player_val, , drop = FALSE]
-            } else NULL
+            }
             usage_cols <- compute_usage_by_count(dfi, original_player) %>%
               dplyr::filter(tolower(PitchType) == "all") %>%
               dplyr::select(`0-0`,`Behind`,`Even`,`Ahead`,`<2K`,`2K`)
@@ -13221,7 +13250,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
           lock            = "Player",
           remember        = FALSE,
           default_visible = intersect(visible_set, names(out_tbl)),
-          mode            = mode
+          mode            = mode,
+          pin_all_row     = TRUE
         )
       } # End of else block for normal modes
     }, server = FALSE)
@@ -13273,8 +13303,10 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       
       swing_levels <- c("StrikeSwinging","FoulBallNotFieldable","FoulBallFieldable","InPlay")
       by_batter <- split(df, df$Batter)
+      by_batter <- c(list(All = df), by_batter)
       
-      results_rows <- lapply(by_batter, function(dfi) {
+      results_rows <- lapply(names(by_batter), function(player_name) {
+        dfi <- by_batter[[player_name]]
         # Terminal rows = completed PA for THIS batter
         is_term_i <- (
           (!is.na(dfi$PlayResult) & dfi$PlayResult != "Undefined") |
@@ -13337,7 +13369,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         }
         
         tibble::tibble(
-          Player = as.character(dfi$Batter[1]),
+          Player = player_name,
           PA  = PAt,
           AB  = ABt,
           AVG = safe_div(H_all, ABt),
@@ -13361,7 +13393,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       })
       
       # Swing Decisions rows per batter
-      sd_rows <- lapply(by_batter, function(dfi) {
+      sd_rows <- lapply(names(by_batter), function(player_name) {
+        dfi <- by_batter[[player_name]]
         inner_half <- 7 / 12
         mid_x <- (ZONE_LEFT + ZONE_RIGHT) / 2
         mid_y <- (ZONE_BOTTOM + ZONE_TOP) / 2
@@ -13424,7 +13457,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
           dplyr::mutate(dplyr::across(dplyr::everything(), ~ ifelse(is.finite(.), round(.,1), NA_real_)))
         
         tibble::tibble(
-          Player = as.character(dfi$Batter[1])
+          Player = player_name
         ) %>% dplyr::bind_cols(sd_vals)
       })
       
@@ -13452,7 +13485,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
           lock = "Player",
           remember = FALSE,
           default_visible = intersect(default_visible, names(out)),
-          enable_colors = FALSE
+          enable_colors = FALSE,
+          pin_all_row = TRUE
         ))
       }
       
@@ -13555,7 +13589,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         lock            = "Player",
         remember        = FALSE,
         default_visible = intersect(default_visible, names(out)),
-        enable_colors   = FALSE
+        enable_colors   = FALSE,
+        pin_all_row     = TRUE
       )
     }, server = FALSE)
     
@@ -13608,6 +13643,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       buckets_all <- inzone_label(df_all$PlateLocSide, df_all$PlateLocHeight)
       
       by_catcher <- split(seq_len(nrow(df_all)), df_all$Catcher)  # split by index for reuse
+      by_catcher <- c(list(All = seq_len(nrow(df_all))), by_catcher)
       
       rows <- lapply(names(by_catcher), function(name) {
         idx <- by_catcher[[name]]
@@ -13696,7 +13732,8 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         lock            = "Player",
         remember        = TRUE,
         default_visible = intersect(default_visible, names(final)),
-        enable_colors   = FALSE
+        enable_colors   = FALSE,
+        pin_all_row     = TRUE
       )
     }, server = FALSE)
     
@@ -17697,7 +17734,7 @@ custom_reports_server <- function(id) {
             type = update_if_exists(input[[paste0("cell_type_", id)]], existing_cell$type, ""),
             filter = update_if_exists(input[[paste0("cell_filter_", id)]], existing_cell$filter, "Pitch Types"),
             title = title_vals[[id]] %||% existing_cell$title %||% "",  # Prefer latest debounced title
-            note_text = update_if_exists(input[[paste0("cell_note_", id)]], existing_cell$note_text, ""),
+            note_text = existing_cell$note_text %||% "",
             show_controls = update_if_exists(input[[paste0("cell_show_controls_", id)]], existing_cell$show_controls, TRUE),
             table_mode = update_if_exists(input[[paste0("cell_table_mode_", id)]], existing_cell$table_mode, "Stuff"),
             table_custom_cols = update_if_exists(input[[paste0("cell_table_custom_cols_", id)]], existing_cell$table_custom_cols, character(0)),
@@ -17743,6 +17780,18 @@ custom_reports_server <- function(id) {
       cells <- isolate(current_cells())
       existing_cell <- cells[[cell_id]] %||% list()
       existing_cell$title <- title_val
+      cells[[cell_id]] <- existing_cell
+      current_cells(cells)
+    }
+
+    flush_cell_note_now <- function(cell_id, value = NULL) {
+      pending_val <- isolate(input[[paste0("cell_note_pending_", cell_id)]])
+      note_val <- if (!is.null(value)) value else if (!is.null(pending_val)) pending_val else isolate(input[[paste0("cell_note_", cell_id)]])
+      if (is.null(note_val)) return(invisible(NULL))
+      cells <- isolate(current_cells())
+      existing_cell <- cells[[cell_id]] %||% list()
+      if (identical(existing_cell$note_text %||% "", note_val)) return(invisible(NULL))
+      existing_cell$note_text <- note_val
       cells[[cell_id]] <- existing_cell
       current_cells(cells)
     }
@@ -17794,6 +17843,9 @@ custom_reports_server <- function(id) {
             }, ignoreInit = TRUE)
             observeEvent(input[[paste0("cell_title_blur_", id)]], {
               flush_cell_title_now(id, value = input[[paste0("cell_title_blur_", id)]])
+            }, ignoreInit = TRUE)
+            observeEvent(input[[paste0("cell_note_blur_", id)]], {
+              flush_cell_note_now(id, value = input[[paste0("cell_note_blur_", id)]])
             }, ignoreInit = TRUE)
           })
         }
@@ -18056,14 +18108,39 @@ custom_reports_server <- function(id) {
       if (tsel == "Note Section") {
         output[[out_id]] <- renderUI({
           cell_state <- current_cells()[[cell_id]] %||% list()
-          note_val <- input[[paste0("cell_note_", cell_id)]] %||% cell_state$note_text %||% ""
-          textAreaInput(
-            ns(paste0("cell_note_", cell_id)),
-            label = NULL,
-            value = note_val,
-            width = "100%",
-            height = "260px",
-            placeholder = "Type notes here..."
+          note_val <- cell_state$note_text %||% ""
+          tagList(
+            textAreaInput(
+              ns(paste0("cell_note_", cell_id)),
+              label = NULL,
+              value = note_val,
+              width = "100%",
+              height = "260px",
+              placeholder = "Type notes here..."
+            ),
+            tags$script(HTML(sprintf("
+              (function() {
+                var id = '%s';
+                var blurId = '%s';
+                var pendingId = '%s';
+                var el = document.getElementById(id);
+                if (!el) return;
+                el.removeEventListener('blur', el.__cell_note_blur_listener__);
+                el.removeEventListener('input', el.__cell_note_input_listener__);
+                var blurListener = function() {
+                  Shiny.setInputValue(blurId, el.value, {priority: 'event'});
+                };
+                var inputListener = function() {
+                  Shiny.setInputValue(pendingId, el.value, {priority: 'event'});
+                };
+                el.__cell_note_blur_listener__ = blurListener;
+                el.__cell_note_input_listener__ = inputListener;
+                el.addEventListener('blur', blurListener);
+                el.addEventListener('input', inputListener);
+                inputListener();
+              })();
+            ", ns(paste0("cell_note_", cell_id)), ns(paste0("cell_note_blur_", cell_id)),
+            ns(paste0("cell_note_pending_", cell_id)))))
           )
         })
         return(uiOutput(ns(out_id)))
@@ -19534,7 +19611,6 @@ custom_reports_server <- function(id) {
                 input[[paste0("cell_heat_stat_", settings_id)]]
                 input[[paste0("cell_velocity_chart_", settings_id)]]
                 input[[paste0("cell_table_custom_cols_", settings_id)]]
-                input[[paste0("cell_note_", id)]]
                 
                 # Also monitor filter values to trigger data updates
                 input[[paste0("cell_dates_", settings_id)]]
@@ -19569,8 +19645,7 @@ custom_reports_server <- function(id) {
                   color = input[[paste0("cell_color_", settings_id)]],
                   heat_stat = input[[paste0("cell_heat_stat_", settings_id)]],
                   velocity_chart = input[[paste0("cell_velocity_chart_", settings_id)]],
-                  custom_cols = input[[paste0("cell_table_custom_cols_", settings_id)]],
-                  note_text = input[[paste0("cell_note_", id)]]
+                  custom_cols = input[[paste0("cell_table_custom_cols_", settings_id)]]
                 )
               })
               
