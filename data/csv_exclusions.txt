@@ -3390,3 +3390,17 @@
 20260220-UArizona-1_unverified.csv
 # Auto-pruned non-team data
 20260220-UCLA-1_unverified.csv
+# Auto-pruned non-team data
+20260220-TonyGwynnStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260220-BaggettStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260220-PresleyAskewField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-StephenSchottBBS-1_unverified.csv
+# Auto-pruned non-team data
+20260220-Tulane-2_unverified.csv
+# Auto-pruned non-team data
+20260220-UCSanDiego-2_unverified.csv
+# Auto-pruned non-team data
+20260220-UofSanDiego-4_unverified.csv
