@@ -57,3 +57,56 @@ If you want all camera 2 metadata to survive redeploys without manually committi
 4. You can query Neon directly to audit what’s been uploaded without bumping the repo, and the synchronization script handles the rest.
 
 Repeat for each new session; the script overwrites any prior assignments for the same `session_id` + `camera_slot` combination so you can re-run if a batch needs to be remapped.
+
+### Direct full-game uploads to Cloudflare R2 (large files)
+
+The Video Upload tab now includes a **Direct R2 upload** flow for full-game files. This path uploads browser -> R2 directly (no Shiny file transfer), so large files no longer time out due to app upload limits.
+
+1. Create an R2 bucket in Cloudflare (example: `gcu-games`).
+2. Create an API token scoped to that bucket with:
+   - `Object Read`
+   - `Object Write`
+3. Set these app environment variables:
+   - `R2_ACCOUNT_ID`
+   - `R2_ACCESS_KEY_ID`
+   - `R2_SECRET_ACCESS_KEY`
+   - `R2_BUCKET`
+   - Optional (recommended): `R2_PUBLIC_BASE_URL` (custom domain for playback URLs)
+4. Configure R2 bucket CORS to allow your app domain to `PUT` objects directly. Minimum methods/headers:
+   - Methods: `PUT`, `GET`, `HEAD`
+   - Allowed headers: `*`
+   - Expose headers: `ETag`
+5. Redeploy the app.
+6. In **Video Upload**:
+   - Pick the TrackMan session.
+   - Choose a full-game file in the **Direct R2 upload** control.
+   - Click **Upload Full Game to R2**.
+   - The app will queue a background clip job and auto-generate 6-second clips from the uploaded full game using the same `Time` offsets + first-start-time workflow as the legacy uploader.
+7. Upload metadata is logged to `data/video_r2_uploads.csv` (`session_id`, `object_key`, `public_url`, uploader, timestamp).
+8. Clip job status is persisted in `data/video_clip_jobs.csv` (`pending` / `in_progress` / `completed` / `failed`).
+
+Notes:
+- If the app is using direct R2 credentials only, uploads use single PUT and are limited to 5 GB.
+- If the app is using Worker signer mode, uploads use multipart and support files larger than 5 GB.
+- Legacy server upload + auto-clipping remains available for small files.
+
+### If you cannot set Shiny environment variables (Worker signer mode)
+
+Use a Cloudflare Worker to keep R2 secrets out of the Shiny app.
+
+1. Create a Worker (for example `gcu-r2-presign`).
+2. Add Worker secrets:
+   - `R2_ACCOUNT_ID`
+   - `R2_ACCESS_KEY_ID`
+   - `R2_SECRET_ACCESS_KEY`
+   - `R2_BUCKET`
+   - Optional: `R2_PRESIGNER_TOKEN` (shared token checked by the worker)
+3. In `config/school_config.R`, set:
+   - `school_config$r2_upload$presigner_url` to your Worker URL
+   - `school_config$r2_upload$presigner_token` (if your worker requires it)
+   - optional `school_config$r2_upload$public_base_url`
+4. Redeploy the Shiny app.
+5. Deploy the Worker script from this repo:
+   - `cloudflare/r2-presigner-worker.js`
+
+The app will call the Worker to initialize/sign multipart parts, upload browser -> R2 directly, then request a signed GET URL so server-side clipping can run automatically.

@@ -899,8 +899,290 @@ CLOUDINARY_UPLOAD_PRESET <- Sys.getenv("CLOUDINARY_UPLOAD_PRESET", unset = "")
 if (!nzchar(CLOUDINARY_CLOUD_NAME))    CLOUDINARY_CLOUD_NAME    <- "pitchingcoachu"
 if (!nzchar(CLOUDINARY_UPLOAD_PRESET)) CLOUDINARY_UPLOAD_PRESET <- "pcu_notes_unsigned"
 
+# Cloudflare R2 (S3-compatible) settings for direct browser uploads.
+R2_ACCOUNT_ID <- Sys.getenv("R2_ACCOUNT_ID", unset = "")
+R2_ACCESS_KEY_ID <- Sys.getenv("R2_ACCESS_KEY_ID", unset = "")
+R2_SECRET_ACCESS_KEY <- Sys.getenv("R2_SECRET_ACCESS_KEY", unset = "")
+R2_BUCKET <- Sys.getenv("R2_BUCKET", unset = "")
+R2_PUBLIC_BASE_URL <- Sys.getenv("R2_PUBLIC_BASE_URL", unset = "")
+R2_ENDPOINT <- Sys.getenv("R2_ENDPOINT", unset = "")
+if (!nzchar(R2_ENDPOINT) && nzchar(R2_ACCOUNT_ID)) {
+  R2_ENDPOINT <- sprintf("https://%s.r2.cloudflarestorage.com", R2_ACCOUNT_ID)
+}
+R2_PRESIGNER_URL <- Sys.getenv("R2_PRESIGNER_URL", unset = "")
+R2_PRESIGNER_TOKEN <- Sys.getenv("R2_PRESIGNER_TOKEN", unset = "")
+if (!nzchar(R2_PRESIGNER_URL)) {
+  r2_cfg <- school_setting("r2_upload", list())
+  R2_PRESIGNER_URL <- as.character(r2_cfg$presigner_url %||% "")
+  R2_PRESIGNER_TOKEN <- as.character(r2_cfg$presigner_token %||% "")
+  if (!nzchar(R2_PUBLIC_BASE_URL)) {
+    R2_PUBLIC_BASE_URL <- as.character(r2_cfg$public_base_url %||% "")
+  }
+}
+
 # helper: coalesce for NULL
 `%||%` <- function(a,b) if (is.null(a)) b else a
+
+r2_is_configured <- function() {
+  all(nzchar(c(R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY, R2_BUCKET)))
+}
+
+r2_presigner_is_configured <- function() {
+  nzchar(R2_PRESIGNER_URL)
+}
+
+r2_hex <- function(raw_vec) {
+  paste(sprintf("%02x", as.integer(raw_vec)), collapse = "")
+}
+
+r2_sha256_hex <- function(x) {
+  digest::digest(x, algo = "sha256", serialize = FALSE)
+}
+
+r2_hmac_raw <- function(key, msg) {
+  digest::hmac(key = key, object = msg, algo = "sha256", raw = TRUE)
+}
+
+rfc3986_encode <- function(x, encode_slash = TRUE) {
+  if (is.na(x) || !nzchar(x)) return("")
+  out <- utils::URLencode(x, reserved = TRUE)
+  out <- gsub("\\+", "%20", out, fixed = FALSE)
+  if (!encode_slash) out <- gsub("%2F", "/", out, fixed = TRUE)
+  out
+}
+
+sanitize_file_name <- function(x) {
+  x <- trimws(as.character(x %||% ""))
+  if (!nzchar(x)) return("upload.bin")
+  x <- gsub("[^A-Za-z0-9._-]+", "-", x)
+  x <- gsub("-{2,}", "-", x)
+  x <- gsub("^-|-$", "", x)
+  if (!nzchar(x)) "upload.bin" else x
+}
+
+r2_object_public_url <- function(key) {
+  key <- sub("^/+", "", as.character(key %||% ""))
+  if (!nzchar(key)) return("")
+  if (nzchar(R2_PUBLIC_BASE_URL)) {
+    base <- sub("/+$", "", R2_PUBLIC_BASE_URL)
+    return(paste0(base, "/", rfc3986_encode(key, encode_slash = FALSE)))
+  }
+  if (!r2_is_configured()) return("")
+  host <- sprintf("%s.%s.r2.cloudflarestorage.com", R2_BUCKET, R2_ACCOUNT_ID)
+  paste0("https://", host, "/", rfc3986_encode(key, encode_slash = FALSE))
+}
+
+r2_presign_put_url <- function(object_key, expires = 900L) {
+  if (!r2_is_configured()) stop("R2 is not configured")
+  key <- sub("^/+", "", as.character(object_key %||% ""))
+  if (!nzchar(key)) stop("Object key is required")
+  now <- as.POSIXct(Sys.time(), tz = "UTC")
+  amz_date <- format(now, "%Y%m%dT%H%M%SZ", tz = "UTC")
+  date_stamp <- format(now, "%Y%m%d", tz = "UTC")
+  scope <- paste(date_stamp, "auto", "s3", "aws4_request", sep = "/")
+  host <- sprintf("%s.%s.r2.cloudflarestorage.com", R2_BUCKET, R2_ACCOUNT_ID)
+  canonical_uri <- paste0("/", rfc3986_encode(key, encode_slash = FALSE))
+  query_params <- c(
+    `X-Amz-Algorithm` = "AWS4-HMAC-SHA256",
+    `X-Amz-Credential` = paste0(R2_ACCESS_KEY_ID, "/", scope),
+    `X-Amz-Date` = amz_date,
+    `X-Amz-Expires` = as.character(as.integer(expires)),
+    `X-Amz-SignedHeaders` = "host"
+  )
+  qp_names <- sort(names(query_params))
+  canonical_query <- paste(
+    vapply(qp_names, function(nm) {
+      paste0(rfc3986_encode(nm), "=", rfc3986_encode(query_params[[nm]]))
+    }, character(1)),
+    collapse = "&"
+  )
+  canonical_headers <- paste0("host:", host, "\n")
+  canonical_request <- paste(
+    "PUT",
+    canonical_uri,
+    canonical_query,
+    canonical_headers,
+    "host",
+    "UNSIGNED-PAYLOAD",
+    sep = "\n"
+  )
+  string_to_sign <- paste(
+    "AWS4-HMAC-SHA256",
+    amz_date,
+    scope,
+    r2_sha256_hex(canonical_request),
+    sep = "\n"
+  )
+  k_date <- r2_hmac_raw(charToRaw(paste0("AWS4", R2_SECRET_ACCESS_KEY)), date_stamp)
+  k_region <- r2_hmac_raw(k_date, "auto")
+  k_service <- r2_hmac_raw(k_region, "s3")
+  k_signing <- r2_hmac_raw(k_service, "aws4_request")
+  signature <- r2_hex(r2_hmac_raw(k_signing, string_to_sign))
+  paste0(
+    "https://", host, canonical_uri, "?",
+    canonical_query, "&X-Amz-Signature=", signature
+  )
+}
+
+r2_presign_get_url <- function(object_key, expires = 3600L) {
+  if (!r2_is_configured()) stop("R2 is not configured")
+  key <- sub("^/+", "", as.character(object_key %||% ""))
+  if (!nzchar(key)) stop("Object key is required")
+  now <- as.POSIXct(Sys.time(), tz = "UTC")
+  amz_date <- format(now, "%Y%m%dT%H%M%SZ", tz = "UTC")
+  date_stamp <- format(now, "%Y%m%d", tz = "UTC")
+  scope <- paste(date_stamp, "auto", "s3", "aws4_request", sep = "/")
+  host <- sprintf("%s.%s.r2.cloudflarestorage.com", R2_BUCKET, R2_ACCOUNT_ID)
+  canonical_uri <- paste0("/", rfc3986_encode(key, encode_slash = FALSE))
+  query_params <- c(
+    `X-Amz-Algorithm` = "AWS4-HMAC-SHA256",
+    `X-Amz-Credential` = paste0(R2_ACCESS_KEY_ID, "/", scope),
+    `X-Amz-Date` = amz_date,
+    `X-Amz-Expires` = as.character(as.integer(expires)),
+    `X-Amz-SignedHeaders` = "host"
+  )
+  qp_names <- sort(names(query_params))
+  canonical_query <- paste(
+    vapply(qp_names, function(nm) {
+      paste0(rfc3986_encode(nm), "=", rfc3986_encode(query_params[[nm]]))
+    }, character(1)),
+    collapse = "&"
+  )
+  canonical_headers <- paste0("host:", host, "\n")
+  canonical_request <- paste(
+    "GET",
+    canonical_uri,
+    canonical_query,
+    canonical_headers,
+    "host",
+    "UNSIGNED-PAYLOAD",
+    sep = "\n"
+  )
+  string_to_sign <- paste(
+    "AWS4-HMAC-SHA256",
+    amz_date,
+    scope,
+    r2_sha256_hex(canonical_request),
+    sep = "\n"
+  )
+  k_date <- r2_hmac_raw(charToRaw(paste0("AWS4", R2_SECRET_ACCESS_KEY)), date_stamp)
+  k_region <- r2_hmac_raw(k_date, "auto")
+  k_service <- r2_hmac_raw(k_region, "s3")
+  k_signing <- r2_hmac_raw(k_service, "aws4_request")
+  signature <- r2_hex(r2_hmac_raw(k_signing, string_to_sign))
+  paste0(
+    "https://", host, canonical_uri, "?",
+    canonical_query, "&X-Amz-Signature=", signature
+  )
+}
+
+r2_worker_call <- function(payload, timeout_sec = 30L) {
+  if (!r2_presigner_is_configured()) stop("R2 presigner worker is not configured")
+  req <- httr2::request(R2_PRESIGNER_URL) |>
+    httr2::req_method("POST") |>
+    httr2::req_headers(`Content-Type` = "application/json")
+  if (nzchar(R2_PRESIGNER_TOKEN)) {
+    req <- httr2::req_headers(req, Authorization = paste("Bearer", R2_PRESIGNER_TOKEN))
+  }
+  req <- httr2::req_body_json(payload, auto_unbox = TRUE) |>
+    httr2::req_timeout(timeout_sec)
+  resp <- httr2::req_perform(req)
+  out <- httr2::resp_body_json(resp, check_type = FALSE)
+  if (!is.null(out$error) && nzchar(as.character(out$error))) {
+    stop(as.character(out$error))
+  }
+  out
+}
+
+r2_presign_put_url_via_worker <- function(object_key, file_name = "", content_type = "", file_size = NA_real_, session_id = "", expires = 900L) {
+  out <- r2_worker_call(list(
+    op = "presign_put",
+    object_key = object_key,
+    file_name = file_name,
+    content_type = content_type,
+    file_size = file_size,
+    session_id = session_id,
+    expires = as.integer(expires),
+    public_base_url = R2_PUBLIC_BASE_URL
+  ), timeout_sec = 15L)
+  list(
+    upload_url = as.character(out$upload_url %||% ""),
+    public_url = as.character(out$public_url %||% ""),
+    object_key = as.character(out$object_key %||% object_key)
+  )
+}
+
+r2_presign_get_url_via_worker <- function(object_key, expires = 86400L) {
+  out <- r2_worker_call(list(
+    op = "presign_get",
+    object_key = object_key,
+    expires = as.integer(expires)
+  ), timeout_sec = 15L)
+  as.character(out$download_url %||% out$url %||% "")
+}
+
+r2_multipart_init_via_worker <- function(object_key, file_name = "", content_type = "", file_size = NA_real_, session_id = "", expires = 3600L, part_size = 64L * 1024L * 1024L) {
+  out <- r2_worker_call(list(
+    op = "multipart_init",
+    object_key = object_key,
+    file_name = file_name,
+    content_type = content_type,
+    file_size = file_size,
+    session_id = session_id,
+    expires = as.integer(expires),
+    part_size = as.integer(part_size),
+    public_base_url = R2_PUBLIC_BASE_URL
+  ), timeout_sec = 20L)
+  list(
+    upload_id = as.character(out$upload_id %||% ""),
+    object_key = as.character(out$object_key %||% object_key),
+    public_url = as.character(out$public_url %||% ""),
+    part_size = as.integer(out$part_size %||% part_size),
+    expires = as.integer(out$expires %||% expires)
+  )
+}
+
+r2_multipart_sign_part_via_worker <- function(object_key, upload_id, part_number, expires = 3600L) {
+  out <- r2_worker_call(list(
+    op = "multipart_sign_part",
+    object_key = object_key,
+    upload_id = upload_id,
+    part_number = as.integer(part_number),
+    expires = as.integer(expires)
+  ), timeout_sec = 15L)
+  list(
+    upload_url = as.character(out$upload_url %||% ""),
+    part_number = as.integer(out$part_number %||% part_number)
+  )
+}
+
+r2_multipart_complete_via_worker <- function(object_key, upload_id, parts) {
+  parts <- lapply(parts, function(p) {
+    list(
+      part_number = as.integer(p$part_number %||% p$PartNumber %||% 0),
+      etag = as.character(p$etag %||% p$ETag %||% "")
+    )
+  })
+  out <- r2_worker_call(list(
+    op = "multipart_complete",
+    object_key = object_key,
+    upload_id = upload_id,
+    parts = parts
+  ), timeout_sec = 30L)
+  list(
+    ok = isTRUE(out$ok %||% FALSE),
+    etag = as.character(out$etag %||% "")
+  )
+}
+
+r2_multipart_abort_via_worker <- function(object_key, upload_id) {
+  r2_worker_call(list(
+    op = "multipart_abort",
+    object_key = object_key,
+    upload_id = upload_id
+  ), timeout_sec = 15L)
+  invisible(TRUE)
+}
 
 get_modifications_db_path <- function() {
   override <- Sys.getenv("PITCH_MOD_DB_PATH", unset = "")
@@ -21263,6 +21545,38 @@ video_upload_ui <- function() {
         ),
         wellPanel(
           h4("Upload Full-Game Video"),
+          tags$p(
+            class = "text-muted",
+            "Recommended for large files: use Direct R2 Upload (bypasses Shiny upload limits)."
+          ),
+          tags$div(
+            style = "padding:12px;border:1px solid #e5e7eb;border-radius:8px;margin-bottom:12px;",
+            tags$label(`for` = "video_upload_full_game_r2_file", "Direct R2 upload"),
+            tags$input(
+              id = "video_upload_full_game_r2_file",
+              type = "file",
+              accept = ".mp4,.mov,.avi,.mkv",
+              class = "form-control",
+              style = "margin-bottom:8px;"
+            ),
+            actionButton("video_upload_full_game_r2_submit", "Upload Full Game to R2", class = "btn btn-primary"),
+            tags$div(
+              style = "margin-top:10px;",
+              tags$div(
+                style = "height:10px;background:#f3f4f6;border-radius:5px;overflow:hidden;",
+                tags$div(
+                  id = "video_upload_r2_progress_bar",
+                  style = "height:10px;width:0%;background:#2563eb;transition:width 0.2s ease;"
+                )
+              ),
+              tags$small(id = "video_upload_r2_progress_text", class = "text-muted", "No upload in progress.")
+            ),
+            tags$div(id = "video_upload_r2_client_msg", style = "margin-top:8px;"),
+            uiOutput("video_upload_r2_status"),
+            uiOutput("video_upload_clip_queue_status")
+          ),
+          tags$hr(),
+          h5("Legacy server upload + auto-clip (small files only)"),
           fileInput("video_upload_full_game_video", NULL,
                     multiple = FALSE,
                     accept = c(".mp4", ".mov", ".avi", ".mkv"),
@@ -21280,7 +21594,225 @@ video_upload_ui <- function() {
           actionButton("video_upload_full_game_submit", "Upload Full Game Video", class = "btn-warning"),
           br(), br(),
           uiOutput("video_upload_full_game_status")
-        )
+        ),
+        tags$script(HTML(
+          "(function(){
+            var pendingR2File = null;
+            var activeMultipart = null;
+            var partUrlWaiters = {};
+            function setClientMsg(html){ var el = document.getElementById('video_upload_r2_client_msg'); if(el) el.innerHTML = html || ''; }
+            function setProgress(pct, text){
+              var bar = document.getElementById('video_upload_r2_progress_bar');
+              var txt = document.getElementById('video_upload_r2_progress_text');
+              if (bar) bar.style.width = Math.max(0, Math.min(100, pct || 0)) + '%';
+              if (txt) txt.textContent = text || '';
+            }
+            function setBtnDisabled(disabled){
+              var btn = document.getElementById('video_upload_full_game_r2_submit');
+              if (btn) btn.disabled = !!disabled;
+            }
+
+            function requestPartUrl(uploadId, objectKey, partNumber){
+              return new Promise(function(resolve, reject){
+                if (!window.Shiny) return reject(new Error('Shiny not available'));
+                var nonce = Date.now() + '-' + Math.random().toString(16).slice(2);
+                partUrlWaiters[nonce] = { resolve: resolve, reject: reject };
+                Shiny.setInputValue('video_r2_multipart_sign_part_request', {
+                  upload_id: uploadId,
+                  object_key: objectKey,
+                  part_number: partNumber,
+                  nonce: nonce
+                }, {priority:'event'});
+              });
+            }
+
+            function uploadChunkToUrl(file, start, end, uploadUrl, loadedBefore, totalSize){
+              return new Promise(function(resolve, reject){
+                var xhr = new XMLHttpRequest();
+                xhr.open('PUT', uploadUrl, true);
+                xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+                xhr.upload.onprogress = function(evt){
+                  if (!evt || !evt.lengthComputable) return;
+                  var loaded = loadedBefore + evt.loaded;
+                  var pct = (loaded / totalSize) * 100;
+                  setProgress(pct, 'Uploading: ' + pct.toFixed(1) + '%');
+                };
+                xhr.onerror = function(){ reject(new Error('Network error during part upload')); };
+                xhr.onload = function(){
+                  if (xhr.status >= 200 && xhr.status < 300) {
+                    var etag = xhr.getResponseHeader('ETag') || xhr.getResponseHeader('etag') || '';
+                    etag = (etag || '').replace(/^\\\"|\\\"$/g, '');
+                    if (!etag) return reject(new Error('Missing ETag for uploaded part'));
+                    resolve({ etag: etag, bytes: (end - start) });
+                  } else {
+                    reject(new Error('Part upload failed with HTTP ' + xhr.status));
+                  }
+                };
+                xhr.send(file.slice(start, end));
+              });
+            }
+
+            async function uploadMultipart(file, msg){
+              var uploadId = msg.upload_id || '';
+              var objectKey = msg.object_key || '';
+              var sessionId = msg.session_id || '';
+              var partSize = Math.max(5 * 1024 * 1024, Number(msg.part_size || 64 * 1024 * 1024));
+              if (!uploadId || !objectKey) throw new Error('Missing multipart upload metadata');
+
+              activeMultipart = { upload_id: uploadId, object_key: objectKey };
+              var total = file.size || 0;
+              var partCount = Math.ceil(total / partSize);
+              var uploadedBytes = 0;
+              var parts = [];
+
+              for (var i = 1; i <= partCount; i++) {
+                var start = (i - 1) * partSize;
+                var end = Math.min(total, start + partSize);
+                setProgress((uploadedBytes / total) * 100, 'Uploading part ' + i + ' of ' + partCount + '...');
+                var signed = await requestPartUrl(uploadId, objectKey, i);
+                if (!signed || !signed.upload_url) throw new Error('Could not get signed URL for part ' + i);
+                var up = await uploadChunkToUrl(file, start, end, signed.upload_url, uploadedBytes, total);
+                uploadedBytes += up.bytes;
+                parts.push({ part_number: i, etag: up.etag });
+              }
+
+              setProgress(100, 'Finalizing upload...');
+              if (window.Shiny) {
+                Shiny.setInputValue('video_r2_multipart_complete_request', {
+                  session_id: sessionId,
+                  object_key: objectKey,
+                  upload_id: uploadId,
+                  file_name: file.name || '',
+                  file_size: file.size || 0,
+                  content_type: file.type || '',
+                  public_url: msg.public_url || '',
+                  parts: parts,
+                  nonce: Date.now()
+                }, {priority:'event'});
+              }
+            }
+
+            function uploadToSignedUrl(file, msg){
+              if (!file || !msg || !msg.upload_url) return;
+              var xhr = new XMLHttpRequest();
+              xhr.open('PUT', msg.upload_url, true);
+              xhr.setRequestHeader('Content-Type', file.type || 'application/octet-stream');
+              xhr.upload.onprogress = function(evt){
+                if (!evt || !evt.lengthComputable) return;
+                var pct = (evt.loaded / evt.total) * 100;
+                setProgress(pct, 'Uploading: ' + pct.toFixed(1) + '%');
+              };
+              xhr.onerror = function(){
+                setBtnDisabled(false);
+                setClientMsg('<div class=\"alert alert-danger\">Upload failed due to a network error.</div>');
+                if (window.Shiny) {
+                  Shiny.setInputValue('video_r2_client_error', { message: 'Network error during R2 upload', nonce: Date.now() }, {priority:'event'});
+                }
+              };
+              xhr.onload = function(){
+                if (xhr.status >= 200 && xhr.status < 300) {
+                  setProgress(100, 'Upload complete.');
+                  setClientMsg('<div class=\"alert alert-success\">Upload complete. Finalizing...</div>');
+                  if (window.Shiny) {
+                    Shiny.setInputValue('video_r2_single_complete', {
+                      session_id: msg.session_id || '',
+                      object_key: msg.object_key || '',
+                      file_name: file.name || '',
+                      file_size: file.size || 0,
+                      content_type: file.type || '',
+                      public_url: msg.public_url || '',
+                      nonce: Date.now()
+                    }, {priority:'event'});
+                  }
+                } else {
+                  setBtnDisabled(false);
+                  setClientMsg('<div class=\"alert alert-danger\">Upload failed (HTTP ' + xhr.status + ').</div>');
+                  if (window.Shiny) {
+                    Shiny.setInputValue('video_r2_client_error', { message: 'R2 upload failed with status ' + xhr.status, nonce: Date.now() }, {priority:'event'});
+                  }
+                }
+              };
+              xhr.send(file);
+            }
+
+            document.addEventListener('click', function(evt){
+              var target = evt.target;
+              if (!target || target.id !== 'video_upload_full_game_r2_submit') return;
+              var inputEl = document.getElementById('video_upload_full_game_r2_file');
+              var sessionEl = document.getElementById('video_session');
+              var file = inputEl && inputEl.files ? inputEl.files[0] : null;
+              var sessionId = sessionEl ? sessionEl.value : '';
+              setClientMsg('');
+              if (!sessionId) {
+                setClientMsg('<div class=\"alert alert-danger\">Choose a TrackMan session first.</div>');
+                return;
+              }
+              if (!file) {
+                setClientMsg('<div class=\"alert alert-danger\">Choose a video file first.</div>');
+                return;
+              }
+              pendingR2File = file;
+              setBtnDisabled(true);
+              setProgress(0, 'Preparing upload...');
+              if (window.Shiny) {
+                Shiny.setInputValue('video_r2_init_request', {
+                  file_name: file.name || '',
+                  file_size: file.size || 0,
+                  content_type: file.type || '',
+                  session_id: sessionId,
+                  nonce: Date.now()
+                }, {priority:'event'});
+              }
+            }, true);
+
+            if (window.Shiny) {
+              Shiny.addCustomMessageHandler('video_r2_upload_ready', function(msg){
+                if (!msg || !msg.ok) {
+                  setBtnDisabled(false);
+                  setProgress(0, 'Upload not started.');
+                  setClientMsg('<div class=\"alert alert-danger\">' + ((msg && msg.error) ? msg.error : 'Upload setup failed.') + '</div>');
+                  return;
+                }
+                if (msg.mode === 'multipart') {
+                  setClientMsg('<div class=\"alert alert-info\">Multipart upload started...</div>');
+                  uploadMultipart(pendingR2File, msg).catch(function(err){
+                    setBtnDisabled(false);
+                    setClientMsg('<div class=\"alert alert-danger\">' + (err && err.message ? err.message : 'Multipart upload failed.') + '</div>');
+                    if (window.Shiny && activeMultipart && activeMultipart.upload_id && activeMultipart.object_key) {
+                      Shiny.setInputValue('video_r2_multipart_abort_request', {
+                        upload_id: activeMultipart.upload_id,
+                        object_key: activeMultipart.object_key,
+                        nonce: Date.now()
+                      }, {priority:'event'});
+                    }
+                  });
+                } else {
+                  uploadToSignedUrl(pendingR2File, msg);
+                }
+              });
+              Shiny.addCustomMessageHandler('video_r2_multipart_part_url', function(msg){
+                var nonce = msg && msg.nonce ? msg.nonce : '';
+                if (!nonce || !partUrlWaiters[nonce]) return;
+                var waiter = partUrlWaiters[nonce];
+                delete partUrlWaiters[nonce];
+                if (!msg.ok) {
+                  waiter.reject(new Error((msg && msg.error) ? msg.error : 'Failed to sign part'));
+                } else {
+                  waiter.resolve(msg);
+                }
+              });
+              Shiny.addCustomMessageHandler('video_r2_upload_done', function(msg){
+                setBtnDisabled(false);
+                activeMultipart = null;
+                if (msg && msg.ok) {
+                  setClientMsg('<div class=\"alert alert-success\">' + (msg.text || 'Upload saved.') + '</div>');
+                } else {
+                  setClientMsg('<div class=\"alert alert-danger\">' + ((msg && msg.error) ? msg.error : 'Upload finalize failed.') + '</div>');
+                }
+              });
+            }
+          })();"
+        ))
       ),
       column(
         width = 5,
@@ -23379,6 +23911,281 @@ deg_to_clock <- function(x) {
   video_feedback <- reactiveVal(NULL)
   video_upload_upload_feedback <- reactiveVal(NULL)
   video_full_game_feedback <- reactiveVal(NULL)
+  video_r2_feedback <- reactiveVal(NULL)
+
+  video_r2_uploads_path <- file.path("data", "video_r2_uploads.csv")
+  ensure_video_r2_uploads_file <- function() {
+    dir.create(dirname(video_r2_uploads_path), recursive = TRUE, showWarnings = FALSE)
+    if (!file.exists(video_r2_uploads_path)) {
+      readr::write_csv(
+        tibble::tibble(
+          uploaded_at = character(),
+          uploaded_by = character(),
+          session_id = character(),
+          file_name = character(),
+          file_size = double(),
+          content_type = character(),
+          object_key = character(),
+          public_url = character()
+        ),
+        video_r2_uploads_path
+      )
+    }
+  }
+
+  video_clip_jobs_path <- file.path("data", "video_clip_jobs.csv")
+  ensure_video_clip_jobs_file <- function() {
+    dir.create(dirname(video_clip_jobs_path), recursive = TRUE, showWarnings = FALSE)
+    if (!file.exists(video_clip_jobs_path)) {
+      readr::write_csv(
+        tibble::tibble(
+          job_id = character(),
+          created_at = character(),
+          updated_at = character(),
+          status = character(),
+          attempts = integer(),
+          last_error = character(),
+          session_id = character(),
+          start_seconds = double(),
+          object_key = character(),
+          public_url = character(),
+          file_name = character(),
+          file_size = double(),
+          content_type = character(),
+          uploaded_by = character()
+        ),
+        video_clip_jobs_path
+      )
+    }
+  }
+
+  load_video_clip_jobs <- function() {
+    ensure_video_clip_jobs_file()
+    out <- tryCatch(
+      suppressMessages(readr::read_csv(video_clip_jobs_path, show_col_types = FALSE)),
+      error = function(e) tibble::tibble()
+    )
+    required_cols <- c(
+      "job_id","created_at","updated_at","status","attempts","last_error","session_id",
+      "start_seconds","object_key","public_url","file_name","file_size","content_type","uploaded_by"
+    )
+    for (nm in required_cols) if (!nm %in% names(out)) out[[nm]] <- NA
+    out %>%
+      dplyr::mutate(
+        job_id = as.character(job_id),
+        status = as.character(status),
+        attempts = suppressWarnings(as.integer(attempts)),
+        attempts = ifelse(is.na(attempts), 0L, attempts),
+        start_seconds = suppressWarnings(as.numeric(start_seconds)),
+        file_size = suppressWarnings(as.numeric(file_size))
+      )
+  }
+
+  save_video_clip_jobs <- function(df_jobs) {
+    ensure_video_clip_jobs_file()
+    readr::write_csv(df_jobs, video_clip_jobs_path)
+  }
+
+  enqueue_video_clip_job <- function(session_id, start_seconds, object_key, public_url, file_name, file_size, content_type) {
+    ensure_video_clip_jobs_file()
+    now_utc <- format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+    row <- tibble::tibble(
+      job_id = paste0("job_", format(Sys.time(), "%Y%m%d%H%M%S"), "_", substr(digest::digest(runif(1), algo = "xxhash64", serialize = FALSE), 1, 8)),
+      created_at = now_utc,
+      updated_at = now_utc,
+      status = "pending",
+      attempts = 0L,
+      last_error = "",
+      session_id = as.character(session_id %||% ""),
+      start_seconds = suppressWarnings(as.numeric(start_seconds %||% NA_real_)),
+      object_key = as.character(object_key %||% ""),
+      public_url = as.character(public_url %||% ""),
+      file_name = as.character(file_name %||% ""),
+      file_size = suppressWarnings(as.numeric(file_size %||% NA_real_)),
+      content_type = as.character(content_type %||% ""),
+      uploaded_by = user_email() %||% "local"
+    )
+    jobs <- load_video_clip_jobs()
+    jobs <- dplyr::bind_rows(jobs, row)
+    save_video_clip_jobs(jobs)
+    row$job_id[[1]]
+  }
+
+  clip_job_processor_running <- reactiveVal(FALSE)
+
+  process_next_video_clip_job <- function() {
+    if (isTRUE(clip_job_processor_running())) return(invisible(FALSE))
+    clip_job_processor_running(TRUE)
+    on.exit(clip_job_processor_running(FALSE), add = TRUE)
+
+    jobs <- load_video_clip_jobs()
+    if (!nrow(jobs)) return(invisible(FALSE))
+    pending_idx <- which(tolower(trimws(as.character(jobs$status))) == "pending")
+    if (!length(pending_idx)) return(invisible(FALSE))
+    idx <- pending_idx[1]
+    now_utc <- format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+
+    jobs$status[idx] <- "in_progress"
+    jobs$updated_at[idx] <- now_utc
+    jobs$attempts[idx] <- suppressWarnings(as.integer(jobs$attempts[idx])) + 1L
+    save_video_clip_jobs(jobs)
+
+    start_seconds <- suppressWarnings(as.numeric(jobs$start_seconds[idx]))
+    source_url <- resolve_r2_video_source_url(jobs$object_key[idx], jobs$public_url[idx])
+    if (!is.finite(start_seconds) || !nzchar(source_url)) {
+      jobs <- load_video_clip_jobs()
+      jobs$status[idx] <- ifelse(jobs$attempts[idx] >= 3, "failed", "pending")
+      jobs$last_error[idx] <- ifelse(!is.finite(start_seconds),
+                                     "Invalid start_seconds for clip job.",
+                                     "Could not resolve readable source URL for clip job.")
+      jobs$updated_at[idx] <- format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+      save_video_clip_jobs(jobs)
+      return(invisible(FALSE))
+    }
+
+    res <- generate_and_map_full_game_clips(
+      video_source = source_url,
+      session_id = as.character(jobs$session_id[idx] %||% ""),
+      start_seconds = start_seconds,
+      progress_message = "Generating clips from queued R2 full game",
+      show_progress = FALSE
+    )
+
+    jobs <- load_video_clip_jobs()
+    if (isTRUE(res$ok)) {
+      jobs$status[idx] <- "completed"
+      jobs$last_error[idx] <- ""
+    } else {
+      jobs$status[idx] <- ifelse(jobs$attempts[idx] >= 3, "failed", "pending")
+      jobs$last_error[idx] <- as.character(res$text %||% "Unknown clip generation error.")
+    }
+    jobs$updated_at[idx] <- format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC")
+    save_video_clip_jobs(jobs)
+    invisible(TRUE)
+  }
+
+  observe({
+    invalidateLater(4000, session)
+    try(process_next_video_clip_job(), silent = TRUE)
+  })
+
+  resolve_r2_video_source_url <- function(object_key, public_url = "") {
+    pub <- as.character(public_url %||% "")
+    if (nzchar(pub)) return(pub)
+    if (r2_presigner_is_configured()) {
+      signed <- tryCatch(r2_presign_get_url_via_worker(object_key, expires = 86400L), error = function(e) "")
+      if (nzchar(signed)) return(signed)
+    }
+    if (r2_is_configured()) {
+      signed <- tryCatch(r2_presign_get_url(object_key, expires = 86400L), error = function(e) "")
+      if (nzchar(signed)) return(signed)
+    }
+    ""
+  }
+
+  generate_and_map_full_game_clips <- function(video_source, session_id, start_seconds, progress_message = "Generating clips from full game", show_progress = TRUE) {
+    ffmpeg_path <- Sys.which("ffmpeg")
+    if (!nzchar(ffmpeg_path)) {
+      return(list(ok = FALSE, text = "ffmpeg is not available; install it to generate clips."))
+    }
+    session_rows <- find_session_rows(data_parent, session_id)
+    if (!nrow(session_rows)) {
+      return(list(ok = FALSE, text = "Could not resolve that TrackMan session."))
+    }
+    if (!"Time" %in% names(session_rows)) {
+      return(list(ok = FALSE, text = "Session CSV is missing the Time column."))
+    }
+    time_values <- parse_timecode_seconds(session_rows$Time)
+    valid_mask <- !is.na(time_values)
+    if (!any(valid_mask)) {
+      return(list(ok = FALSE, text = "No valid Time values were found for that session."))
+    }
+    skipped <- sum(!valid_mask)
+    ordered_rows <- session_rows[valid_mask, , drop = FALSE]
+    ordered_rows$time_seconds <- time_values[valid_mask]
+    ordered_rows <- ordered_rows %>%
+      dplyr::arrange(time_seconds, PlayID)
+    if (!nrow(ordered_rows)) {
+      return(list(ok = FALSE, text = "No pitches with valid Time data remain for clipping."))
+    }
+
+    clip_count <- nrow(ordered_rows)
+    clip_duration <- 6
+    uploads <- vector("list", clip_count)
+    err_msg <- NULL
+
+    run_work <- function() {
+      for (i in seq_len(clip_count)) {
+        clip_offset <- start_seconds + (ordered_rows$time_seconds[i] - ordered_rows$time_seconds[1])
+        if (clip_offset < 0) clip_offset <- 0
+        clip_path <- tempfile(fileext = ".mp4")
+        tryCatch({
+          ffmpeg_args <- c(
+            "-ss", format_seconds_for_ffmpeg(clip_offset),
+            "-i", video_source,
+            "-t", as.character(clip_duration),
+            "-c", "copy",
+            "-avoid_negative_ts", "make_zero",
+            "-y", clip_path
+          )
+          ffmpeg_output <- system2(ffmpeg_path, ffmpeg_args, stdout = FALSE, stderr = TRUE)
+          ffmpeg_status <- attr(ffmpeg_output, "status")
+          if (!is.null(ffmpeg_status) && ffmpeg_status != 0) {
+            reason <- paste(ffmpeg_output, collapse = "\n")
+            stop(paste0("ffmpeg failed for clip ", i, ": ", reason))
+          }
+          upload_result <- upload_media_cloudinary(clip_path)
+          uploads[[i]] <- tibble::tibble(
+            file_name = paste0("clip-", ordered_rows$PlayID[i], ".mp4"),
+            cloudinary_url = upload_result$url,
+            cloudinary_public_id = upload_result$public_id
+          )
+        }, finally = {
+          if (file.exists(clip_path)) unlink(clip_path)
+        })
+        if (isTRUE(show_progress)) {
+          incProgress(1 / clip_count, detail = sprintf("Clip %d/%d", i, clip_count))
+        }
+      }
+    }
+    tryCatch({
+      if (isTRUE(show_progress)) {
+        withProgress(message = progress_message, value = 0, {
+          run_work()
+        })
+      } else {
+        run_work()
+      }
+    }, error = function(err) {
+      err_msg <<- err$message
+    })
+
+    if (!is.null(err_msg)) return(list(ok = FALSE, text = err_msg))
+    manifest <- dplyr::bind_rows(uploads)
+    map_ok <- tryCatch({
+      map_manifest_to_session(
+        session_rows = ordered_rows,
+        manifest = manifest,
+        session_id = session_id,
+        slot = "VideoClip2",
+        name = "ManualCamera",
+        target = "ManualUpload",
+        type = "ManualVideo",
+        map_path = file.path("data", "video_map.csv")
+      )
+      TRUE
+    }, error = function(e) {
+      err_msg <<- paste0("Mapping failed: ", e$message)
+      FALSE
+    })
+    if (!isTRUE(map_ok)) return(list(ok = FALSE, text = err_msg %||% "Unknown mapping error"))
+
+    success_text <- paste0("Generated and uploaded ", nrow(manifest), " clips from the full-game video.")
+    if (skipped > 0) {
+      success_text <- paste0(success_text, " Skipped ", skipped, " pitches without Time data.")
+    }
+    list(ok = TRUE, text = success_text)
+  }
 
   build_team_label <- function(home, away) {
     mapply(function(h, a) {
@@ -23472,6 +24279,7 @@ deg_to_clock <- function(x) {
     video_feedback(NULL)
     video_upload_upload_feedback(NULL)
     video_full_game_feedback(NULL)
+    video_r2_feedback(NULL)
   }, ignoreInit = TRUE)
 
   observeEvent(input$video_upload_files, {
@@ -23581,6 +24389,289 @@ deg_to_clock <- function(x) {
     })
   }, ignoreNULL = TRUE)
 
+  observeEvent(input$video_r2_client_error, {
+    msg <- as.character(input$video_r2_client_error$message %||% "Upload failed.")
+    video_r2_feedback(list(type = "error", text = msg))
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$video_r2_init_request, {
+    req(input$video_session)
+    req(input$video_r2_init_request)
+
+    if (!r2_is_configured() && !r2_presigner_is_configured()) {
+      session$sendCustomMessage("video_r2_upload_ready", list(
+        ok = FALSE,
+        error = "R2 upload signer is not configured on the server yet."
+      ))
+      return()
+    }
+
+    payload <- input$video_r2_init_request
+    file_name <- sanitize_file_name(payload$file_name %||% "")
+    file_size <- suppressWarnings(as.numeric(payload$file_size %||% 0))
+    content_type <- as.character(payload$content_type %||% "")
+    session_id <- as.character(payload$session_id %||% input$video_session %||% "")
+    if (!nzchar(session_id)) {
+      session$sendCustomMessage("video_r2_upload_ready", list(ok = FALSE, error = "TrackMan session is required."))
+      return()
+    }
+    if (!is.finite(file_size) || file_size <= 0) {
+      session$sendCustomMessage("video_r2_upload_ready", list(ok = FALSE, error = "Invalid file size."))
+      return()
+    }
+    ts <- format(Sys.time(), "%Y%m%dT%H%M%SZ", tz = "UTC")
+    object_key <- paste(
+      "full-games",
+      current_school(),
+      gsub("[^A-Za-z0-9._-]+", "-", session_id),
+      paste0(ts, "-", file_name),
+      sep = "/"
+    )
+
+    if (r2_presigner_is_configured() && !r2_is_configured()) {
+      init <- tryCatch(
+        r2_multipart_init_via_worker(
+          object_key = object_key,
+          file_name = file_name,
+          content_type = content_type,
+          file_size = file_size,
+          session_id = session_id,
+          expires = 3600L,
+          part_size = 64L * 1024L * 1024L
+        ),
+        error = function(e) {
+          session$sendCustomMessage("video_r2_upload_ready", list(ok = FALSE, error = paste("Unable to initialize multipart upload:", e$message)))
+          return(NULL)
+        }
+      )
+      if (is.null(init) || !nzchar(init$upload_id %||% "")) return()
+      session$sendCustomMessage("video_r2_upload_ready", list(
+        ok = TRUE,
+        mode = "multipart",
+        upload_id = as.character(init$upload_id),
+        object_key = as.character(init$object_key %||% object_key),
+        public_url = as.character(init$public_url %||% r2_object_public_url(object_key)),
+        part_size = as.integer(init$part_size %||% (64L * 1024L * 1024L)),
+        session_id = session_id,
+        content_type = ifelse(nzchar(content_type), content_type, "application/octet-stream")
+      ))
+    } else {
+      max_single_put <- 5 * 1024^3
+      if (file_size > max_single_put) {
+        session$sendCustomMessage("video_r2_upload_ready", list(
+          ok = FALSE,
+          error = "File is larger than 5GB. Configure the Worker signer for multipart upload support."
+        ))
+        return()
+      }
+      signed <- tryCatch(
+        list(
+          upload_url = r2_presign_put_url(object_key, expires = 900L),
+          public_url = r2_object_public_url(object_key),
+          object_key = object_key
+        ),
+        error = function(e) {
+          session$sendCustomMessage("video_r2_upload_ready", list(ok = FALSE, error = paste("Unable to create upload URL:", e$message)))
+          return(NULL)
+        }
+      )
+      if (is.null(signed) || !nzchar(as.character(signed$upload_url %||% ""))) return()
+      public_url <- as.character(signed$public_url %||% r2_object_public_url(object_key))
+      final_object_key <- as.character(signed$object_key %||% object_key)
+      session$sendCustomMessage("video_r2_upload_ready", list(
+        ok = TRUE,
+        mode = "single",
+        upload_url = as.character(signed$upload_url),
+        object_key = final_object_key,
+        public_url = public_url,
+        session_id = session_id,
+        content_type = ifelse(nzchar(content_type), content_type, "application/octet-stream")
+      ))
+    }
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$video_r2_multipart_sign_part_request, {
+    payload <- input$video_r2_multipart_sign_part_request
+    upload_id <- as.character(payload$upload_id %||% "")
+    object_key <- as.character(payload$object_key %||% "")
+    part_number <- suppressWarnings(as.integer(payload$part_number %||% NA_integer_))
+    nonce <- as.character(payload$nonce %||% "")
+    if (!r2_presigner_is_configured()) {
+      session$sendCustomMessage("video_r2_multipart_part_url", list(ok = FALSE, error = "Multipart signer is not configured.", nonce = nonce))
+      return()
+    }
+    if (!nzchar(upload_id) || !nzchar(object_key) || !is.finite(part_number) || part_number <= 0) {
+      session$sendCustomMessage("video_r2_multipart_part_url", list(ok = FALSE, error = "Missing multipart part metadata.", nonce = nonce))
+      return()
+    }
+    signed <- tryCatch(
+      r2_multipart_sign_part_via_worker(
+        object_key = object_key,
+        upload_id = upload_id,
+        part_number = part_number,
+        expires = 3600L
+      ),
+      error = function(e) {
+        session$sendCustomMessage("video_r2_multipart_part_url", list(ok = FALSE, error = paste("Could not sign part:", e$message), nonce = nonce))
+        return(NULL)
+      }
+    )
+    if (is.null(signed)) return()
+    session$sendCustomMessage("video_r2_multipart_part_url", list(
+      ok = TRUE,
+      upload_url = as.character(signed$upload_url %||% ""),
+      part_number = as.integer(signed$part_number %||% part_number),
+      nonce = nonce
+    ))
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$video_r2_multipart_abort_request, {
+    payload <- input$video_r2_multipart_abort_request
+    upload_id <- as.character(payload$upload_id %||% "")
+    object_key <- as.character(payload$object_key %||% "")
+    if (!r2_presigner_is_configured() || !nzchar(upload_id) || !nzchar(object_key)) return()
+    try(r2_multipart_abort_via_worker(object_key = object_key, upload_id = upload_id), silent = TRUE)
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$video_r2_single_complete, {
+    payload <- input$video_r2_single_complete
+    session_id <- as.character(payload$session_id %||% "")
+    object_key <- as.character(payload$object_key %||% "")
+    file_name <- sanitize_file_name(payload$file_name %||% "")
+    file_size <- suppressWarnings(as.numeric(payload$file_size %||% 0))
+    content_type <- as.character(payload$content_type %||% "")
+    public_url <- as.character(payload$public_url %||% r2_object_public_url(object_key))
+
+    if (!nzchar(session_id) || !nzchar(object_key)) {
+      session$sendCustomMessage("video_r2_upload_done", list(ok = FALSE, error = "Missing upload metadata."))
+      return()
+    }
+
+    ensure_video_r2_uploads_file()
+    row <- tibble::tibble(
+      uploaded_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+      uploaded_by = user_email() %||% "local",
+      session_id = session_id,
+      file_name = file_name,
+      file_size = ifelse(is.finite(file_size), file_size, NA_real_),
+      content_type = content_type,
+      object_key = object_key,
+      public_url = public_url
+    )
+    ok <- tryCatch({
+      existing <- suppressMessages(readr::read_csv(video_r2_uploads_path, show_col_types = FALSE))
+      updated <- dplyr::bind_rows(existing, row)
+      readr::write_csv(updated, video_r2_uploads_path)
+      TRUE
+    }, error = function(e) {
+      video_r2_feedback(list(type = "error", text = paste("Upload saved to R2 but log write failed:", e$message)))
+      FALSE
+    })
+
+    if (isTRUE(ok)) {
+      msg <- "Full-game video uploaded to R2 successfully."
+      if (nzchar(public_url)) msg <- paste0(msg, " URL saved for this session.")
+      start_seconds <- parse_timecode_seconds(input$video_upload_full_game_start_time)[1]
+      if (is.na(start_seconds)) {
+        msg <- paste0(msg, " Auto-clipping skipped: invalid First clip start time.")
+      } else {
+        job_id <- enqueue_video_clip_job(
+          session_id = session_id,
+          start_seconds = start_seconds,
+          object_key = object_key,
+          public_url = public_url,
+          file_name = file_name,
+          file_size = file_size,
+          content_type = content_type
+        )
+        msg <- paste0(msg, " Clip generation queued (", job_id, ").")
+      }
+      video_r2_feedback(list(type = "success", text = msg))
+      session$sendCustomMessage("video_r2_upload_done", list(ok = TRUE, text = msg))
+    } else {
+      session$sendCustomMessage("video_r2_upload_done", list(ok = FALSE, error = "Upload completed but could not save metadata log."))
+    }
+  }, ignoreNULL = TRUE)
+
+  observeEvent(input$video_r2_multipart_complete_request, {
+    payload <- input$video_r2_multipart_complete_request
+    session_id <- as.character(payload$session_id %||% "")
+    object_key <- as.character(payload$object_key %||% "")
+    upload_id <- as.character(payload$upload_id %||% "")
+    file_name <- sanitize_file_name(payload$file_name %||% "")
+    file_size <- suppressWarnings(as.numeric(payload$file_size %||% 0))
+    content_type <- as.character(payload$content_type %||% "")
+    public_url <- as.character(payload$public_url %||% r2_object_public_url(object_key))
+    parts <- payload$parts
+
+    if (!nzchar(session_id) || !nzchar(object_key) || !nzchar(upload_id)) {
+      session$sendCustomMessage("video_r2_upload_done", list(ok = FALSE, error = "Missing upload metadata."))
+      return()
+    }
+    if (!r2_presigner_is_configured()) {
+      session$sendCustomMessage("video_r2_upload_done", list(ok = FALSE, error = "Multipart signer is not configured."))
+      return()
+    }
+
+    completed <- tryCatch(
+      r2_multipart_complete_via_worker(
+        object_key = object_key,
+        upload_id = upload_id,
+        parts = parts
+      ),
+      error = function(e) {
+        session$sendCustomMessage("video_r2_upload_done", list(ok = FALSE, error = paste("Could not finalize multipart upload:", e$message)))
+        return(NULL)
+      }
+    )
+    if (is.null(completed)) return()
+
+    ensure_video_r2_uploads_file()
+    row <- tibble::tibble(
+      uploaded_at = format(Sys.time(), "%Y-%m-%dT%H:%M:%SZ", tz = "UTC"),
+      uploaded_by = user_email() %||% "local",
+      session_id = session_id,
+      file_name = file_name,
+      file_size = ifelse(is.finite(file_size), file_size, NA_real_),
+      content_type = content_type,
+      object_key = object_key,
+      public_url = public_url
+    )
+    ok <- tryCatch({
+      existing <- suppressMessages(readr::read_csv(video_r2_uploads_path, show_col_types = FALSE))
+      updated <- dplyr::bind_rows(existing, row)
+      readr::write_csv(updated, video_r2_uploads_path)
+      TRUE
+    }, error = function(e) {
+      video_r2_feedback(list(type = "error", text = paste("Upload saved to R2 but log write failed:", e$message)))
+      FALSE
+    })
+
+    if (isTRUE(ok)) {
+      msg <- "Full-game video uploaded to R2 successfully (multipart)."
+      if (nzchar(public_url)) msg <- paste0(msg, " URL saved for this session.")
+      start_seconds <- parse_timecode_seconds(input$video_upload_full_game_start_time)[1]
+      if (is.na(start_seconds)) {
+        msg <- paste0(msg, " Auto-clipping skipped: invalid First clip start time.")
+      } else {
+        job_id <- enqueue_video_clip_job(
+          session_id = session_id,
+          start_seconds = start_seconds,
+          object_key = object_key,
+          public_url = public_url,
+          file_name = file_name,
+          file_size = file_size,
+          content_type = content_type
+        )
+        msg <- paste0(msg, " Clip generation queued (", job_id, ").")
+      }
+      video_r2_feedback(list(type = "success", text = msg))
+      session$sendCustomMessage("video_r2_upload_done", list(ok = TRUE, text = msg))
+    } else {
+      session$sendCustomMessage("video_r2_upload_done", list(ok = FALSE, error = "Upload completed but could not save metadata log."))
+    }
+  }, ignoreNULL = TRUE)
+
   observeEvent(input$video_upload_full_game_submit, {
     video_full_game_feedback(NULL)
     req(input$video_session)
@@ -23596,97 +24687,17 @@ deg_to_clock <- function(x) {
                                     text = "First clip start time is not a valid HH:MM:SS value."))
       return()
     }
-    ffmpeg_path <- Sys.which("ffmpeg")
-    if (!nzchar(ffmpeg_path)) {
-      video_full_game_feedback(list(type = "error",
-                                    text = "ffmpeg is not available; install it to generate clips."))
-      return()
-    }
-    session_rows <- find_session_rows(data_parent, input$video_session)
-    if (!nrow(session_rows)) {
-      video_full_game_feedback(list(type = "error",
-                                    text = "Could not resolve that TrackMan session."))
-      return()
-    }
-    if (!"Time" %in% names(session_rows)) {
-      video_full_game_feedback(list(type = "error",
-                                    text = "Session CSV is missing the Time column."))
-      return()
-    }
-    time_values <- parse_timecode_seconds(session_rows$Time)
-    valid_mask <- !is.na(time_values)
-    if (!any(valid_mask)) {
-      video_full_game_feedback(list(type = "error",
-                                    text = "No valid Time values were found for that session."))
-      return()
-    }
-    skipped <- sum(!valid_mask)
-    ordered_rows <- session_rows[valid_mask, , drop = FALSE]
-    ordered_rows$time_seconds <- time_values[valid_mask]
-    ordered_rows <- ordered_rows %>%
-      dplyr::arrange(time_seconds, PlayID)
-    if (!nrow(ordered_rows)) {
-      video_full_game_feedback(list(type = "error",
-                                    text = "No pitches with valid Time data remain for clipping."))
-      return()
-    }
-    clip_count <- nrow(ordered_rows)
-    clip_duration <- 6
     video_path <- file_info$datapath[1]
-    uploads <- vector("list", clip_count)
-    tryCatch({
-      withProgress(message = "Generating clips from full game", value = 0, {
-        for (i in seq_len(clip_count)) {
-          clip_offset <- start_seconds +
-            (ordered_rows$time_seconds[i] - ordered_rows$time_seconds[1])
-          if (clip_offset < 0) clip_offset <- 0
-          clip_path <- tempfile(fileext = ".mp4")
-          tryCatch({
-            ffmpeg_args <- c(
-              "-ss", format_seconds_for_ffmpeg(clip_offset),
-              "-i", video_path,
-              "-t", as.character(clip_duration),
-              "-c", "copy",
-              "-avoid_negative_ts", "make_zero",
-              "-y", clip_path
-            )
-            ffmpeg_output <- system2(ffmpeg_path, ffmpeg_args, stdout = FALSE, stderr = TRUE)
-            ffmpeg_status <- attr(ffmpeg_output, "status")
-            if (!is.null(ffmpeg_status) && ffmpeg_status != 0) {
-              reason <- paste(ffmpeg_output, collapse = "\n")
-              stop(paste0("ffmpeg failed for clip ", i, ": ", reason))
-            }
-            upload_result <- upload_media_cloudinary(clip_path)
-            uploads[[i]] <- tibble::tibble(
-              file_name = paste0("clip-", ordered_rows$PlayID[i], ".mp4"),
-              cloudinary_url = upload_result$url,
-              cloudinary_public_id = upload_result$public_id
-            )
-          }, finally = {
-            if (file.exists(clip_path)) unlink(clip_path)
-          })
-          incProgress(1 / clip_count, detail = sprintf("Clip %d/%d", i, clip_count))
-        }
-      })
-      manifest <- dplyr::bind_rows(uploads)
-      map_manifest_to_session(
-        session_rows = ordered_rows,
-        manifest = manifest,
-        session_id = input$video_session,
-        slot = "VideoClip2",
-        name = "ManualCamera",
-        target = "ManualUpload",
-        type = "ManualVideo",
-        map_path = file.path("data", "video_map.csv")
-      )
-      success_text <- paste0("Generated and uploaded ", nrow(manifest), " clips from the full-game video.")
-      if (skipped > 0) {
-        success_text <- paste0(success_text, " Skipped ", skipped, " pitches without Time data.")
-      }
-      video_full_game_feedback(list(type = "success", text = success_text))
-    }, error = function(err) {
-      video_full_game_feedback(list(type = "error", text = err$message))
-    })
+    res <- generate_and_map_full_game_clips(
+      video_source = video_path,
+      session_id = input$video_session,
+      start_seconds = start_seconds,
+      progress_message = "Generating clips from full game"
+    )
+    video_full_game_feedback(list(
+      type = if (isTRUE(res$ok)) "success" else "error",
+      text = as.character(res$text %||% "Unknown full-game processing error.")
+    ))
   }, ignoreNULL = TRUE)
 
   output$video_upload_status <- renderUI({
@@ -23708,6 +24719,31 @@ deg_to_clock <- function(x) {
     if (is.null(msg)) return(NULL)
     cls <- if (identical(msg$type, "error")) "alert alert-danger" else "alert alert-success"
     tags$div(class = cls, style = "margin-top:8px;", msg$text)
+  })
+
+  output$video_upload_r2_status <- renderUI({
+    msg <- video_r2_feedback()
+    if (is.null(msg)) return(NULL)
+    cls <- if (identical(msg$type, "error")) "alert alert-danger" else "alert alert-success"
+    tags$div(class = cls, style = "margin-top:8px;", msg$text)
+  })
+
+  output$video_upload_clip_queue_status <- renderUI({
+    jobs <- load_video_clip_jobs()
+    if (!nrow(jobs)) return(NULL)
+    s <- tolower(trimws(as.character(jobs$status)))
+    pending_n <- sum(s == "pending", na.rm = TRUE)
+    inprog_n <- sum(s == "in_progress", na.rm = TRUE)
+    failed_n <- sum(s == "failed", na.rm = TRUE)
+    completed_n <- sum(s == "completed", na.rm = TRUE)
+    txt <- paste0(
+      "Clip queue: ", pending_n, " pending, ",
+      inprog_n, " running, ",
+      completed_n, " completed, ",
+      failed_n, " failed."
+    )
+    cls <- if (failed_n > 0) "alert alert-warning" else "alert alert-info"
+    tags$div(class = cls, style = "margin-top:8px; padding:8px 10px;", txt)
   })
 
   output$video_assignments <- DT::renderDataTable({

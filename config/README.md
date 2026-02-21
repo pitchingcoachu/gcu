@@ -7,6 +7,7 @@ This folder holds per-school configuration values so the shared `app.R` logic ca
 - `logo`: path to the school logo asset rendered in the navbar.
 - `coaches_emails`: any coach-specific notification recipients.
 - `notes_api`: base URL/credentials for the notes integration.
+- `r2_upload`: optional Worker-based large video upload settings (`presigner_url`, `presigner_token`, `public_base_url`).
 - `ftp`, `extra`, etc.: any other school-specific secrets or overrides (like `cloudinary_folder` or `school_name`).
 - `colorize_css`: helper available after sourcing the config; use it when you need to inject school-specific colors into the main CSS block.
 

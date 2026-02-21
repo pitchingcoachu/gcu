@@ -155,6 +155,15 @@ school_config <- list(
     base_url = "https://script.google.com/macros/s/AKfycbwuftWhRZGV7f1lWFJnC5mBcxaXh7P7Xhlc7_Lvr5r6ZO_GYKbv6YxCp7B0AXsvCKY0/exec",
     token = "GCUbaseball"
   ),
+  r2_upload = list(
+    # Cloudflare Worker endpoint that returns short-lived presigned PUT URLs.
+    # Example: "https://gcu-r2-presign.<your-subdomain>.workers.dev"
+    presigner_url = "https://gcu-r2-presign.jgaynor.workers.dev",
+    # Optional bearer token expected by the worker.
+    presigner_token = "gcu",
+    # Optional CDN/custom-domain base for playback URLs.
+    public_base_url = ""
+  ),
   extra = list(
     school_name = "GCU",
     ftp_folder = "trackman",
