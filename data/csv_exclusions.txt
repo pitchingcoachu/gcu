@@ -3680,3 +3680,65 @@
 20260221-SpringsBrooksStadium-1_unverified.csv
 # Auto-pruned non-team data
 20260221-StaufferField-1_unverified.csv
+# Auto-pruned non-team data
+20260220-MarichFieldLaptop-1_unverified.csv
+# Auto-pruned non-team data
+20260221-121Financial-1_unverified.csv
+# Auto-pruned non-team data
+20260221-700-HughAdamsPark-1_unverified.csv
+# Auto-pruned non-team data
+20260221-Arlington-1_unverified.csv
+# Auto-pruned non-team data
+20260221-BowiesBallpark-1_unverified.csv
+# Auto-pruned non-team data
+20260221-BridgeforthField-1_unverified.csv
+# Auto-pruned non-team data
+20260221-BuddyBoldingStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260221-BushStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260221-CarterMemorial-1_unverified.csv
+# Auto-pruned non-team data
+20260221-CaseWesternReserve-1_unverified.csv
+# Auto-pruned non-team data
+20260221-DanLawField-2_unverified.csv
+# Auto-pruned non-team data
+20260221-DoakField-1_unverified.csv
+# Auto-pruned non-team data
+20260221-DubHerringPark-1_unverified.csv
+# Auto-pruned non-team data
+20260221-EagleFieldJMU-1_unverified.csv
+# Auto-pruned non-team data
+20260221-EastTennesseeState-1_unverified.csv
+# Auto-pruned non-team data
+20260221-FifthThirdParkSC-1_unverified.csv
+# Auto-pruned non-team data
+20260221-FriersonField-1_unverified.csv
+# Auto-pruned non-team data
+20260221-GrayMinorStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260221-HennonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260221-HighPointUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260221-LamarHennonField-1_unverified.csv
+# Auto-pruned non-team data
+20260221-Liberty-1_unverified.csv
+# Auto-pruned non-team data
+20260221-LPFrans-1_unverified.csv
+# Auto-pruned non-team data
+20260221-MelchingFielda-1_unverified.csv
+# Auto-pruned non-team data
+20260221-OdessaCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260221-PaulDemieMainieriField-1_unverified.csv
+# Auto-pruned non-team data
+20260221-PioneerPark-1_unverified.csv
+# Auto-pruned non-team data
+20260221-RileyPark-1_unverified.csv
+# Auto-pruned non-team data
+20260221-SouthernIdaho-1_unverified.csv
+# Auto-pruned non-team data
+20260221-TreveccaNazareneBC-1_unverified.csv
+# Auto-pruned non-team data
+20260221-WeberField-1_unverified.csv
