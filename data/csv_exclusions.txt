@@ -3404,3 +3404,5 @@
 20260220-UCSanDiego-2_unverified.csv
 # Auto-pruned non-team data
 20260220-UofSanDiego-4_unverified.csv
+# Auto-pruned non-team data
+20260220-EarlEWilsonStadium-1_unverified.csv
