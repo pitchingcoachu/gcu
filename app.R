@@ -5072,9 +5072,15 @@ apply_split_by <- function(df, split_choice) {
       terminal_ord <- as.logical(terminal[ord])
       terminal_ord[is.na(terminal_ord)] <- FALSE
 
-      key <- paste0(game_ord, "||", pitcher_ord, "||", batter_ord)
+      # If multiple pitchers are in the current view (e.g., "All Pitchers"),
+      # treat them as a single pitcher key for Times Through Order counting.
+      pitcher_nonempty <- pitcher_ord[!is.na(pitcher_ord) & nzchar(trimws(pitcher_ord))]
+      use_combined_pitcher_key <- length(unique(pitcher_nonempty)) > 1
+      pitcher_key <- if (use_combined_pitcher_key) rep("__ALL_PITCHERS__", length(pitcher_ord)) else pitcher_ord
+
+      key <- paste0(game_ord, "||", pitcher_key, "||", batter_ord)
       key[is.na(game_ord) | !nzchar(trimws(game_ord)) |
-            is.na(pitcher_ord) | !nzchar(trimws(pitcher_ord)) |
+            is.na(pitcher_key) | !nzchar(trimws(pitcher_key)) |
             is.na(batter_ord) | !nzchar(trimws(batter_ord))] <- NA_character_
 
       d_ord$key_tto <- key
