@@ -4040,3 +4040,5 @@
 20260221-CatholicUniversity-3_unverified.csv
 # Auto-pruned non-team data
 20260221-GaryWright-1_unverified.csv
+# Auto-pruned non-team data
+20260221-DedeauxField-1_unverified.csv
