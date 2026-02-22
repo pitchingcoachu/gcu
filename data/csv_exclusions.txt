@@ -4030,3 +4030,13 @@
 20260221-UofSanDiego-2_unverified.csv
 # Auto-pruned non-team data
 20260221-UofSouthCarolina-2_unverified.csv
+# Auto-pruned non-team data
+20260221-BenMeyerDiamond-2_unverified.csv
+# Auto-pruned non-team data
+20260221-CatholicUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260221-CatholicUniversity-2_unverified.csv
+# Auto-pruned non-team data
+20260221-CatholicUniversity-3_unverified.csv
+# Auto-pruned non-team data
+20260221-GaryWright-1_unverified.csv
