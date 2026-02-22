@@ -4639,6 +4639,39 @@ pitching_zone_location_choices <- c(
   "Upper 3rd", "Bottom 3rd", "Glove Side 3rd", "Arm Side 3rd"
 )
 
+pitching_split_by_choices <- c(
+  "Pitch Types", "Batter Hand", "Count", "After Count",
+  "Zone Location", "Velocity", "IVB", "HB", "Batter", "Catcher"
+)
+
+hitting_split_by_choices <- c(
+  "Pitch Types", "Pitcher Hand", "Count", "After Count",
+  "Zone Location", "Velocity", "IVB", "HB", "Pitcher", "Catcher"
+)
+
+universal_split_by_choices <- c(
+  "Pitch Types", "Batter Hand", "Pitcher Hand", "Count", "After Count",
+  "Zone Location", "Velocity", "IVB", "HB", "Batter", "Pitcher", "Catcher"
+)
+
+format_name_first_last <- function(names_vec) {
+  x <- as.character(names_vec)
+  out <- trimws(x)
+  out[!nzchar(out)] <- NA_character_
+  has_comma <- !is.na(out) & grepl(",", out, fixed = TRUE)
+  if (any(has_comma)) {
+    out[has_comma] <- vapply(out[has_comma], function(nm) {
+      parts <- strsplit(nm, ",\\s*")[[1]]
+      if (length(parts) >= 2 && nzchar(parts[1]) && nzchar(parts[2])) {
+        paste(parts[2], parts[1])
+      } else {
+        nm
+      }
+    }, character(1))
+  }
+  out
+}
+
 # Multi-select halves/thirds with INTERSECTION logic, bounded to the strike zone
 # ---- Filters: Zone bands that extend beyond the zone ----
 # Halves/Thirds act as threshold lines:
@@ -4969,6 +5002,44 @@ apply_split_by <- function(df, split_choice) {
       split_vals[mid] <- paste0(floor(hb[mid] / 2) * 2, "-", floor(hb[mid] / 2) * 2 + 1)
       df %>% dplyr::mutate(SplitColumn = split_vals)
     },
+
+    "Zone Location" = {
+      x <- suppressWarnings(as.numeric(get_first_existing(df, c("PlateLocSide"))))
+      y <- suppressWarnings(as.numeric(get_first_existing(df, c("PlateLocHeight"))))
+      split_vals <- rep("Unknown", nrow(df))
+      ok <- is.finite(x) & is.finite(y)
+      if (any(ok)) {
+        mid_x <- (ZONE_LEFT + ZONE_RIGHT) / 2
+        mid_y <- (ZONE_BOTTOM + ZONE_TOP) / 2
+        dx <- (ZONE_RIGHT - ZONE_LEFT) / 3
+        dy <- (ZONE_TOP - ZONE_BOTTOM) / 3
+        L <- ZONE_LEFT
+
+        throws_vec <- get_first_existing(df, c("PitcherThrows", "PitcherHand", "Pitcher Hand"))
+        throws_norm <- toupper(substr(trimws(throws_vec), 1, 1))
+        is_lefty <- throws_norm == "L"
+
+        cond_mat <- cbind(
+          "Upper Half" = (y >= mid_y),
+          "Bottom Half" = (y <= mid_y),
+          "Glove Side Half" = ifelse(is_lefty, x >= mid_x, x <= mid_x),
+          "Arm Side Half" = ifelse(is_lefty, x <= mid_x, x >= mid_x),
+          "Upper 3rd" = (y >= (ZONE_BOTTOM + 2 * dy)),
+          "Bottom 3rd" = (y <= (ZONE_BOTTOM + dy)),
+          "Glove Side 3rd" = ifelse(is_lefty, x >= (L + 2 * dx), x <= (L + dx)),
+          "Arm Side 3rd" = ifelse(is_lefty, x <= (L + dx), x >= (L + 2 * dx))
+        )
+        cond_mat[!ok, ] <- FALSE
+        cond_mat[is.na(cond_mat)] <- FALSE
+
+        split_vals <- vapply(seq_len(nrow(df)), function(i) {
+          if (!ok[i]) return("Unknown")
+          labs <- colnames(cond_mat)[cond_mat[i, ]]
+          if (length(labs)) paste(labs, collapse = " | ") else "Unknown"
+        }, character(1))
+      }
+      df %>% dplyr::mutate(SplitColumn = split_vals)
+    },
     
     "Batter" = {
       batter <- get_first_existing(df, c("Batter", "Hitter", "Player"))
@@ -4984,6 +5055,16 @@ apply_split_by <- function(df, split_choice) {
       df %>% dplyr::mutate(SplitColumn = ifelse(
         !is.na(pitcher) & nzchar(as.character(pitcher)), 
         as.character(pitcher), 
+        "Unknown"
+      ))
+    },
+
+    "Catcher" = {
+      catcher <- get_first_existing(df, c("Catcher"))
+      catcher_display <- format_name_first_last(catcher)
+      df %>% dplyr::mutate(SplitColumn = ifelse(
+        !is.na(catcher_display) & nzchar(as.character(catcher_display)),
+        as.character(catcher_display),
         "Unknown"
       ))
     },
@@ -7760,8 +7841,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         if ("Zone Location" %in% sel) {
           out <- c(out, list(
             selectInput(ns(paste0("cell_zone_", cell_id)), "Zone Location:", choices = c("All",
-                                                                                         "Upper Half","Bottom Half","Left Half","Right Half",
-                                                                                         "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
+                                                                                         pitching_zone_location_choices[-1]),
                         selected = "All", multiple = TRUE)
           ))
         }
@@ -9016,7 +9096,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
             ),
             selectInput(
               ns("dpSplitBy"), label = NULL,
-              choices = c("Pitch Types", "Pitcher Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Pitcher"),
+              choices = hitting_split_by_choices,
               selected = "Pitch Types",
               width = "140px"
             )
@@ -9067,10 +9147,12 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           "Pitcher Hand" = "Pitcher Hand",
           "Count" = "Count",
           "After Count" = "After Count",
+          "Zone Location" = "Zone Location",
           "Velocity" = "Velocity",
           "IVB" = "InducedVert",
           "HB" = "HorzBreak",
           "Pitcher" = "Pitcher",
+          "Catcher" = "Catcher",
           "Pitch"  # default
         )
         
@@ -14023,7 +14105,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
                         div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Split By:"),
                         selectInput(
                           ns("cmpA_splitBy"), label = NULL,
-                          choices = c("Pitch Types", "Batter Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Batter"),
+                          choices = pitching_split_by_choices,
                           selected = "Pitch Types",
                           width = "140px"
                         )
@@ -14076,7 +14158,7 @@ mod_comp_ui <- function(id, show_header = FALSE) {
                         div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Split By:"),
                         selectInput(
                           ns("cmpB_splitBy"), label = NULL,
-                          choices = c("Pitch Types", "Batter Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Batter"),
+                          choices = pitching_split_by_choices,
                           selected = "Pitch Types",
                           width = "140px"
                         )
@@ -14140,10 +14222,10 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
       if (dom %in% c("Hitter","Catcher","Pitcher","Pitching","Hitting","Catching")) {
         if (dom %in% c("Hitter","Hitting")) {
           tbl_choices <- c("Results","Swing Decisions", nms, "Custom")
-          split_choices <- c("Pitch Types", "Pitcher Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Pitcher")
+          split_choices <- hitting_split_by_choices
         } else {
           tbl_choices <- c("Stuff","Process","Results","Bullpen","Live","Usage","Raw Data", nms, "Custom")
-          split_choices <- c("Pitch Types", "Batter Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Batter")
+          split_choices <- pitching_split_by_choices
         }
         updateSelectInput(session, "cmpA_tableMode", choices = tbl_choices,
                           selected = tbl_choices[[1]])
@@ -14758,11 +14840,13 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
         "Pitcher Hand" = "Pitcher Hand",
         "Count" = "Count",
         "After Count" = "After Count",
+        "Zone Location" = "Zone Location",
         "Velocity" = "Velocity",
         "IVB" = "IVB",
         "HB" = "HB",
         "Batter" = if (dom == "Hitter") "Pitcher" else "Batter",
         "Pitcher" = "Pitcher",
+        "Catcher" = "Catcher",
         "Pitch"
       )
       ensure_split_column <- function(tbl) {
@@ -17301,9 +17385,7 @@ custom_reports_server <- function(id) {
           existing_zone <- input[[paste0("cell_zone_", cell_id)]] %||% saved_cell$zone %||% NULL
           out <- c(out, list(
             selectInput(ns(paste0("cell_zone_", cell_id)), "Zone Location:",
-                        choices = c("All",
-                                    "Upper Half","Bottom Half","Left Half","Right Half",
-                                    "Upper 3rd","Bottom 3rd","Left 3rd","Right 3rd"),
+                        choices = pitching_zone_location_choices,
                         selected = if (!is.null(existing_zone)) existing_zone else "All", 
                         multiple = TRUE)
           ))
@@ -17592,7 +17674,7 @@ custom_reports_server <- function(id) {
                                                    if (!is.null(info$sel$table_mode) && info$sel$table_mode %in% ch) info$sel$table_mode else ch[[1]]
                                                  }),
                                      selectInput(ns(paste0("cell_filter_", info$cell_id)), "Split By:", 
-                                                 choices = c("Pitch Types","Batter Hand","Pitcher Hand","Count","After Count","Velocity","IVB","HB","Batter"),
+                                                 choices = universal_split_by_choices,
                                                  selected = info$sel$filter),
                                      checkboxInput(ns(paste0("cell_color_", info$cell_id)), "Color-Code", value = info$sel$color %||% TRUE),
                                      conditionalPanel(
@@ -19338,11 +19420,13 @@ custom_reports_server <- function(id) {
               "Pitcher Hand" = "Pitcher Hand",
               "Count" = "Count",
               "After Count" = "After Count",
+              "Zone Location" = "Zone Location",
               "Velocity" = "Velocity",
               "IVB" = "IVB",
               "HB" = "HB",
               "Batter" = if (identical(input$report_type, "Hitting")) "Pitcher" else "Batter",
               "Pitcher" = "Pitcher",
+              "Catcher" = "Catcher",
               "Pitch"
             )
             # Normalize returned DT payload so split-by column always exists with the
@@ -27668,7 +27752,7 @@ deg_to_clock <- function(x) {
               div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Split By:"),
               selectInput(
                 "summarySplitBy", label = NULL,
-                choices = c("Pitch Types", "Batter Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Batter"),
+                choices = pitching_split_by_choices,
                 selected = split_sel,
                 width = "140px"
               )
@@ -27729,7 +27813,7 @@ deg_to_clock <- function(x) {
               div(style = "margin-bottom: 2px; font-weight: bold; font-size: 12px;", "Split By:"),
               selectInput(
                 "dpSplitBy", label = NULL,
-                choices = c("Pitch Types", "Batter Hand", "Count", "After Count", "Velocity", "IVB", "HB", "Batter"),
+                choices = pitching_split_by_choices,
                 selected = split_sel,
                 width = "140px"
               )
@@ -28900,10 +28984,12 @@ deg_to_clock <- function(x) {
         "Batter Hand" = "Batter Hand",
         "Count" = "Count",
         "After Count" = "After Count",
+        "Zone Location" = "Zone Location",
         "Velocity" = "Velocity",
         "IVB" = "InducedVert",
         "HB" = "HorzBreak",
         "Batter" = "Batter",
+        "Catcher" = "Catcher",
         "Pitch"  # default
       )
       
@@ -30366,10 +30452,12 @@ deg_to_clock <- function(x) {
       "Batter Hand" = "Batter Hand",
       "Count" = "Count",
       "After Count" = "After Count",
+      "Zone Location" = "Zone Location",
       "Velocity" = "Velocity",
       "IVB" = "InducedVert",
       "HB" = "HorzBreak",
       "Batter" = "Batter",
+      "Catcher" = "Catcher",
       "Pitch"  # default
     )
     
