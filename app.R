@@ -7336,6 +7336,91 @@ pitch_ui <- function(show_header = FALSE) {
             ggiraph::girafeOutput("velocityByGamePlot", height = "450px"),
             ggiraph::girafeOutput("velocityInningPlot", height = "450px")
           ),
+          tabPanel(
+            "Manual Entry",
+            value = "manual_entry",
+            tags$style(HTML("
+              .manual-kpi-wrap { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+              .manual-kpi { flex:1 1 180px; border-radius:12px; padding:12px 14px; color:#0f172a; background:linear-gradient(145deg,#f8fafc,#e2e8f0); border:1px solid #cbd5e1; }
+              .manual-kpi .label { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#475569; }
+              .manual-kpi .value { font-size:24px; font-weight:700; line-height:1.1; margin-top:4px; }
+              .manual-entry-shell { background:linear-gradient(180deg,#f8fafc,#eef2ff); border:1px solid #dbeafe; border-radius:14px; padding:12px; }
+            ")),
+            tabsetPanel(
+              id = "manual_entry_tabs",
+              tabPanel(
+                "Entry",
+                br(),
+                fluidRow(
+                  column(
+                    4,
+                    div(
+                      class = "manual-entry-shell",
+                      h4("Add Velocity Entries", style = "margin-top:0;"),
+                      dateInput("manualVeloDate", "Date", value = Sys.Date(), format = "mm/dd/yyyy"),
+                      selectInput("manualVeloPitcher", "Pitcher", choices = c("All" = "All")),
+                      selectInput(
+                        "manualVeloType", "Throw Type",
+                        choices = c("Pulldowns", "Mound Velo", "Plyo Velo", "Bullpen", "Other"),
+                        selected = "Pulldowns"
+                      ),
+                      conditionalPanel(
+                        "input.manualVeloType == 'Other'",
+                        textInput("manualVeloTypeOther", "Custom Throw Type", placeholder = "e.g., Run-and-Gun")
+                      ),
+                      numericInput("manualVeloWeight", "Ball Weight (oz)", value = 5.0, min = 0.5, max = 64, step = 0.25),
+                      numericInput("manualVeloSingle", "Single Velocity (mph)", value = NA, min = 30, max = 120, step = 0.1),
+                      textAreaInput(
+                        "manualVeloBatch", "Batch Velocities",
+                        placeholder = "Enter multiple values: 90.2, 91.1, 92.0",
+                        rows = 3
+                      ),
+                      textAreaInput("manualVeloNotes", "Notes", placeholder = "Drill cue, intent, feedback...", rows = 2),
+                      actionButton("manualVeloAdd", "Save Entries", class = "btn-primary"),
+                      br(), br(),
+                      textOutput("manualVeloAddStatus")
+                    )
+                  ),
+                  column(
+                    8,
+                    div(
+                      style = "display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;",
+                      h4("Recent Manual Entries", style = "margin:0;"),
+                      actionButton("manualVeloDelete", "Delete Selected", class = "btn-danger btn-sm")
+                    ),
+                    DT::dataTableOutput("manualVeloTable")
+                  )
+                )
+              ),
+              tabPanel(
+                "Progress",
+                br(),
+                fluidRow(
+                  column(
+                    3,
+                    wellPanel(
+                      selectInput("manualVeloPitcherFilter", "Pitcher", choices = c("All" = "All"), selected = "All"),
+                      selectInput("manualVeloTypeFilter", "Throw Type", choices = c("All"), selected = "All", multiple = TRUE),
+                      dateRangeInput("manualVeloDateRange", "Date Range", start = Sys.Date() - 30, end = Sys.Date()),
+                      sliderInput("manualVeloWeightRange", "Ball Weight Range (oz)", min = 0.5, max = 64, value = c(0.5, 64), step = 0.25),
+                      selectInput(
+                        "manualVeloChartType", "Chart View",
+                        choices = c("Trend by Drill", "Velocity Distribution", "Weight vs Velocity", "PR Timeline"),
+                        selected = "Trend by Drill"
+                      )
+                    )
+                  ),
+                  column(
+                    9,
+                    uiOutput("manualVeloKpis"),
+                    plotOutput("manualVeloPlot", height = "480px"),
+                    br(),
+                    DT::dataTableOutput("manualVeloSummaryTable")
+                  )
+                )
+              )
+            )
+          ),
           # --- PITCHING HEATMAPS TAB (NON-MODULE UI) ---
           tabPanel(
             "HeatMaps",
@@ -21496,6 +21581,69 @@ save_workload_manual_entries <- function(entries) {
   readr::write_csv(entries, workload_manual_entries_path())
 }
 
+manual_velocity_entries_path <- function() file.path(workload_data_dir(), "manual_velocity_entries.csv")
+
+load_manual_velocity_entries <- function(app_id = current_school()) {
+  ensure_workload_data_dir()
+  path <- manual_velocity_entries_path()
+  if (!file.exists(path)) {
+    return(tibble::tibble(
+      id = character(),
+      app_id = character(),
+      entry_date = as.Date(character()),
+      pitcher = character(),
+      throw_type = character(),
+      ball_weight_oz = double(),
+      velocity_mph = double(),
+      notes = character(),
+      created_at = as.POSIXct(character())
+    ))
+  }
+  df <- readr::read_csv(
+    path,
+    col_types = readr::cols(.default = readr::col_guess()),
+    show_col_types = FALSE
+  )
+  if (!"id" %in% names(df)) df$id <- sprintf("legacy_%s", seq_len(nrow(df)))
+  if (!"app_id" %in% names(df)) df$app_id <- app_id
+  if (!"entry_date" %in% names(df)) df$entry_date <- as.Date(NA_real_)[seq_len(nrow(df))]
+  if (!"pitcher" %in% names(df)) df$pitcher <- character(nrow(df))
+  if (!"throw_type" %in% names(df)) df$throw_type <- character(nrow(df))
+  if (!"ball_weight_oz" %in% names(df)) df$ball_weight_oz <- NA_real_
+  if (!"velocity_mph" %in% names(df)) df$velocity_mph <- NA_real_
+  if (!"notes" %in% names(df)) df$notes <- character(nrow(df))
+  if (!"created_at" %in% names(df)) df$created_at <- as.character(Sys.time())
+  df <- df %>%
+    dplyr::mutate(
+      app_id = as.character(app_id),
+      entry_date = suppressWarnings(as.Date(entry_date)),
+      pitcher = as.character(pitcher %||% ""),
+      throw_type = as.character(throw_type %||% ""),
+      ball_weight_oz = suppressWarnings(as.numeric(ball_weight_oz)),
+      velocity_mph = suppressWarnings(as.numeric(velocity_mph)),
+      notes = as.character(notes %||% ""),
+      created_at = suppressWarnings(as.POSIXct(created_at, tz = "UTC"))
+    )
+  df[df$app_id == app_id, , drop = FALSE]
+}
+
+save_manual_velocity_entries <- function(entries, app_id = current_school()) {
+  ensure_workload_data_dir()
+  path <- manual_velocity_entries_path()
+  existing <- if (file.exists(path)) {
+    suppressMessages(readr::read_csv(path, show_col_types = FALSE))
+  } else {
+    tibble::tibble()
+  }
+  keep_existing <- if (nrow(existing) && "app_id" %in% names(existing)) {
+    dplyr::filter(existing, app_id != !!app_id)
+  } else {
+    tibble::tibble()
+  }
+  combined <- dplyr::bind_rows(keep_existing, entries)
+  readr::write_csv(combined, path)
+}
+
 workload_session_bucket <- function(session_type) {
   st <- tolower(as.character(session_type))
   st[is.na(st)] <- ""
@@ -28017,6 +28165,290 @@ deg_to_clock <- function(x) {
     }
     updateDateRangeInput(session, "dates", start = last_date, end = last_date)
   }, ignoreInit = TRUE)
+
+  # ---- Manual Velocity Entry (Pitching Suite) ----
+  manual_velocity_entries <- reactiveVal(load_manual_velocity_entries(current_school()))
+  manual_velo_status <- reactiveVal("")
+
+  observe({
+    df <- manual_velocity_entries()
+    pitchers_from_data <- sort(unique(stats::na.omit(as.character(pitch_data_pitching$Pitcher))))
+    pitchers_from_manual <- sort(unique(stats::na.omit(as.character(df$pitcher))))
+    raw_pitchers <- sort(unique(c(pitchers_from_data, pitchers_from_manual)))
+    if (!length(raw_pitchers)) raw_pitchers <- "All"
+    pitcher_choices <- c("All" = "All", setNames(raw_pitchers, format_name_first_last(raw_pitchers)))
+    pitcher_values <- unname(pitcher_choices)
+
+    selected_entry_pitcher <- isolate(input$manualVeloPitcher)
+    if (is.null(selected_entry_pitcher) || !(selected_entry_pitcher %in% pitcher_values)) {
+      selected_entry_pitcher <- if (!is.null(input$pitcher) && input$pitcher %in% pitcher_values) input$pitcher else "All"
+    }
+    updateSelectInput(session, "manualVeloPitcher", choices = pitcher_choices, selected = selected_entry_pitcher)
+
+    selected_filter_pitcher <- isolate(input$manualVeloPitcherFilter)
+    if (is.null(selected_filter_pitcher) || !(selected_filter_pitcher %in% pitcher_values)) {
+      selected_filter_pitcher <- "All"
+    }
+    updateSelectInput(session, "manualVeloPitcherFilter", choices = pitcher_choices, selected = selected_filter_pitcher)
+
+    type_vals <- sort(unique(stats::na.omit(as.character(df$throw_type))))
+    type_choices <- c("All", type_vals)
+    current_types <- isolate(input$manualVeloTypeFilter)
+    if (is.null(current_types) || !length(current_types)) current_types <- "All"
+    current_types <- current_types[current_types %in% type_choices]
+    if (!length(current_types)) current_types <- "All"
+    updateSelectInput(session, "manualVeloTypeFilter", choices = type_choices, selected = current_types)
+
+    w <- suppressWarnings(as.numeric(df$ball_weight_oz))
+    w <- w[is.finite(w)]
+    w_min <- if (length(w)) floor(min(w) * 4) / 4 else 0.5
+    w_max <- if (length(w)) ceiling(max(w) * 4) / 4 else 64
+    if (w_min >= w_max) w_max <- w_min + 1
+    cur_w <- isolate(input$manualVeloWeightRange)
+    if (is.null(cur_w) || length(cur_w) != 2) cur_w <- c(w_min, w_max)
+    cur_w[1] <- max(w_min, cur_w[1]); cur_w[2] <- min(w_max, cur_w[2])
+    if (cur_w[1] > cur_w[2]) cur_w <- c(w_min, w_max)
+    updateSliderInput(session, "manualVeloWeightRange", min = w_min, max = w_max, value = cur_w, step = 0.25)
+  })
+
+  observeEvent(input$manualVeloAdd, {
+    throw_type <- input$manualVeloType %||% "Pulldowns"
+    if (identical(throw_type, "Other")) {
+      throw_type <- trimws(input$manualVeloTypeOther %||% "")
+    }
+    if (!nzchar(throw_type)) {
+      manual_velo_status("Enter a throw type before saving.")
+      return()
+    }
+
+    split_numeric <- function(x) {
+      if (is.null(x) || !nzchar(trimws(x))) return(numeric(0))
+      toks <- unlist(strsplit(as.character(x), "[,\\s\\n\\t;|]+", perl = TRUE))
+      toks <- toks[nzchar(toks)]
+      vals <- suppressWarnings(as.numeric(toks))
+      vals[is.finite(vals)]
+    }
+    vals <- c(
+      suppressWarnings(as.numeric(input$manualVeloSingle)),
+      split_numeric(input$manualVeloBatch)
+    )
+    vals <- vals[is.finite(vals)]
+    vals <- vals[vals > 0]
+    if (!length(vals)) {
+      manual_velo_status("No valid velocity values found. Use single value or batch values.")
+      return()
+    }
+
+    pitcher_pick <- input$manualVeloPitcher %||% "All"
+    if (!nzchar(pitcher_pick) || identical(pitcher_pick, "All")) {
+      manual_velo_status("Pick a specific pitcher for manual entries.")
+      return()
+    }
+
+    weight <- suppressWarnings(as.numeric(input$manualVeloWeight))
+    if (!is.finite(weight) || weight <= 0) {
+      manual_velo_status("Ball weight must be a positive number.")
+      return()
+    }
+
+    date_val <- suppressWarnings(as.Date(input$manualVeloDate))
+    if (is.na(date_val)) date_val <- Sys.Date()
+
+    now_time <- Sys.time()
+    new_rows <- tibble::tibble(
+      id = sprintf("mv_%s_%s", format(now_time, "%Y%m%d%H%M%OS3"), seq_along(vals)),
+      app_id = current_school(),
+      entry_date = rep(date_val, length(vals)),
+      pitcher = rep(as.character(pitcher_pick), length(vals)),
+      throw_type = rep(as.character(throw_type), length(vals)),
+      ball_weight_oz = rep(weight, length(vals)),
+      velocity_mph = as.numeric(vals),
+      notes = rep(as.character(trimws(input$manualVeloNotes %||% "")), length(vals)),
+      created_at = rep(now_time, length(vals))
+    )
+
+    updated <- dplyr::bind_rows(manual_velocity_entries(), new_rows)
+    manual_velocity_entries(updated)
+    save_manual_velocity_entries(updated)
+
+    manual_velo_status(sprintf("Saved %d entry%s.", length(vals), ifelse(length(vals) == 1, "", "ies")))
+    updateNumericInput(session, "manualVeloSingle", value = NA_real_)
+    updateTextAreaInput(session, "manualVeloBatch", value = "")
+  })
+
+  output$manualVeloAddStatus <- renderText({ manual_velo_status() })
+
+  output$manualVeloTable <- DT::renderDataTable({
+    df <- manual_velocity_entries() %>%
+      dplyr::arrange(dplyr::desc(entry_date), dplyr::desc(created_at)) %>%
+      dplyr::mutate(
+        Pitcher = format_name_first_last(pitcher),
+        Date = as.character(entry_date),
+        `Throw Type` = throw_type,
+        `Ball (oz)` = round(ball_weight_oz, 2),
+        `Velo (mph)` = round(velocity_mph, 1),
+        Notes = notes
+      ) %>%
+      dplyr::select(Date, Pitcher, `Throw Type`, `Ball (oz)`, `Velo (mph)`, Notes, id)
+
+    if (!nrow(df)) {
+      return(DT::datatable(data.frame(Message = "No manual entries yet"), options = list(dom = "t"), rownames = FALSE))
+    }
+    DT::datatable(
+      df,
+      rownames = FALSE,
+      selection = "single",
+      options = list(pageLength = 12, order = list(list(0, "desc")), columnDefs = list(list(targets = 6, visible = FALSE)))
+    )
+  })
+
+  observeEvent(input$manualVeloDelete, {
+    sel <- input$manualVeloTable_rows_selected
+    if (is.null(sel) || !length(sel)) {
+      manual_velo_status("Select a row in Recent Manual Entries to delete.")
+      return()
+    }
+    df_tbl <- manual_velocity_entries() %>%
+      dplyr::arrange(dplyr::desc(entry_date), dplyr::desc(created_at))
+    if (sel < 1 || sel > nrow(df_tbl)) return()
+    drop_id <- df_tbl$id[sel]
+    updated <- dplyr::filter(manual_velocity_entries(), id != drop_id)
+    manual_velocity_entries(updated)
+    save_manual_velocity_entries(updated)
+    manual_velo_status("Deleted selected entry.")
+  })
+
+  manual_velocity_filtered <- reactive({
+    df <- manual_velocity_entries()
+    if (!nrow(df)) return(df)
+
+    dts <- input$manualVeloDateRange
+    if (!is.null(dts) && length(dts) == 2 && all(!is.na(dts))) {
+      df <- dplyr::filter(df, entry_date >= as.Date(dts[1]), entry_date <= as.Date(dts[2]))
+    }
+    pit <- input$manualVeloPitcherFilter %||% "All"
+    if (!identical(pit, "All")) df <- dplyr::filter(df, pitcher == pit)
+
+    typ <- input$manualVeloTypeFilter %||% "All"
+    if (length(typ) && !("All" %in% typ)) df <- dplyr::filter(df, throw_type %in% typ)
+
+    wr <- input$manualVeloWeightRange
+    if (!is.null(wr) && length(wr) == 2 && all(is.finite(wr))) {
+      df <- dplyr::filter(df, is.finite(ball_weight_oz), ball_weight_oz >= wr[1], ball_weight_oz <= wr[2])
+    }
+    df
+  })
+
+  output$manualVeloKpis <- renderUI({
+    df <- manual_velocity_filtered()
+    if (!nrow(df)) return(div(class = "manual-kpi-wrap", div(class = "manual-kpi", div(class = "label", "Status"), div(class = "value", "No Data"))))
+    avg_v <- mean(df$velocity_mph, na.rm = TRUE)
+    max_v <- max(df$velocity_mph, na.rm = TRUE)
+    n_tot <- nrow(df)
+    n_types <- dplyr::n_distinct(df$throw_type)
+    div(
+      class = "manual-kpi-wrap",
+      div(class = "manual-kpi", div(class = "label", "Entries"), div(class = "value", format(n_tot, big.mark = ","))),
+      div(class = "manual-kpi", div(class = "label", "Average Velo"), div(class = "value", sprintf("%.1f", avg_v))),
+      div(class = "manual-kpi", div(class = "label", "Peak Velo"), div(class = "value", sprintf("%.1f", max_v))),
+      div(class = "manual-kpi", div(class = "label", "Drill Types"), div(class = "value", as.character(n_types)))
+    )
+  })
+
+  output$manualVeloPlot <- renderPlot({
+    df <- manual_velocity_filtered()
+    validate(need(nrow(df) > 0, "No manual velocity data for current filters."))
+    dark_on <- isTRUE(input$dark_mode)
+    text_col <- if (dark_on) "#e5e7eb" else "#111827"
+    bg_col <- if (dark_on) "#0f172a" else "white"
+    grid_col <- if (dark_on) "#334155" else "#d1d5db"
+    chart_mode <- input$manualVeloChartType %||% "Trend by Drill"
+
+    if (identical(chart_mode, "Trend by Drill")) {
+      pdat <- df %>%
+        dplyr::group_by(entry_date, throw_type) %>%
+        dplyr::summarise(mean_velo = mean(velocity_mph, na.rm = TRUE), peak_velo = max(velocity_mph, na.rm = TRUE), .groups = "drop")
+      ggplot(pdat, aes(entry_date, mean_velo, color = throw_type)) +
+        geom_line(linewidth = 1.1) +
+        geom_point(size = 2.2) +
+        geom_point(aes(y = peak_velo), size = 1.6, alpha = 0.6, shape = 17) +
+        labs(title = "Trend by Drill", x = "Date", y = "Velocity (mph)", color = "Throw Type") +
+        theme_minimal(base_size = 13) +
+        theme(
+          text = element_text(color = text_col),
+          panel.background = element_rect(fill = bg_col, color = NA),
+          plot.background = element_rect(fill = bg_col, color = NA),
+          panel.grid.major = element_line(color = grid_col),
+          panel.grid.minor = element_blank(),
+          legend.position = "bottom"
+        )
+    } else if (identical(chart_mode, "Velocity Distribution")) {
+      ggplot(df, aes(throw_type, velocity_mph, fill = throw_type)) +
+        geom_boxplot(alpha = 0.65, outlier.alpha = 0.35) +
+        geom_jitter(width = 0.14, alpha = 0.35, size = 1.6) +
+        labs(title = "Velocity Distribution", x = "Throw Type", y = "Velocity (mph)") +
+        theme_minimal(base_size = 13) +
+        theme(
+          text = element_text(color = text_col),
+          panel.background = element_rect(fill = bg_col, color = NA),
+          plot.background = element_rect(fill = bg_col, color = NA),
+          panel.grid.major = element_line(color = grid_col),
+          panel.grid.minor = element_blank(),
+          legend.position = "none",
+          axis.text.x = element_text(angle = 20, hjust = 1)
+        )
+    } else if (identical(chart_mode, "Weight vs Velocity")) {
+      ggplot(df, aes(ball_weight_oz, velocity_mph, color = throw_type)) +
+        geom_point(alpha = 0.8, size = 2.2) +
+        geom_smooth(method = "lm", se = FALSE, linewidth = 0.9) +
+        labs(title = "Weight vs Velocity", x = "Ball Weight (oz)", y = "Velocity (mph)", color = "Throw Type") +
+        theme_minimal(base_size = 13) +
+        theme(
+          text = element_text(color = text_col),
+          panel.background = element_rect(fill = bg_col, color = NA),
+          plot.background = element_rect(fill = bg_col, color = NA),
+          panel.grid.major = element_line(color = grid_col),
+          panel.grid.minor = element_blank(),
+          legend.position = "bottom"
+        )
+    } else {
+      pdat <- df %>%
+        dplyr::arrange(entry_date, created_at) %>%
+        dplyr::mutate(pr_velo = cummax(velocity_mph))
+      ggplot(pdat, aes(entry_date, pr_velo)) +
+        geom_step(color = "#dc2626", linewidth = 1.2) +
+        geom_point(aes(y = velocity_mph, color = throw_type), alpha = 0.45, size = 1.8) +
+        labs(title = "PR Timeline", x = "Date", y = "Best Velocity To Date (mph)", color = "Throw Type") +
+        theme_minimal(base_size = 13) +
+        theme(
+          text = element_text(color = text_col),
+          panel.background = element_rect(fill = bg_col, color = NA),
+          plot.background = element_rect(fill = bg_col, color = NA),
+          panel.grid.major = element_line(color = grid_col),
+          panel.grid.minor = element_blank(),
+          legend.position = "bottom"
+        )
+    }
+  })
+
+  output$manualVeloSummaryTable <- DT::renderDataTable({
+    df <- manual_velocity_filtered()
+    if (!nrow(df)) {
+      return(DT::datatable(data.frame(Message = "No entries for selected filters"), options = list(dom = "t"), rownames = FALSE))
+    }
+    out <- df %>%
+      dplyr::group_by(throw_type, ball_weight_oz) %>%
+      dplyr::summarise(
+        Entries = dplyr::n(),
+        `Avg Velo` = round(mean(velocity_mph, na.rm = TRUE), 1),
+        `Peak Velo` = round(max(velocity_mph, na.rm = TRUE), 1),
+        `Min Velo` = round(min(velocity_mph, na.rm = TRUE), 1),
+        .groups = "drop"
+      ) %>%
+      dplyr::arrange(dplyr::desc(`Peak Velo`))
+    names(out) <- c("Throw Type", "Ball (oz)", "Entries", "Avg Velo", "Peak Velo", "Min Velo")
+    DT::datatable(out, rownames = FALSE, options = list(pageLength = 12, order = list(list(4, "desc"))))
+  })
   
   # 2) Filtered data
   filtered_data <- reactive({
