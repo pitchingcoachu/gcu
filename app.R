@@ -5104,18 +5104,20 @@ apply_split_by <- function(df, split_choice) {
     
     "Batter" = {
       batter <- get_first_existing(df, c("Batter", "Hitter", "Player"))
+      batter_display <- format_name_first_last(batter)
       df %>% dplyr::mutate(SplitColumn = ifelse(
-        !is.na(batter) & nzchar(as.character(batter)), 
-        as.character(batter), 
+        !is.na(batter_display) & nzchar(as.character(batter_display)),
+        as.character(batter_display),
         "Unknown"
       ))
     },
     
     "Pitcher" = {
       pitcher <- get_first_existing(df, c("Pitcher", "Player"))
+      pitcher_display <- format_name_first_last(pitcher)
       df %>% dplyr::mutate(SplitColumn = ifelse(
-        !is.na(pitcher) & nzchar(as.character(pitcher)), 
-        as.character(pitcher), 
+        !is.na(pitcher_display) & nzchar(as.character(pitcher_display)),
+        as.character(pitcher_display),
         "Unknown"
       ))
     },
@@ -5714,36 +5716,20 @@ log_startup_timing("Joined lookup_table and finalized Email")
 
 # (keep your name_map construction the same)
 raw_names <- sort(unique(pitch_data$Pitcher))
-display_names <- ifelse(
-  grepl(",", raw_names),
-  vapply(strsplit(raw_names, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-  raw_names
-)
+display_names <- format_name_first_last(raw_names)
 name_map <- setNames(raw_names, display_names)
 
 raw_hitters <- sort(unique(na.omit(as.character(pitch_data$Batter))))
-hit_display <- ifelse(
-  grepl(",", raw_hitters),
-  vapply(strsplit(raw_hitters, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-  raw_hitters
-)
+hit_display <- format_name_first_last(raw_hitters)
 batter_map <- setNames(raw_hitters, hit_display)
 
 # Opponent pitchers map (for hitting suite - pitchers who threw against our batters)
 raw_opp_pitchers <- sort(unique(na.omit(as.character(pitch_data$Pitcher))))
-opp_pitch_display <- ifelse(
-  grepl(",", raw_opp_pitchers),
-  vapply(strsplit(raw_opp_pitchers, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-  raw_opp_pitchers
-)
+opp_pitch_display <- format_name_first_last(raw_opp_pitchers)
 opponent_pitcher_map <- setNames(raw_opp_pitchers, opp_pitch_display)
 
 raw_catchers <- sort(unique(na.omit(as.character(pitch_data$Catcher))))
-catch_display <- ifelse(
-  grepl(",", raw_catchers),
-  vapply(strsplit(raw_catchers, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-  raw_catchers
-)
+catch_display <- format_name_first_last(raw_catchers)
 catcher_map <- setNames(raw_catchers, catch_display)
 
 
@@ -5997,11 +5983,7 @@ pitch_data_pitching <- ensure_pitch_keys(pitch_data_pitching)
 
 # Name map for Pitching UI (restricted to the filtered set)
 raw_names_p <- sort(unique(pitch_data_pitching$Pitcher))
-display_names_p <- ifelse(
-  grepl(",", raw_names_p),
-  vapply(strsplit(raw_names_p, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-  raw_names_p
-)
+display_names_p <- format_name_first_last(raw_names_p)
 name_map_pitching <- setNames(raw_names_p, display_names_p)
 
 
@@ -7835,6 +7817,10 @@ safe_for_dt <- function(df) {
     else if (is.matrix(col)) apply(col, 1, paste, collapse = ", ")
     else col
   })
+  name_cols <- intersect(c("Pitcher", "Batter", "Catcher", "Hitter", "Player"), names(out))
+  for (nm in name_cols) {
+    out[[nm]] <- format_name_first_last(out[[nm]])
+  }
   as.data.frame(out, stringsAsFactors = FALSE, check.names = FALSE)
 }
 
@@ -10458,11 +10444,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
 
 # --- C) Build catcher_map (just after batter_map is created) ---
 raw_catchers <- sort(unique(na.omit(as.character(pitch_data$Catcher))))
-catch_display <- ifelse(
-  grepl(",", raw_catchers),
-  vapply(strsplit(raw_catchers, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-  raw_catchers
-)
+catch_display <- format_name_first_last(raw_catchers)
 catcher_map <- setNames(raw_catchers, catch_display)
 
 
@@ -28095,11 +28077,7 @@ deg_to_clock <- function(x) {
     
     # Create name map for the filtered dataset
     raw_names_team <- sort(unique(df_base$Pitcher))
-    display_names_team <- ifelse(
-      grepl(",", raw_names_team),
-      vapply(strsplit(raw_names_team, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-      raw_names_team
-    )
+    display_names_team <- format_name_first_last(raw_names_team)
     name_map_team <- setNames(raw_names_team, display_names_team)
     
     # Determine which pitchers the user can see:
@@ -29875,6 +29853,7 @@ deg_to_clock <- function(x) {
         
         # Add Even/Ahead/Behind summary rows if splitting by Count
         count_state_rows <- NULL
+        state_one_one_rows <- list()
         if (split_choice == "Count" && "CountState" %in% names(df)) {
           for (state in c("Even", "Ahead", "Behind")) {
             state_df <- df %>% dplyr::filter(CountState == state)
