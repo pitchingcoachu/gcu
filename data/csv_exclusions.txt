@@ -4050,3 +4050,77 @@
 20260221-StaufferField-2_unverified.csv
 # Auto-pruned non-team data
 20260221-TreveccaNazareneBC-2_unverified.csv
+# Auto-pruned non-team data
+20260221-121Financial-2.csv
+# Auto-pruned non-team data
+20260221-Arlington-2.csv
+# Auto-pruned non-team data
+20260221-Arlington-3.csv
+# Auto-pruned non-team data
+20260221-CondronBallpark-1.csv
+# Auto-pruned non-team data
+20260221-DanLawField-2.csv
+# Auto-pruned non-team data
+20260221-DanLawField-3.csv
+# Auto-pruned non-team data
+20260221-DedeauxField-1.csv
+# Auto-pruned non-team data
+20260221-DellDiamond-1.csv
+# Auto-pruned non-team data
+20260221-DoakField-3.csv
+# Auto-pruned non-team data
+20260221-DurhamAthleticPark-1.csv
+# Auto-pruned non-team data
+20260221-FifthThirdParkSC-1.csv
+# Auto-pruned non-team data
+20260221-FifthThirdParkSC-2.csv
+# Auto-pruned non-team data
+20260221-GeorgiaTech-1.csv
+# Auto-pruned non-team data
+20260221-HarleyPark-1.csv
+# Auto-pruned non-team data
+20260221-JackCoombs-1.csv
+# Auto-pruned non-team data
+20260221-LindseyNelsonStadium-1.csv
+# Auto-pruned non-team data
+20260221-MSST-1.csv
+# Auto-pruned non-team data
+20260221-OleMiss-1.csv
+# Auto-pruned non-team data
+20260221-PhoenixMunicipal-1.csv
+# Auto-pruned non-team data
+20260221-PKPark-1.csv
+# Auto-pruned non-team data
+20260221-SpringsBrooksStadium-1.csv
+# Auto-pruned non-team data
+20260221-StickWilliamsField-1.csv
+# Auto-pruned non-team data
+20260221-SwansonStadium-1.csv
+# Auto-pruned non-team data
+20260221-SwellThomasStadium-1.csv
+# Auto-pruned non-team data
+20260221-SwellThomasStadium-2.csv
+# Auto-pruned non-team data
+20260221-Texas-1.csv
+# Auto-pruned non-team data
+20260221-TuckerFieldatBarcroftPark-1.csv
+# Auto-pruned non-team data
+20260221-UArizona-1.csv
+# Auto-pruned non-team data
+20260221-UCLA-1.csv
+# Auto-pruned non-team data
+20260221-UGeorgia-1.csv
+# Auto-pruned non-team data
+20260221-UNorthFlorida-1.csv
+# Auto-pruned non-team data
+20260221-UNorthFlorida-2.csv
+# Auto-pruned non-team data
+20260221-UofHouston-1.csv
+# Auto-pruned non-team data
+20260221-UofOklahoma-1.csv
+# Auto-pruned non-team data
+20260221-UofSouthCarolina-1.csv
+# Auto-pruned non-team data
+20260221-UTSanAntonio-1.csv
+# Auto-pruned non-team data
+20260221-Vanderbilt-1.csv
