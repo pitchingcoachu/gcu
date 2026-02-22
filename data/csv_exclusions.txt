@@ -4124,3 +4124,47 @@
 20260221-UTSanAntonio-1.csv
 # Auto-pruned non-team data
 20260221-Vanderbilt-1.csv
+# Auto-pruned non-team data
+20260221-AnteaterBallpark-1.csv
+# Auto-pruned non-team data
+20260221-BaggettStadium-1.csv
+# Auto-pruned non-team data
+20260221-BuddyBoldingStadium-1.csv
+# Auto-pruned non-team data
+20260221-BuddyBoldingStadium-2.csv
+# Auto-pruned non-team data
+20260221-CaesarUyesaka-1.csv
+# Auto-pruned non-team data
+20260221-CarterMemorial-1.csv
+# Auto-pruned non-team data
+20260221-CarterMemorial-2.csv
+# Auto-pruned non-team data
+20260221-HighPointUniversity-1.csv
+# Auto-pruned non-team data
+20260221-JackCoombs-2.csv
+# Auto-pruned non-team data
+20260221-KingsmoreStadium-1.csv
+# Auto-pruned non-team data
+20260221-KleinField-1.csv
+# Auto-pruned non-team data
+20260221-KleinField-2.csv
+# Auto-pruned non-team data
+20260221-MelchingFielda-2.csv
+# Auto-pruned non-team data
+20260221-MikeDLaneField-1.csv
+# Auto-pruned non-team data
+20260221-PittFieldUOR-1.csv
+# Auto-pruned non-team data
+20260221-PittFieldUOR-2.csv
+# Auto-pruned non-team data
+20260221-PresbyterianCollege-1.csv
+# Auto-pruned non-team data
+20260221-RaymondHand-1.csv
+# Auto-pruned non-team data
+20260221-UofMiami-1.csv
+# Auto-pruned non-team data
+20260221-UofMiami-2.csv
+# Auto-pruned non-team data
+20260221-VATech-1.csv
+# Auto-pruned non-team data
+20260221-WoernerField-2.csv
