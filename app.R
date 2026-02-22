@@ -7318,91 +7318,6 @@ pitch_ui <- function(show_header = FALSE) {
             ggiraph::girafeOutput("velocityByGamePlot", height = "450px"),
             ggiraph::girafeOutput("velocityInningPlot", height = "450px")
           ),
-          tabPanel(
-            "Manual Entry",
-            value = "manual_entry",
-            tags$style(HTML("
-              .manual-kpi-wrap { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
-              .manual-kpi { flex:1 1 180px; border-radius:12px; padding:12px 14px; color:#0f172a; background:linear-gradient(145deg,#f8fafc,#e2e8f0); border:1px solid #cbd5e1; }
-              .manual-kpi .label { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#475569; }
-              .manual-kpi .value { font-size:24px; font-weight:700; line-height:1.1; margin-top:4px; }
-              .manual-entry-shell { background:linear-gradient(180deg,#f8fafc,#eef2ff); border:1px solid #dbeafe; border-radius:14px; padding:12px; }
-            ")),
-            tabsetPanel(
-              id = "manual_entry_tabs",
-              tabPanel(
-                "Entry",
-                br(),
-                fluidRow(
-                  column(
-                    4,
-                    div(
-                      class = "manual-entry-shell",
-                      h4("Add Velocity Entries", style = "margin-top:0;"),
-                      dateInput("manualVeloDate", "Date", value = Sys.Date(), format = "mm/dd/yyyy"),
-                      selectInput("manualVeloPitcher", "Pitcher", choices = c("All" = "All")),
-                      selectInput(
-                        "manualVeloType", "Throw Type",
-                        choices = c("Pulldowns", "Mound Velo", "Plyo Velo", "Bullpen", "Other"),
-                        selected = "Pulldowns"
-                      ),
-                      conditionalPanel(
-                        "input.manualVeloType == 'Other'",
-                        textInput("manualVeloTypeOther", "Custom Throw Type", placeholder = "e.g., Run-and-Gun")
-                      ),
-                      numericInput("manualVeloWeight", "Ball Weight (oz)", value = 5.0, min = 0.5, max = 64, step = 0.25),
-                      numericInput("manualVeloSingle", "Single Velocity (mph)", value = NA, min = 30, max = 120, step = 0.1),
-                      textAreaInput(
-                        "manualVeloBatch", "Batch Velocities",
-                        placeholder = "Enter multiple values: 90.2, 91.1, 92.0",
-                        rows = 3
-                      ),
-                      textAreaInput("manualVeloNotes", "Notes", placeholder = "Drill cue, intent, feedback...", rows = 2),
-                      actionButton("manualVeloAdd", "Save Entries", class = "btn-primary"),
-                      br(), br(),
-                      textOutput("manualVeloAddStatus")
-                    )
-                  ),
-                  column(
-                    8,
-                    div(
-                      style = "display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;",
-                      h4("Recent Manual Entries", style = "margin:0;"),
-                      actionButton("manualVeloDelete", "Delete Selected", class = "btn-danger btn-sm")
-                    ),
-                    DT::dataTableOutput("manualVeloTable")
-                  )
-                )
-              ),
-              tabPanel(
-                "Progress",
-                br(),
-                fluidRow(
-                  column(
-                    3,
-                    wellPanel(
-                      selectInput("manualVeloPitcherFilter", "Pitcher", choices = c("All" = "All"), selected = "All"),
-                      selectInput("manualVeloTypeFilter", "Throw Type", choices = c("All"), selected = "All", multiple = TRUE),
-                      dateRangeInput("manualVeloDateRange", "Date Range", start = Sys.Date() - 30, end = Sys.Date()),
-                      sliderInput("manualVeloWeightRange", "Ball Weight Range (oz)", min = 0.5, max = 64, value = c(0.5, 64), step = 0.25),
-                      selectInput(
-                        "manualVeloChartType", "Chart View",
-                        choices = c("Trend by Drill", "Velocity Distribution", "Weight vs Velocity", "PR Timeline"),
-                        selected = "Trend by Drill"
-                      )
-                    )
-                  ),
-                  column(
-                    9,
-                    uiOutput("manualVeloKpis"),
-                    plotOutput("manualVeloPlot", height = "480px"),
-                    br(),
-                    DT::dataTableOutput("manualVeloSummaryTable")
-                  )
-                )
-              )
-            )
-          ),
           # --- PITCHING HEATMAPS TAB (NON-MODULE UI) ---
           tabPanel(
             "HeatMaps",
@@ -7514,6 +7429,92 @@ pitch_ui <- function(show_header = FALSE) {
               mainPanel(
                 uiOutput("trendPlotUI"),
                 width = 9
+              )
+            )
+          )
+          
+          , tabPanel(
+            "Velo Manual Entry",
+            value = "manual_entry",
+            tags$style(HTML("
+              .manual-kpi-wrap { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:12px; }
+              .manual-kpi { flex:1 1 180px; border-radius:12px; padding:12px 14px; color:#0f172a; background:linear-gradient(145deg,#f8fafc,#e2e8f0); border:1px solid #cbd5e1; }
+              .manual-kpi .label { font-size:11px; letter-spacing:.06em; text-transform:uppercase; color:#475569; }
+              .manual-kpi .value { font-size:24px; font-weight:700; line-height:1.1; margin-top:4px; }
+              .manual-entry-shell { background:linear-gradient(180deg,#f8fafc,#eef2ff); border:1px solid #dbeafe; border-radius:14px; padding:12px; }
+            ")),
+            tabsetPanel(
+              id = "manual_entry_tabs",
+              tabPanel(
+                "Entry",
+                br(),
+                fluidRow(
+                  column(
+                    4,
+                    div(
+                      class = "manual-entry-shell",
+                      h4("Add Velocity Entries", style = "margin-top:0;"),
+                      dateInput("manualVeloDate", "Date", value = Sys.Date(), format = "mm/dd/yyyy"),
+                      selectInput("manualVeloPitcher", "Pitcher", choices = c("All" = "All")),
+                      selectInput(
+                        "manualVeloType", "Throw Type",
+                        choices = c("Pulldowns", "Mound Velo", "Plyo Velo", "Bullpen", "Other"),
+                        selected = "Pulldowns"
+                      ),
+                      conditionalPanel(
+                        "input.manualVeloType == 'Other'",
+                        textInput("manualVeloTypeOther", "Custom Throw Type", placeholder = "e.g., Run-and-Gun")
+                      ),
+                      numericInput("manualVeloWeight", "Ball Weight (oz)", value = 5.0, min = 0.5, max = 64, step = 0.25),
+                      numericInput("manualVeloSingle", "Single Velocity (mph)", value = NA, min = 30, max = 120, step = 0.1),
+                      textAreaInput(
+                        "manualVeloBatch", "Batch Velocities",
+                        placeholder = "Enter multiple values: 90.2, 91.1, 92.0",
+                        rows = 3
+                      ),
+                      textAreaInput("manualVeloNotes", "Notes", placeholder = "Drill cue, intent, feedback...", rows = 2),
+                      actionButton("manualVeloAdd", "Save Entries", class = "btn-primary"),
+                      br(), br(),
+                      textOutput("manualVeloAddStatus")
+                    )
+                  ),
+                  column(
+                    8,
+                    div(
+                      style = "display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;",
+                      h4("Recent Manual Entries", style = "margin:0;"),
+                      actionButton("manualVeloDelete", "Delete Selected", class = "btn-danger btn-sm")
+                    ),
+                    DT::dataTableOutput("manualVeloTable")
+                  )
+                )
+              ),
+              tabPanel(
+                "Progress",
+                br(),
+                fluidRow(
+                  column(
+                    3,
+                    wellPanel(
+                      selectInput("manualVeloPitcherFilter", "Pitcher", choices = c("All" = "All"), selected = "All"),
+                      selectInput("manualVeloTypeFilter", "Throw Type", choices = c("All"), selected = "All", multiple = TRUE),
+                      dateRangeInput("manualVeloDateRange", "Date Range", start = Sys.Date() - 30, end = Sys.Date()),
+                      sliderInput("manualVeloWeightRange", "Ball Weight Range (oz)", min = 0.5, max = 64, value = c(0.5, 64), step = 0.25),
+                      selectInput(
+                        "manualVeloChartType", "Chart View",
+                        choices = c("Trend by Drill", "Velocity Distribution", "Weight vs Velocity", "PR Timeline"),
+                        selected = "Trend by Drill"
+                      )
+                    )
+                  ),
+                  column(
+                    9,
+                    uiOutput("manualVeloKpis"),
+                    plotOutput("manualVeloPlot", height = "480px"),
+                    br(),
+                    DT::dataTableOutput("manualVeloSummaryTable")
+                  )
+                )
               )
             )
           )
