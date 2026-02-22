@@ -23884,6 +23884,8 @@ deg_to_clock <- function(x) {
   }
 
   # ---- Video upload admin ----
+  # Isolate video-upload setup so any failure here does not blank core dashboard outputs.
+  tryCatch({
   video_upload_sessions_path <- file.path("data", "video_upload_sessions.csv")
   ensure_video_upload_dir <- function() dir.create(dirname(video_upload_sessions_path), recursive = TRUE, showWarnings = FALSE)
   load_video_assignments <- function() {
@@ -24784,6 +24786,9 @@ deg_to_clock <- function(x) {
       rownames = FALSE,
       escape = FALSE
     )
+  })
+  }, error = function(e) {
+    message("Video Upload module initialization failed; continuing without Video Upload handlers: ", conditionMessage(e))
   })
   
   # --- Workload module ---
@@ -28833,67 +28838,72 @@ deg_to_clock <- function(x) {
   
   # 1) Pitcher selector
   output$pitcher_ui <- renderUI({
-    req(input$sessionType, input$teamType)
-    
-    df_base <- apply_session_type_filter(pitch_data_pitching, input$sessionType)
-    
-    # Apply team filtering to get the available pitchers
-    if (input$teamType == "Campers") {
-      df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_CAMPERS)
-    } else if (input$teamType == TEAM_CODE) {
-      # Filter to only GCU allowed pitchers (exclude campers)
-      df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_PITCHERS)
-    }
-    # If "All" is selected, df_base already contains all pitchers
-    
-    # Create name map for the filtered dataset
-    raw_names_team <- sort(unique(df_base$Pitcher))
-    display_names_team <- ifelse(
-      grepl(",", raw_names_team),
-      vapply(strsplit(raw_names_team, ",\\s*"), function(x) paste(x[2], x[1]), ""),
-      raw_names_team
-    )
-    name_map_team <- setNames(raw_names_team, display_names_team)
-    
-    # Determine which pitchers the user can see:
-    # - Admins: all pitchers
-    # - Coaches: all pitchers  
-    # - Players: only pitchers where Email matches their login email
-    if (is_admin() || is_coach()) {
-      # Coaches and admins see all pitchers in filtered dataset
-      sel_raw <- unique(df_base$Pitcher) %>% na.omit()
-    } else {
-      # Players see only their own data (matched by email)
-      sel_raw <- unique(df_base$Pitcher[norm_email(df_base$Email) == norm_email(user_email())]) %>% na.omit()
-    }
-    
-    # Admins AND coaches get the "All" option
-    if (is_admin() || is_coach()) {
-      # Check if current selection is still valid, otherwise default to "All"
-      current_selection <- isolate(input$pitcher)
-      if (is.null(current_selection) || !(current_selection %in% c("All", raw_names_team))) {
-        current_selection <- "All"
+    tryCatch({
+      req(input$sessionType, input$teamType)
+      
+      df_base <- apply_session_type_filter(pitch_data_pitching, input$sessionType)
+      
+      # Apply team filtering to get the available pitchers
+      if (input$teamType == "Campers") {
+        df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_CAMPERS)
+      } else if (input$teamType == TEAM_CODE) {
+        # Filter to only GCU allowed pitchers (exclude campers)
+        df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_PITCHERS)
+      }
+      # If "All" is selected, df_base already contains all pitchers
+      
+      # Create name map for the filtered dataset
+      raw_names_team <- sort(unique(df_base$Pitcher))
+      display_names_team <- ifelse(
+        grepl(",", raw_names_team),
+        vapply(strsplit(raw_names_team, ",\\s*"), function(x) paste(x[2], x[1]), ""),
+        raw_names_team
+      )
+      name_map_team <- setNames(raw_names_team, display_names_team)
+      
+      # Determine which pitchers the user can see:
+      # - Admins: all pitchers
+      # - Coaches: all pitchers  
+      # - Players: only pitchers where Email matches their login email
+      if (is_admin() || is_coach()) {
+        # Coaches and admins see all pitchers in filtered dataset
+        sel_raw <- unique(df_base$Pitcher) %>% na.omit()
+      } else {
+        # Players see only their own data (matched by email)
+        sel_raw <- unique(df_base$Pitcher[norm_email(df_base$Email) == norm_email(user_email())]) %>% na.omit()
       }
       
-      selectInput(
-        "pitcher", "Select Pitcher:",
-        choices  = c("All" = "All", name_map_team),
-        selected = current_selection
-      )
-    } else if (length(sel_raw) > 0) {
-      # Players see only their pitchers (filtered by email)
-      # Use the team-specific name map, but only show their pitchers
-      player_display_names <- display_names_team[raw_names_team %in% sel_raw]
-      player_map <- setNames(sel_raw, player_display_names)
-      
-      selectInput("pitcher", "Select Pitcher:", 
-                  choices = player_map, 
-                  selected = sel_raw[1])
-    } else {
-      selectInput("pitcher", "Select Pitcher:", 
-                  choices = "No data", 
-                  selected = "No data")
-    }
+      # Admins AND coaches get the "All" option
+      if (is_admin() || is_coach()) {
+        # Check if current selection is still valid, otherwise default to "All"
+        current_selection <- isolate(input$pitcher)
+        if (is.null(current_selection) || !(current_selection %in% c("All", raw_names_team))) {
+          current_selection <- "All"
+        }
+        
+        selectInput(
+          "pitcher", "Select Pitcher:",
+          choices  = c("All" = "All", name_map_team),
+          selected = current_selection
+        )
+      } else if (length(sel_raw) > 0) {
+        # Players see only their pitchers (filtered by email)
+        # Use the team-specific name map, but only show their pitchers
+        player_display_names <- display_names_team[raw_names_team %in% sel_raw]
+        player_map <- setNames(sel_raw, player_display_names)
+        
+        selectInput("pitcher", "Select Pitcher:", 
+                    choices = player_map, 
+                    selected = sel_raw[1])
+      } else {
+        selectInput("pitcher", "Select Pitcher:", 
+                    choices = "No data", 
+                    selected = "No data")
+      }
+    }, error = function(e) {
+      message("pitcher_ui render failed: ", conditionMessage(e))
+      selectInput("pitcher", "Select Pitcher:", choices = c("All" = "All"), selected = "All")
+    })
   })
   
   
