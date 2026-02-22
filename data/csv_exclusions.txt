@@ -4206,3 +4206,27 @@
 20260221-WinthropUniversity-1.csv
 # Auto-pruned non-team data
 20260221-YoungMemorialField-1.csv
+# Auto-pruned non-team data
+20260220-RockwellField-1.csv
+# Auto-pruned non-team data
+20260221-121Financial-1.csv
+# Auto-pruned non-team data
+20260221-BiolaUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260221-DellDiamond-2.csv
+# Auto-pruned non-team data
+20260221-EagleFieldJMU-1.csv
+# Auto-pruned non-team data
+20260221-EagleFieldJMU-2.csv
+# Auto-pruned non-team data
+20260221-FIUBaseballStadium-1.csv
+# Auto-pruned non-team data
+20260221-FIUBaseballStadium-2.csv
+# Auto-pruned non-team data
+20260221-LoyolaMarymount-1.csv
+# Auto-pruned non-team data
+20260221-LPFrans-1.csv
+# Auto-pruned non-team data
+20260221-RudyAbbottField-1.csv
+# Auto-pruned non-team data
+20260221-StephenSchottBBS-1.csv
