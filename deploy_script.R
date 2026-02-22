@@ -31,7 +31,7 @@ deploy_app <- function() {
         "patchwork", "hexbin", "ggiraph", "httr2", "MASS", "digest",
         "curl", "readr", "lubridate", "stringr", "akima", "colourpicker",
         "memoise", "shinymanager", "DBI", "RSQLite",
-        "plotly", "jsonlite"
+        "plotly", "jsonlite", "blastula", "optparse"
       )
       
       for (pkg in required_packages) {

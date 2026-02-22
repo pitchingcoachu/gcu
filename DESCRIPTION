@@ -38,6 +38,8 @@ Imports:
     purrr (>= 1.0.0),
     akima (>= 0.6.0),
     plotly (>= 4.10.0),
-    jsonlite (>= 1.8.0)
+    jsonlite (>= 1.8.0),
+    blastula (>= 0.3.0),
+    optparse (>= 1.7.5)
 Encoding: UTF-8
 LazyData: true

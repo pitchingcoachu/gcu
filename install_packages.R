@@ -86,7 +86,9 @@ app_packages <- c(
   "RSQLite",
   "RMariaDB",
   "RPostgres",
-  "digest"
+  "digest",
+  "blastula",
+  "optparse"
 )
 
 cat("\nInstalling app-specific packages...\n")

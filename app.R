@@ -21288,7 +21288,6 @@ video_upload_ui <- function() {
         ),
         wellPanel(
           h4("Upload Full-Game Video"),
-<<<<<<< HEAD
           tags$div(
             id = "video_upload_full_game_cloudinary_cfg",
             `data-cloud-name` = CLOUDINARY_CLOUD_NAME,
@@ -21304,12 +21303,6 @@ video_upload_ui <- function() {
           tags$small("This file uploads directly to Cloudinary from your browser (not through Shiny)."),
           br(),
           actionButton("video_upload_full_game_direct_upload", "Upload Full Game to Cloudinary", class = "btn-info"),
-=======
-          fileInput("video_upload_full_game_video", NULL,
-                    multiple = FALSE,
-                    accept = c(".mp4", ".mov", ".avi", ".mkv"),
-                    buttonLabel = "Select video"),
->>>>>>> a1f03c9e0a6766b996cd96283dc79e93d592f1e8
           textInput(
             "video_upload_full_game_start_time",
             "First clip start time (HH:MM:SS.sss)",
@@ -21323,7 +21316,6 @@ video_upload_ui <- function() {
           actionButton("video_upload_full_game_submit", "Generate & Map Clips", class = "btn-warning"),
           tags$div(id = "video_upload_full_game_client_status", class = "text-muted", style = "margin-top:8px;"),
           br(), br(),
-<<<<<<< HEAD
           uiOutput("video_upload_full_game_status"),
           tags$script(HTML("
             (function() {
@@ -21431,9 +21423,6 @@ video_upload_ui <- function() {
               setTimeout(init, 300);
             })();
           "))
-=======
-          uiOutput("video_upload_full_game_status")
->>>>>>> a1f03c9e0a6766b996cd96283dc79e93d592f1e8
         )
       ),
       column(
@@ -23533,10 +23522,7 @@ deg_to_clock <- function(x) {
   video_feedback <- reactiveVal(NULL)
   video_upload_upload_feedback <- reactiveVal(NULL)
   video_full_game_feedback <- reactiveVal(NULL)
-<<<<<<< HEAD
   video_full_game_asset <- reactiveVal(NULL)
-=======
->>>>>>> a1f03c9e0a6766b996cd96283dc79e93d592f1e8
 
   build_team_label <- function(home, away) {
     mapply(function(h, a) {
@@ -23630,10 +23616,7 @@ deg_to_clock <- function(x) {
     video_feedback(NULL)
     video_upload_upload_feedback(NULL)
     video_full_game_feedback(NULL)
-<<<<<<< HEAD
     video_full_game_asset(NULL)
-=======
->>>>>>> a1f03c9e0a6766b996cd96283dc79e93d592f1e8
   }, ignoreInit = TRUE)
 
   observeEvent(input$video_upload_files, {
@@ -23789,15 +23772,6 @@ deg_to_clock <- function(x) {
                                     text = "First clip start time is not a valid HH:MM:SS value."))
       return()
     }
-<<<<<<< HEAD
-=======
-    ffmpeg_path <- Sys.which("ffmpeg")
-    if (!nzchar(ffmpeg_path)) {
-      video_full_game_feedback(list(type = "error",
-                                    text = "ffmpeg is not available; install it to generate clips."))
-      return()
-    }
->>>>>>> a1f03c9e0a6766b996cd96283dc79e93d592f1e8
     session_rows <- find_session_rows(data_parent, input$video_session)
     if (!nrow(session_rows)) {
       video_full_game_feedback(list(type = "error",
@@ -23828,7 +23802,6 @@ deg_to_clock <- function(x) {
     }
     clip_count <- nrow(ordered_rows)
     clip_duration <- 6
-<<<<<<< HEAD
     tryCatch({
       withProgress(message = "Generating Cloudinary clip URLs", value = 0, {
         offsets <- start_seconds + (ordered_rows$time_seconds - ordered_rows$time_seconds[1])
@@ -23858,56 +23831,6 @@ deg_to_clock <- function(x) {
         )
       })
       success_text <- paste0("Generated and mapped ", clip_count, " Cloudinary clips from the uploaded full-game video.")
-=======
-    video_path <- file_info$datapath[1]
-    uploads <- vector("list", clip_count)
-    tryCatch({
-      withProgress(message = "Generating clips from full game", value = 0, {
-        for (i in seq_len(clip_count)) {
-          clip_offset <- start_seconds +
-            (ordered_rows$time_seconds[i] - ordered_rows$time_seconds[1])
-          if (clip_offset < 0) clip_offset <- 0
-          clip_path <- tempfile(fileext = ".mp4")
-          tryCatch({
-            ffmpeg_args <- c(
-              "-ss", format_seconds_for_ffmpeg(clip_offset),
-              "-i", video_path,
-              "-t", as.character(clip_duration),
-              "-c", "copy",
-              "-avoid_negative_ts", "make_zero",
-              "-y", clip_path
-            )
-            ffmpeg_output <- system2(ffmpeg_path, ffmpeg_args, stdout = FALSE, stderr = TRUE)
-            ffmpeg_status <- attr(ffmpeg_output, "status")
-            if (!is.null(ffmpeg_status) && ffmpeg_status != 0) {
-              reason <- paste(ffmpeg_output, collapse = "\n")
-              stop(paste0("ffmpeg failed for clip ", i, ": ", reason))
-            }
-            upload_result <- upload_media_cloudinary(clip_path)
-            uploads[[i]] <- tibble::tibble(
-              file_name = paste0("clip-", ordered_rows$PlayID[i], ".mp4"),
-              cloudinary_url = upload_result$url,
-              cloudinary_public_id = upload_result$public_id
-            )
-          }, finally = {
-            if (file.exists(clip_path)) unlink(clip_path)
-          })
-          incProgress(1 / clip_count, detail = sprintf("Clip %d/%d", i, clip_count))
-        }
-      })
-      manifest <- dplyr::bind_rows(uploads)
-      map_manifest_to_session(
-        session_rows = ordered_rows,
-        manifest = manifest,
-        session_id = input$video_session,
-        slot = "VideoClip2",
-        name = "ManualCamera",
-        target = "ManualUpload",
-        type = "ManualVideo",
-        map_path = file.path("data", "video_map.csv")
-      )
-      success_text <- paste0("Generated and uploaded ", nrow(manifest), " clips from the full-game video.")
->>>>>>> a1f03c9e0a6766b996cd96283dc79e93d592f1e8
       if (skipped > 0) {
         success_text <- paste0(success_text, " Skipped ", skipped, " pitches without Time data.")
       }
