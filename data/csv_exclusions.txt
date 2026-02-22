@@ -4230,3 +4230,11 @@
 20260221-RudyAbbottField-1.csv
 # Auto-pruned non-team data
 20260221-StephenSchottBBS-1.csv
+# Auto-pruned non-team data
+20260221-BudMethenyBBStad-2.csv
+# Auto-pruned non-team data
+20260221-EvansvilleU-1.csv
+# Auto-pruned non-team data
+20260221-MelchingFielda-1.csv
+# Auto-pruned non-team data
+20260221-PresleyAskewField-1.csv
