@@ -4042,3 +4042,11 @@
 20260221-GaryWright-1_unverified.csv
 # Auto-pruned non-team data
 20260221-DedeauxField-1_unverified.csv
+# Auto-pruned non-team data
+20260221-CarsonNewman-3_unverified.csv
+# Auto-pruned non-team data
+20260221-GaryWright-2_unverified.csv
+# Auto-pruned non-team data
+20260221-StaufferField-2_unverified.csv
+# Auto-pruned non-team data
+20260221-TreveccaNazareneBC-2_unverified.csv
