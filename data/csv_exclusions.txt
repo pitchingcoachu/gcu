@@ -4238,3 +4238,19 @@
 20260221-MelchingFielda-1.csv
 # Auto-pruned non-team data
 20260221-PresleyAskewField-1.csv
+# Auto-pruned non-team data
+20260221-Arlington-1.csv
+# Auto-pruned non-team data
+20260221-BushStadium-1.csv
+# Auto-pruned non-team data
+20260221-ESRosePark-1.csv
+# Auto-pruned non-team data
+20260221-EvansvilleU-2.csv
+# Auto-pruned non-team data
+20260221-FedExPark-2.csv
+# Auto-pruned non-team data
+20260221-KellField-1.csv
+# Auto-pruned non-team data
+20260221-ReeseField-1.csv
+# Auto-pruned non-team data
+20260221-TexasStateUniversity-1.csv
