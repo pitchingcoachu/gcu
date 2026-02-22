@@ -5006,39 +5006,40 @@ apply_split_by <- function(df, split_choice) {
     "Zone Location" = {
       x <- suppressWarnings(as.numeric(get_first_existing(df, c("PlateLocSide"))))
       y <- suppressWarnings(as.numeric(get_first_existing(df, c("PlateLocHeight"))))
-      split_vals <- rep("Unknown", nrow(df))
       ok <- is.finite(x) & is.finite(y)
-      if (any(ok)) {
-        mid_x <- (ZONE_LEFT + ZONE_RIGHT) / 2
-        mid_y <- (ZONE_BOTTOM + ZONE_TOP) / 2
-        dx <- (ZONE_RIGHT - ZONE_LEFT) / 3
-        dy <- (ZONE_TOP - ZONE_BOTTOM) / 3
-        L <- ZONE_LEFT
+      mid_x <- (ZONE_LEFT + ZONE_RIGHT) / 2
+      mid_y <- (ZONE_BOTTOM + ZONE_TOP) / 2
+      dx <- (ZONE_RIGHT - ZONE_LEFT) / 3
+      dy <- (ZONE_TOP - ZONE_BOTTOM) / 3
+      L <- ZONE_LEFT
 
-        throws_vec <- get_first_existing(df, c("PitcherThrows", "PitcherHand", "Pitcher Hand"))
-        throws_norm <- toupper(substr(trimws(throws_vec), 1, 1))
-        is_lefty <- throws_norm == "L"
+      throws_vec <- get_first_existing(df, c("PitcherThrows", "PitcherHand", "Pitcher Hand"))
+      throws_norm <- toupper(substr(trimws(throws_vec), 1, 1))
+      is_lefty <- throws_norm == "L"
 
-        cond_mat <- cbind(
-          "Upper Half" = (y >= mid_y),
-          "Bottom Half" = (y <= mid_y),
-          "Glove Side Half" = ifelse(is_lefty, x >= mid_x, x <= mid_x),
-          "Arm Side Half" = ifelse(is_lefty, x <= mid_x, x >= mid_x),
-          "Upper 3rd" = (y >= (ZONE_BOTTOM + 2 * dy)),
-          "Bottom 3rd" = (y <= (ZONE_BOTTOM + dy)),
-          "Glove Side 3rd" = ifelse(is_lefty, x >= (L + 2 * dx), x <= (L + dx)),
-          "Arm Side 3rd" = ifelse(is_lefty, x <= (L + dx), x >= (L + 2 * dx))
-        )
-        cond_mat[!ok, ] <- FALSE
-        cond_mat[is.na(cond_mat)] <- FALSE
+      cond_mat <- cbind(
+        "Upper Half" = (y >= mid_y),
+        "Bottom Half" = (y <= mid_y),
+        "Glove Side Half" = ifelse(is_lefty, x >= mid_x, x <= mid_x),
+        "Arm Side Half" = ifelse(is_lefty, x <= mid_x, x >= mid_x),
+        "Upper 3rd" = (y >= (ZONE_BOTTOM + 2 * dy)),
+        "Bottom 3rd" = (y <= (ZONE_BOTTOM + dy)),
+        "Glove Side 3rd" = ifelse(is_lefty, x >= (L + 2 * dx), x <= (L + dx)),
+        "Arm Side 3rd" = ifelse(is_lefty, x <= (L + dx), x >= (L + 2 * dx))
+      )
+      cond_mat[!ok, ] <- FALSE
+      cond_mat[is.na(cond_mat)] <- FALSE
 
-        split_vals <- vapply(seq_len(nrow(df)), function(i) {
-          if (!ok[i]) return("Unknown")
-          labs <- colnames(cond_mat)[cond_mat[i, ]]
-          if (length(labs)) paste(labs, collapse = " | ") else "Unknown"
-        }, character(1))
-      }
-      df %>% dplyr::mutate(SplitColumn = split_vals)
+      labels_by_row <- lapply(seq_len(nrow(df)), function(i) {
+        labs <- colnames(cond_mat)[cond_mat[i, ]]
+        if (length(labs)) labs else "Unknown"
+      })
+
+      row_idx <- rep.int(seq_len(nrow(df)), times = lengths(labels_by_row))
+      split_vals <- unlist(labels_by_row, use.names = FALSE)
+      out <- df[row_idx, , drop = FALSE]
+      out$SplitColumn <- split_vals
+      out
     },
     
     "Batter" = {
