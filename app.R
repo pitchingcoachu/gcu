@@ -1432,6 +1432,21 @@ normalize_mod_date_column <- function(vec, is_datetime = FALSE) {
 }
 
 # ---- App state (custom tables/reports/targets) persistence helpers ----
+get_state_db_path <- function() {
+  override <- Sys.getenv("APP_STATE_DB_PATH", unset = "")
+  if (nzchar(override)) {
+    path <- path.expand(override)
+    dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
+    return(path)
+  }
+  user_dir <- tryCatch(tools::R_user_dir("pcu_pitch_dashboard", which = "data"), error = function(...) "")
+  if (nzchar(user_dir)) {
+    dir.create(user_dir, recursive = TRUE, showWarnings = FALSE)
+    return(file.path(user_dir, "app_state.sqlite"))
+  }
+  "app_state.sqlite"
+}
+
 state_backend <- function() {
   host <- Sys.getenv("MYSQL_HOST", "")
   db   <- Sys.getenv("MYSQL_DB", "")
@@ -1459,20 +1474,6 @@ state_backend <- function() {
   }
   
   # Fallback to local SQLite (persists locally but not across shinyapps redeploys)
-  get_state_db_path <- function() {
-    override <- Sys.getenv("APP_STATE_DB_PATH", unset = "")
-    if (nzchar(override)) {
-      path <- path.expand(override)
-      dir.create(dirname(path), recursive = TRUE, showWarnings = FALSE)
-      return(path)
-    }
-    user_dir <- tryCatch(tools::R_user_dir("pcu_pitch_dashboard", which = "data"), error = function(...) "")
-    if (nzchar(user_dir)) {
-      dir.create(user_dir, recursive = TRUE, showWarnings = FALSE)
-      return(file.path(user_dir, "app_state.sqlite"))
-    }
-    "app_state.sqlite"
-  }
   state_db_path <- get_state_db_path()
   list(
     type = "sqlite",
@@ -1483,7 +1484,19 @@ state_backend <- function() {
 state_backend_cfg <- state_backend()
 
 state_db_connect <- function() {
-  state_backend_cfg$connect()
+  tryCatch(
+    state_backend_cfg$connect(),
+    error = function(e) {
+      if (!identical(state_backend_cfg$type, "mysql")) stop(e)
+      message("State DB MySQL connection failed (", conditionMessage(e), "). Falling back to SQLite.")
+      fallback_cfg <- list(
+        type = "sqlite",
+        connect = function() DBI::dbConnect(RSQLite::SQLite(), get_state_db_path())
+      )
+      state_backend_cfg <<- fallback_cfg
+      fallback_cfg$connect()
+    }
+  )
 }
 
 delete_rows_for_school_codes <- function(con, table_name, codes) {
