@@ -21303,6 +21303,11 @@ video_upload_ui <- function() {
           tags$small("This file uploads directly to Cloudinary from your browser (not through Shiny)."),
           br(),
           actionButton("video_upload_full_game_direct_upload", "Upload Full Game to Cloudinary", class = "btn-info"),
+          tags$div(style = "margin:8px 0; color:#666;", "If direct upload fails (network/CORS), use fallback upload through the app server:"),
+          fileInput("video_upload_full_game_video", NULL,
+                    multiple = FALSE,
+                    accept = c(".mp4", ".mov", ".avi", ".mkv"),
+                    buttonLabel = "Choose Full-Game Video (Fallback)"),
           textInput(
             "video_upload_full_game_start_time",
             "First clip start time (HH:MM:SS.sss)",
@@ -23642,6 +23647,11 @@ deg_to_clock <- function(x) {
     video_upload_upload_feedback(NULL)
   }, ignoreInit = TRUE)
 
+  observeEvent(input$video_upload_full_game_video, {
+    video_full_game_asset(NULL)
+    video_full_game_feedback(NULL)
+  }, ignoreInit = TRUE)
+
   observeEvent(input$video_upload_full_game_cloudinary_asset, {
     asset <- input$video_upload_full_game_cloudinary_asset
     if (is.null(asset)) return()
@@ -23775,9 +23785,32 @@ deg_to_clock <- function(x) {
     }
     asset <- video_full_game_asset()
     if (is.null(asset)) {
-      video_full_game_feedback(list(type = "error",
-                                    text = "Upload the full-game video to Cloudinary first."))
-      return()
+      file_info <- input$video_upload_full_game_video
+      if (is.null(file_info) || !nrow(file_info)) {
+        video_full_game_feedback(list(type = "error",
+                                      text = "Upload the full-game video to Cloudinary first, or choose a file with the fallback upload input."))
+        return()
+      }
+      video_full_game_feedback(list(type = "success",
+                                    text = "Uploading full-game video via app server fallback..."))
+      upload_result <- tryCatch({
+        upload_media_cloudinary(file_info$datapath[1])
+      }, error = function(e) {
+        video_full_game_feedback(list(type = "error",
+                                      text = paste0("Fallback upload failed: ", e$message)))
+        return(NULL)
+      })
+      if (is.null(upload_result)) return()
+      size_bytes <- suppressWarnings(file.info(file_info$datapath[1])$size[1])
+      asset <- list(
+        public_id = upload_result$public_id %||% "",
+        secure_url = upload_result$url %||% "",
+        resource_type = "video",
+        bytes = ifelse(is.finite(size_bytes), size_bytes, 0),
+        uploaded_file_name = file_info$name[1] %||% "",
+        at = as.numeric(Sys.time()) * 1000
+      )
+      video_full_game_asset(asset)
     }
     public_id <- trimws(as.character(asset$public_id %||% ""))
     if (!nzchar(public_id)) {
