@@ -23586,14 +23586,21 @@ deg_to_clock <- function(x) {
   
   # --- helpers ---
   format_name_first_last <- function(x) {
-    s <- as.character(x %||% "")
-    if (!nzchar(s)) return("\u2014")
-    # If "Last, First", flip it
-    if (grepl(",", s, fixed = TRUE)) {
-      parts <- trimws(strsplit(s, ",", fixed = TRUE)[[1]])
-      if (length(parts) >= 2) return(paste(parts[2], parts[1]))
+    vals <- as.character(x)
+    out <- trimws(vals)
+    out[!nzchar(out)] <- NA_character_
+    has_comma <- !is.na(out) & grepl(",", out, fixed = TRUE)
+    if (any(has_comma, na.rm = TRUE)) {
+      out[has_comma] <- vapply(out[has_comma], function(nm) {
+        parts <- trimws(strsplit(nm, ",", fixed = TRUE)[[1]])
+        if (length(parts) >= 2 && nzchar(parts[1]) && nzchar(parts[2])) {
+          paste(parts[2], parts[1])
+        } else {
+          nm
+        }
+      }, character(1))
     }
-    s
+    out
   }
   
   # Helpers (keep these near your other helpers)
