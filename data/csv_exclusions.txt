@@ -4168,3 +4168,41 @@
 20260221-VATech-1.csv
 # Auto-pruned non-team data
 20260221-WoernerField-2.csv
+# Auto-pruned non-team data
+20260221-AbileneChristian-1.csv
+# Auto-pruned non-team data
+20260221-BallparkAtPatriotPoint-1.csv
+# Auto-pruned non-team data
+20260221-BrooksField-1.csv
+# Auto-pruned non-team data
+20260221-DoakField-1.csv
+# Auto-pruned non-team data
+20260221-FAUBaseballStadium-2.csv
+# Auto-pruned non-team data
+20260221-FedExPark-1.csv
+# Auto-pruned non-team data
+20260221-HighPointUniversity-2.csv
+# Auto-pruned non-team data
+20260221-KleinFamilyField-1.csv
+# Auto-pruned non-team data
+20260221-Liberty-1.csv
+# Auto-pruned non-team data
+20260221-Liberty-3.csv
+# Auto-pruned non-team data
+20260221-Olsen-1.csv
+# Auto-pruned non-team data
+20260221-RonaldGallagherStad-1.csv
+# Auto-pruned non-team data
+20260221-TarletonBBComplex-1.csv
+# Auto-pruned non-team data
+20260221-TuckerFieldatBarcroftPark-3.csv
+# Auto-pruned non-team data
+20260221-Tulane-1.csv
+# Auto-pruned non-team data
+20260221-UNCCharlotte-1.csv
+# Auto-pruned non-team data
+20260221-UTArlington-1.csv
+# Auto-pruned non-team data
+20260221-WinthropUniversity-1.csv
+# Auto-pruned non-team data
+20260221-YoungMemorialField-1.csv
