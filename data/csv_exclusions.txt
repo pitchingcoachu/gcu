@@ -4460,3 +4460,7 @@
 20260222-WarriorField-1_unverified.csv
 # Auto-pruned non-team data
 20260222-WoffordCollege-1_unverified.csv
+# Auto-pruned non-team data
+20260222-SpringsBrooksStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260222-UArizona-2_unverified.csv
