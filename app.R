@@ -21372,6 +21372,7 @@ video_upload_ui <- function() {
                   form.append('upload_preset', uploadPreset);
 
                   var xhr = new XMLHttpRequest();
+                  xhr.timeout = 15 * 60 * 1000; // 15 minutes
                   uploadBtn.disabled = true;
                   setStatus('Starting upload...', false);
                   xhr.open('POST', endpoint, true);
@@ -21382,9 +21383,27 @@ video_upload_ui <- function() {
                     setStatus('Uploading to Cloudinary: ' + pct + '%', false);
                   };
 
+                  var buildTransportErrorText = function(kind) {
+                    var likelyCause = '';
+                    if (xhr.status === 0) {
+                      likelyCause = ' Likely causes: ad-blocker/firewall blocking Cloudinary, CORS/origin restrictions, or an invalid upload preset for video uploads.';
+                    }
+                    return 'Upload failed (' + kind + '). Endpoint: ' + endpoint + '. HTTP status: ' + xhr.status + '.' + likelyCause;
+                  };
+
                   xhr.onerror = function() {
                     uploadBtn.disabled = false;
-                    setStatus('Upload failed due to a network error.', true);
+                    setStatus(buildTransportErrorText('network error'), true);
+                  };
+
+                  xhr.onabort = function() {
+                    uploadBtn.disabled = false;
+                    setStatus(buildTransportErrorText('request aborted'), true);
+                  };
+
+                  xhr.ontimeout = function() {
+                    uploadBtn.disabled = false;
+                    setStatus(buildTransportErrorText('timeout'), true);
                   };
 
                   xhr.onload = function() {
@@ -21398,7 +21417,7 @@ video_upload_ui <- function() {
                     }
                     if (!ok || !payload || !payload.public_id) {
                       var reason = (payload && payload.error && payload.error.message) ? payload.error.message : ('HTTP ' + xhr.status);
-                      setStatus('Cloudinary upload failed: ' + reason, true);
+                      setStatus('Cloudinary upload failed: ' + reason + '. Preset: ' + uploadPreset + '.', true);
                       return;
                     }
 
