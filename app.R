@@ -5060,7 +5060,7 @@ apply_split_by <- function(df, split_choice) {
                       "Inning", "Top/Bottom", "PAofInning", "PitchofPA", "PitchNo")
       order_cols <- intersect(order_cols, names(df))
       if (length(order_cols)) {
-        ord <- do.call(order, df[order_cols], list(na.last = TRUE))
+        ord <- do.call(order, c(unname(df[order_cols]), list(na.last = TRUE)))
       } else {
         ord <- seq_len(n)
       }
