@@ -4641,17 +4641,17 @@ pitching_zone_location_choices <- c(
 
 pitching_split_by_choices <- c(
   "Pitch Types", "Batter Hand", "Count", "After Count",
-  "Zone Location", "Velocity", "IVB", "HB", "Batter", "Catcher"
+  "Zone Location", "Times Through Order", "Velocity", "IVB", "HB", "Batter", "Catcher"
 )
 
 hitting_split_by_choices <- c(
   "Pitch Types", "Pitcher Hand", "Count", "After Count",
-  "Zone Location", "Velocity", "IVB", "HB", "Pitcher", "Catcher"
+  "Zone Location", "Times Through Order", "Velocity", "IVB", "HB", "Pitcher", "Catcher"
 )
 
 universal_split_by_choices <- c(
   "Pitch Types", "Batter Hand", "Pitcher Hand", "Count", "After Count",
-  "Zone Location", "Velocity", "IVB", "HB", "Batter", "Pitcher", "Catcher"
+  "Zone Location", "Times Through Order", "Velocity", "IVB", "HB", "Batter", "Pitcher", "Catcher"
 )
 
 format_name_first_last <- function(names_vec) {
@@ -5040,6 +5040,60 @@ apply_split_by <- function(df, split_choice) {
       out <- df[row_idx, , drop = FALSE]
       out$SplitColumn <- split_vals
       out
+    },
+
+    "Times Through Order" = {
+      n <- nrow(df)
+      pitcher <- get_first_existing(df, c("Pitcher", "Player"))
+      batter <- get_first_existing(df, c("Batter", "Hitter"))
+      game <- get_first_existing(df, c("GameID", "GameUID", "GameForeignID"))
+      if (all(is.na(game) | !nzchar(trimws(game)))) {
+        game <- get_first_existing(df, c("Date", "UTCDate", "LocalDateTime"))
+      }
+
+      korbb <- get_first_existing(df, c("KorBB"))
+      play_res <- get_first_existing(df, c("PlayResult"))
+      terminal <- (!is.na(korbb) & nzchar(trimws(korbb)) & trimws(korbb) != "Undefined") |
+        (!is.na(play_res) & nzchar(trimws(play_res)) & trimws(play_res) != "Undefined")
+
+      order_cols <- c("GameID", "GameUID", "GameForeignID", "Date", "UTCDateTime", "LocalDateTime",
+                      "Inning", "Top/Bottom", "PAofInning", "PitchofPA", "PitchNo")
+      order_cols <- intersect(order_cols, names(df))
+      if (length(order_cols)) {
+        ord <- do.call(order, df[order_cols], list(na.last = TRUE))
+      } else {
+        ord <- seq_len(n)
+      }
+
+      d_ord <- df[ord, , drop = FALSE]
+      pitcher_ord <- as.character(pitcher)[ord]
+      batter_ord <- as.character(batter)[ord]
+      game_ord <- as.character(game)[ord]
+      terminal_ord <- as.logical(terminal[ord])
+      terminal_ord[is.na(terminal_ord)] <- FALSE
+
+      key <- paste0(game_ord, "||", pitcher_ord, "||", batter_ord)
+      key[is.na(game_ord) | !nzchar(trimws(game_ord)) |
+            is.na(pitcher_ord) | !nzchar(trimws(pitcher_ord)) |
+            is.na(batter_ord) | !nzchar(trimws(batter_ord))] <- NA_character_
+
+      d_ord$key_tto <- key
+      d_ord$terminal_tto <- terminal_ord
+      d_ord <- d_ord %>%
+        dplyr::group_by(key_tto) %>%
+        dplyr::mutate(SplitColumn = as.character(cumsum(dplyr::lag(terminal_tto, default = FALSE)) + 1L)) %>%
+        dplyr::ungroup()
+
+      if ("key_tto" %in% names(d_ord)) d_ord$key_tto <- NULL
+      if ("terminal_tto" %in% names(d_ord)) d_ord$terminal_tto <- NULL
+
+      bad_key_ord <- is.na(key)
+      if (any(bad_key_ord)) {
+        d_ord$SplitColumn[bad_key_ord] <- "Unknown"
+      }
+
+      inv <- order(ord)
+      d_ord[inv, , drop = FALSE]
     },
     
     "Batter" = {
@@ -9149,6 +9203,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           "Count" = "Count",
           "After Count" = "After Count",
           "Zone Location" = "Zone Location",
+          "Times Through Order" = "Times Through Order",
           "Velocity" = "Velocity",
           "IVB" = "InducedVert",
           "HB" = "HorzBreak",
@@ -14842,6 +14897,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
         "Count" = "Count",
         "After Count" = "After Count",
         "Zone Location" = "Zone Location",
+        "Times Through Order" = "Times Through Order",
         "Velocity" = "Velocity",
         "IVB" = "IVB",
         "HB" = "HB",
@@ -19422,6 +19478,7 @@ custom_reports_server <- function(id) {
               "Count" = "Count",
               "After Count" = "After Count",
               "Zone Location" = "Zone Location",
+              "Times Through Order" = "Times Through Order",
               "Velocity" = "Velocity",
               "IVB" = "IVB",
               "HB" = "HB",
@@ -28986,6 +29043,7 @@ deg_to_clock <- function(x) {
         "Count" = "Count",
         "After Count" = "After Count",
         "Zone Location" = "Zone Location",
+        "Times Through Order" = "Times Through Order",
         "Velocity" = "Velocity",
         "IVB" = "InducedVert",
         "HB" = "HorzBreak",
@@ -30454,6 +30512,7 @@ deg_to_clock <- function(x) {
       "Count" = "Count",
       "After Count" = "After Count",
       "Zone Location" = "Zone Location",
+      "Times Through Order" = "Times Through Order",
       "Velocity" = "Velocity",
       "IVB" = "InducedVert",
       "HB" = "HorzBreak",
