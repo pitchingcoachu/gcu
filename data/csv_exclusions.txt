@@ -4502,3 +4502,11 @@
 20260222-UCSanDiego-1_unverified.csv
 # Auto-pruned non-team data
 20260222-UofSouthCarolina-2_unverified.csv
+# Auto-pruned non-team data
+20260222-Arlington-4_unverified.csv
+# Auto-pruned non-team data
+20260222-TonyGwynnStadium-2_unverified.csv
+# Auto-pruned non-team data
+20260222-LouisianaLafayette-1_unverified.csv
+# Auto-pruned non-team data
+20260222-SullivanField-1_unverified.csv
