@@ -4480,3 +4480,5 @@
 20260222-Arlington-3_unverified.csv
 # Auto-pruned non-team data
 20260222-PhoenixMunicipal-2_unverified.csv
+# Auto-pruned non-team data
+20260222-KleinField-1_unverified.csv
