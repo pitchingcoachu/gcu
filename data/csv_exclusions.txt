@@ -4476,3 +4476,7 @@
 20260222-StephenSchottBBS-1_unverified.csv
 # Auto-pruned non-team data
 20260222-YoungMemorialField-1_unverified.csv
+# Auto-pruned non-team data
+20260222-Arlington-3_unverified.csv
+# Auto-pruned non-team data
+20260222-PhoenixMunicipal-2_unverified.csv
