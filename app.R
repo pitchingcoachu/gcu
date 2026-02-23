@@ -28453,7 +28453,7 @@ deg_to_clock <- function(x) {
     manual_velocity_entries(updated)
     save_manual_velocity_entries(updated)
 
-    manual_velo_status(sprintf("Saved %d entry%s.", length(vals), ifelse(length(vals) == 1, "", "ies")))
+    manual_velo_status(sprintf("Saved %d %s.", length(vals), ifelse(length(vals) == 1, "entry", "entries")))
     updateNumericInput(session, "manualVeloSingle", value = NA_real_)
     updateTextAreaInput(session, "manualVeloBatch", value = "")
     if (identical(throw_type, "Plyo Velo")) {
