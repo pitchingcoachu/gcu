@@ -7465,6 +7465,19 @@ pitch_ui <- function(show_header = FALSE) {
                         "input.manualVeloType == 'Other'",
                         textInput("manualVeloTypeOther", "Custom Throw Type", placeholder = "e.g., Run-and-Gun")
                       ),
+                      conditionalPanel(
+                        "input.manualVeloType == 'Plyo Velo'",
+                        selectizeInput(
+                          "manualVeloPlyoDrill", "Plyo Drill",
+                          choices = c(""),
+                          selected = "",
+                          multiple = FALSE,
+                          options = list(
+                            create = TRUE,
+                            placeholder = "Select or type a plyo drill"
+                          )
+                        )
+                      ),
                       numericInput("manualVeloWeight", "Ball Weight (oz)", value = 5.0, min = 0.5, max = 64, step = 0.25),
                       numericInput("manualVeloSingle", "Single Velocity (mph)", value = NA, min = 30, max = 120, step = 0.1),
                       textAreaInput(
@@ -21576,6 +21589,7 @@ load_manual_velocity_entries <- function(app_id = current_school()) {
       entry_date = as.Date(character()),
       pitcher = character(),
       throw_type = character(),
+      plyo_drill = character(),
       ball_weight_oz = double(),
       velocity_mph = double(),
       notes = character(),
@@ -21592,6 +21606,7 @@ load_manual_velocity_entries <- function(app_id = current_school()) {
   if (!"entry_date" %in% names(df)) df$entry_date <- as.Date(NA_real_)[seq_len(nrow(df))]
   if (!"pitcher" %in% names(df)) df$pitcher <- character(nrow(df))
   if (!"throw_type" %in% names(df)) df$throw_type <- character(nrow(df))
+  if (!"plyo_drill" %in% names(df)) df$plyo_drill <- character(nrow(df))
   if (!"ball_weight_oz" %in% names(df)) df$ball_weight_oz <- NA_real_
   if (!"velocity_mph" %in% names(df)) df$velocity_mph <- NA_real_
   if (!"notes" %in% names(df)) df$notes <- character(nrow(df))
@@ -21602,6 +21617,7 @@ load_manual_velocity_entries <- function(app_id = current_school()) {
       entry_date = suppressWarnings(as.Date(entry_date)),
       pitcher = as.character(pitcher %||% ""),
       throw_type = as.character(throw_type %||% ""),
+      plyo_drill = as.character(plyo_drill %||% ""),
       ball_weight_oz = suppressWarnings(as.numeric(ball_weight_oz)),
       velocity_mph = suppressWarnings(as.numeric(velocity_mph)),
       notes = as.character(notes %||% ""),
@@ -28185,6 +28201,15 @@ deg_to_clock <- function(x) {
     if (!length(current_types)) current_types <- "All"
     updateSelectInput(session, "manualVeloTypeFilter", choices = type_choices, selected = current_types)
 
+    plyo_choices <- sort(unique(stats::na.omit(as.character(df$plyo_drill[df$throw_type == "Plyo Velo"]))))
+    current_plyo <- isolate(input$manualVeloPlyoDrill)
+    if (is.null(current_plyo)) current_plyo <- ""
+    updateSelectizeInput(
+      session, "manualVeloPlyoDrill",
+      choices = c("", plyo_choices),
+      selected = if (nzchar(trimws(current_plyo))) current_plyo else ""
+    )
+
     w <- suppressWarnings(as.numeric(df$ball_weight_oz))
     w <- w[is.finite(w)]
     w_min <- if (length(w)) floor(min(w) * 4) / 4 else 0.5
@@ -28205,6 +28230,15 @@ deg_to_clock <- function(x) {
     if (!nzchar(throw_type)) {
       manual_velo_status("Enter a throw type before saving.")
       return()
+    }
+
+    plyo_drill <- ""
+    if (identical(throw_type, "Plyo Velo")) {
+      plyo_drill <- trimws(input$manualVeloPlyoDrill %||% "")
+      if (!nzchar(plyo_drill)) {
+        manual_velo_status("Enter or select a Plyo Drill for Plyo Velo entries.")
+        return()
+      }
     }
 
     split_numeric <- function(x) {
@@ -28247,6 +28281,7 @@ deg_to_clock <- function(x) {
       entry_date = rep(date_val, length(vals)),
       pitcher = rep(as.character(pitcher_pick), length(vals)),
       throw_type = rep(as.character(throw_type), length(vals)),
+      plyo_drill = rep(as.character(plyo_drill), length(vals)),
       ball_weight_oz = rep(weight, length(vals)),
       velocity_mph = as.numeric(vals),
       notes = rep(as.character(trimws(input$manualVeloNotes %||% "")), length(vals)),
@@ -28260,6 +28295,9 @@ deg_to_clock <- function(x) {
     manual_velo_status(sprintf("Saved %d entry%s.", length(vals), ifelse(length(vals) == 1, "", "ies")))
     updateNumericInput(session, "manualVeloSingle", value = NA_real_)
     updateTextAreaInput(session, "manualVeloBatch", value = "")
+    if (identical(throw_type, "Plyo Velo")) {
+      updateSelectizeInput(session, "manualVeloPlyoDrill", selected = plyo_drill)
+    }
   })
 
   output$manualVeloAddStatus <- renderText({ manual_velo_status() })
@@ -28271,11 +28309,12 @@ deg_to_clock <- function(x) {
         Pitcher = format_name_first_last(pitcher),
         Date = as.character(entry_date),
         `Throw Type` = throw_type,
+        `Plyo Drill` = dplyr::if_else(throw_type == "Plyo Velo" & nzchar(plyo_drill), plyo_drill, ""),
         `Ball (oz)` = round(ball_weight_oz, 2),
         `Velo (mph)` = round(velocity_mph, 1),
         Notes = notes
       ) %>%
-      dplyr::select(Date, Pitcher, `Throw Type`, `Ball (oz)`, `Velo (mph)`, Notes, id)
+      dplyr::select(Date, Pitcher, `Throw Type`, `Plyo Drill`, `Ball (oz)`, `Velo (mph)`, Notes, id)
 
     if (!nrow(df)) {
       return(DT::datatable(data.frame(Message = "No manual entries yet"), options = list(dom = "t"), rownames = FALSE))
@@ -28284,7 +28323,7 @@ deg_to_clock <- function(x) {
       df,
       rownames = FALSE,
       selection = "single",
-      options = list(pageLength = 12, order = list(list(0, "desc")), columnDefs = list(list(targets = 6, visible = FALSE)))
+      options = list(pageLength = 12, order = list(list(0, "desc")), columnDefs = list(list(targets = 7, visible = FALSE)))
     )
   })
 
@@ -28423,7 +28462,8 @@ deg_to_clock <- function(x) {
       return(DT::datatable(data.frame(Message = "No entries for selected filters"), options = list(dom = "t"), rownames = FALSE))
     }
     out <- df %>%
-      dplyr::group_by(throw_type, ball_weight_oz) %>%
+      dplyr::mutate(plyo_label = dplyr::if_else(throw_type == "Plyo Velo" & nzchar(plyo_drill), plyo_drill, "")) %>%
+      dplyr::group_by(throw_type, plyo_label, ball_weight_oz) %>%
       dplyr::summarise(
         Entries = dplyr::n(),
         `Avg Velo` = round(mean(velocity_mph, na.rm = TRUE), 1),
@@ -28432,8 +28472,8 @@ deg_to_clock <- function(x) {
         .groups = "drop"
       ) %>%
       dplyr::arrange(dplyr::desc(`Peak Velo`))
-    names(out) <- c("Throw Type", "Ball (oz)", "Entries", "Avg Velo", "Peak Velo", "Min Velo")
-    DT::datatable(out, rownames = FALSE, options = list(pageLength = 12, order = list(list(4, "desc"))))
+    names(out) <- c("Throw Type", "Plyo Drill", "Ball (oz)", "Entries", "Avg Velo", "Peak Velo", "Min Velo")
+    DT::datatable(out, rownames = FALSE, options = list(pageLength = 12, order = list(list(5, "desc"))))
   })
   
   # 2) Filtered data
