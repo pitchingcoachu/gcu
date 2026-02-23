@@ -4464,3 +4464,15 @@
 20260222-SpringsBrooksStadium-2_unverified.csv
 # Auto-pruned non-team data
 20260222-UArizona-2_unverified.csv
+# Auto-pruned non-team data
+20260222-121Financial-2_unverified.csv
+# Auto-pruned non-team data
+20260222-BaggettStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260222-CSUBallparkNielsen-2_unverified.csv
+# Auto-pruned non-team data
+20260222-PKPark-1_unverified.csv
+# Auto-pruned non-team data
+20260222-StephenSchottBBS-1_unverified.csv
+# Auto-pruned non-team data
+20260222-YoungMemorialField-1_unverified.csv
