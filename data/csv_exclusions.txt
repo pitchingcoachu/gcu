@@ -4482,3 +4482,23 @@
 20260222-PhoenixMunicipal-2_unverified.csv
 # Auto-pruned non-team data
 20260222-KleinField-1_unverified.csv
+# Auto-pruned non-team data
+20260222-AnteaterBallpark-1_unverified.csv
+# Auto-pruned non-team data
+20260222-BenedettiDiamond-1_unverified.csv
+# Auto-pruned non-team data
+20260222-BiolaUniversity-2_unverified.csv
+# Auto-pruned non-team data
+20260222-DellDiamond-2_unverified.csv
+# Auto-pruned non-team data
+20260222-LoyolaMarymount-1_unverified.csv
+# Auto-pruned non-team data
+20260222-MaestriField-1_unverified.csv
+# Auto-pruned non-team data
+20260222-PeteBeidenField-1_unverified.csv
+# Auto-pruned non-team data
+20260222-UCLA-1_unverified.csv
+# Auto-pruned non-team data
+20260222-UCSanDiego-1_unverified.csv
+# Auto-pruned non-team data
+20260222-UofSouthCarolina-2_unverified.csv
