@@ -4756,3 +4756,17 @@
 20260222-YoungMemorialField-1.csv
 # Auto-pruned non-team data
 20260223-HDetterField-1_unverified.csv
+# Auto-pruned non-team data
+20260221-GeorgeFox-2_unverified.csv
+# Auto-pruned non-team data
+20260223-HDetterField-2_unverified.csv
+# Auto-pruned non-team data
+20260223-LoyolaMarymount-1_unverified.csv
+# Auto-pruned non-team data
+20260223-McBean-1_unverified.csv
+# Auto-pruned non-team data
+20260223-McBean-2_unverified.csv
+# Auto-pruned non-team data
+20260223-PeteBeidenField-1_unverified.csv
+# Auto-pruned non-team data
+20260223-WinthropUniversity-1_unverified.csv
