@@ -11,9 +11,9 @@ if (file.exists(".Renviron")) {
 source("pitch_data_service.R")
 
 args <- commandArgs(trailingOnly = TRUE)
-school_code <- if (length(args) >= 1L) args[[1]] else Sys.getenv("TEAM_CODE", "PCU")
+school_code <- if (length(args) >= 1L) args[[1]] else Sys.getenv("TEAM_CODE", "GCU")
 school_code <- toupper(trimws(school_code))
-if (!nzchar(school_code)) school_code <- "PCU"
+if (!nzchar(school_code)) school_code <- "GCU"
 
 cat("Starting Neon dedupe for school_code=", school_code, "\n", sep = "")
 con <- pitch_data_db_connect()
