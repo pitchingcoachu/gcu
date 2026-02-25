@@ -5040,3 +5040,37 @@
 20260224-WoffordCollege-1_unverified.csv
 # Auto-pruned non-team data
 20260224-YoungMemorialField-1_unverified.csv
+# Auto-pruned non-team data
+20260224-705-CalBaptistBaseballField-1_unverified.csv
+# Auto-pruned non-team data
+20260224-HillDensonField-1_unverified.csv
+# Auto-pruned non-team data
+20260224-JCLoveFieldatPatPattersonPark-1_unverified.csv
+# Auto-pruned non-team data
+20260224-MaestriField-2_unverified.csv
+# Auto-pruned non-team data
+20260224-Olsen-1_unverified.csv
+# Auto-pruned non-team data
+20260224-Texas-1_unverified.csv
+# Auto-pruned non-team data
+20260224-TIGERBALLPARK-1_unverified.csv
+# Auto-pruned non-team data
+20260224-UCLA-1_unverified.csv
+# Auto-pruned non-team data
+20260224-UTArlington-1_unverified.csv
+# Auto-pruned non-team data
+20260224-CarsonNewman-1_unverified.csv
+# Auto-pruned non-team data
+20260224-EarlEWilsonStadium-1_unverified.csv
+# Auto-pruned non-team data
+20260224-HardtField-1_unverified.csv
+# Auto-pruned non-team data
+20260224-LoyolaMarymount-1_unverified.csv
+# Auto-pruned non-team data
+20260224-RiceUniversity-1_unverified.csv
+# Auto-pruned non-team data
+20260224-UCSanDiego-1_unverified.csv
+# Auto-pruned non-team data
+20260224-UofMountOlive-1_unverified.csv
+# Auto-pruned non-team data
+20260224-UofWashington-1_unverified.csv
