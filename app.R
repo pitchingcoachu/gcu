@@ -889,6 +889,7 @@ library(RSQLite)  # for SQLite database
 
 # Source helper for mapping uploads
 source("video_map_helpers.R")
+source("pitch_data_service.R")
 
 # Configure Cloudinary (recommended simple host for images/videos)
 # Create a free account, make an *unsigned upload preset*, then set these:
@@ -1458,40 +1459,65 @@ ensure_pitch_keys <- function(df) {
   df
 }
 
-deduplicate_pitch_rows <- function(df) {
+deduplicate_pitch_rows <- function(df, fast = FALSE) {
   if (!nrow(df)) return(df)
-  df <- ensure_pitch_keys(df)
   if (!"PitchKey" %in% names(df)) return(df)
   if (!any(!is.na(df$PitchKey) & nzchar(as.character(df$PitchKey)))) return(df)
+  key_chr <- as.character(df$PitchKey)
+  key_valid <- !is.na(key_chr) & nzchar(key_chr)
+  # Fast-path: skip expensive grouped dedupe when keys are already unique.
+  if (!anyDuplicated(key_chr[key_valid])) return(df)
 
-  # Keep the most complete row per PitchKey in case duplicate files differ slightly.
-  present_score <- function(x) {
-    if (is.numeric(x)) return(as.integer(is.finite(x)))
-    as.integer(!is.na(x) & nzchar(trimws(as.character(x))))
+  # Keep first occurrence per PitchKey; vastly faster than grouped scoring for large tables.
+  keep <- !key_valid | !duplicated(key_chr)
+  df[keep, , drop = FALSE]
+}
+
+mod_datetime_to_numeric <- function(x) {
+  if (is.null(x) || !length(x)) return(numeric(0))
+
+  if (is.list(x)) {
+    x <- unlist(x, recursive = TRUE, use.names = FALSE)
   }
 
-  score_cols <- c(
-    "PlayID", "PitchCall", "PlayResult", "TaggedPitchType",
-    "RelSpeed", "InducedVertBreak", "HorzBreak", "PlateLocSide", "PlateLocHeight",
-    "VideoClip", "VideoClip2", "VideoClip3"
-  )
-  score_cols <- intersect(score_cols, names(df))
-  if (!length(score_cols)) score_cols <- names(df)
-
-  df$.row_id <- seq_len(nrow(df))
-  df$.dedupe_score <- 0L
-  for (col in score_cols) {
-    df$.dedupe_score <- df$.dedupe_score + present_score(df[[col]])
+  if (inherits(x, "POSIXt")) {
+    num <- suppressWarnings(as.numeric(x))
+    num[!is.finite(num)] <- NA_real_
+    return(num)
   }
 
-  out <- df %>%
-    dplyr::group_by(PitchKey) %>%
-    dplyr::arrange(dplyr::desc(.dedupe_score), .row_id, .by_group = TRUE) %>%
-    dplyr::slice_head(n = 1) %>%
-    dplyr::ungroup() %>%
-    dplyr::arrange(.row_id) %>%
-    dplyr::select(-.row_id, -.dedupe_score)
+  num_raw <- suppressWarnings(as.numeric(x))
+  has_num <- is.finite(num_raw)
+  out <- rep(NA_real_, length(num_raw))
+  if (any(has_num)) {
+    vals <- num_raw[has_num]
+    vals[vals > 1e12] <- vals[vals > 1e12] / 1000
+    out[has_num] <- vals
+  }
 
+  ch <- trimws(as.character(x))
+  ch[ch %in% c("", "NA", "NaN", "NULL", "null")] <- NA_character_
+  need_parse <- !is.na(ch) & !has_num
+  if (any(need_parse)) {
+    parsed <- suppressWarnings(as.POSIXct(
+      ch[need_parse],
+      tz = "UTC",
+      tryFormats = c(
+        "%Y-%m-%d %H:%M:%OS",
+        "%Y-%m-%d %H:%M:%S",
+        "%Y-%m-%dT%H:%M:%OSZ",
+        "%Y-%m-%dT%H:%M:%S%z",
+        "%m/%d/%Y %H:%M:%S",
+        "%m/%d/%y %H:%M:%S",
+        "%Y-%m-%d",
+        "%m/%d/%Y",
+        "%m/%d/%y"
+      )
+    ))
+    out[need_parse] <- suppressWarnings(as.numeric(parsed))
+  }
+
+  out[!is.finite(out)] <- NA_real_
   out
 }
 
@@ -1584,8 +1610,8 @@ deduplicate_mod_rows <- function(mods_df) {
   fallback <- mod_row_signature(mods_df)
   mods_df$.dedupe_group <- ifelse(keyed, paste0("k:", key), paste0("f:", fallback))
 
-  mod_ts <- suppressWarnings(as.numeric(as.POSIXct(mods_df$modified_at, tz = "UTC")))
-  created_ts <- suppressWarnings(as.numeric(as.POSIXct(mods_df$created_at, tz = "UTC")))
+  mod_ts <- mod_datetime_to_numeric(mods_df$modified_at)
+  created_ts <- mod_datetime_to_numeric(mods_df$created_at)
   rank_ts <- mod_ts
   missing_rank <- !is.finite(rank_ts)
   rank_ts[missing_rank] <- created_ts[missing_rank]
@@ -2047,13 +2073,8 @@ mod_memo <- function(mods_df) {
   }
   safe_dt <- function(x) {
     tryCatch({
-      v <- as.character(x)
-      out <- suppressWarnings(lubridate::parse_date_time(
-        v,
-        orders = c("ymd HMS", "mdy HMS", "dmy HMS", "ymd HM", "mdy HM", "dmy HM", "ymd", "mdy", "dmy"),
-        tz = "UTC"
-      ))
-      as.POSIXct(out, tz = "UTC")
+      num <- mod_datetime_to_numeric(x)
+      as.POSIXct(num, origin = "1970-01-01", tz = "UTC")
     }, error = function(...) as.POSIXct(NA))
   }
   mods_df$date <- safe_date(mods_df$date)
@@ -5247,18 +5268,56 @@ log_startup_timing("Begin data import")
 
 # Point to the app's local data folder (works locally & on shinyapps.io)
 data_parent <- normalizePath(file.path(getwd(), "data"), mustWork = TRUE)
+pitch_data_backend_result <- NULL
+pitch_data_loaded_from_backend <- FALSE
+backend_mode <- tolower(trimws(Sys.getenv("PITCH_DATA_BACKEND", "auto")))
+postgres_backend_required <- backend_mode %in% c("postgres", "neon", "pg")
+
+pitch_data_backend_result <- tryCatch(
+  load_pitch_data_with_backend(
+    local_data_dir = data_parent,
+    school_code = current_school(),
+    startup_logger = log_startup_timing
+  ),
+  error = function(e) {
+    message("Pitch data backend init error: ", e$message)
+    NULL
+  }
+)
+
+if (!is.null(pitch_data_backend_result) &&
+    is.list(pitch_data_backend_result) &&
+    !is.null(pitch_data_backend_result$data)) {
+  pitch_data <- pitch_data_backend_result$data
+  all_csvs <- unique(as.character(pitch_data_backend_result$source_files %||% character(0)))
+  pitch_data_loaded_from_backend <- TRUE
+  log_startup_timing(sprintf(
+    "Loaded pitch_data from backend (%d rows, %d source files)",
+    nrow(pitch_data), length(all_csvs)
+  ))
+}
 
 # Find every CSV under data/, keep only those under practice/ or V3/
-all_csvs <- list.files(
-  path       = data_parent,
-  pattern    = "\\.csv$",
-  recursive  = TRUE,
-  full.names = TRUE
-)
-all_csvs <- all_csvs[ grepl("([/\\\\]practice[/\\\\])|([/\\\\]v3[/\\\\])", tolower(all_csvs)) ]
-log_startup_timing(sprintf("Discovered %d practice/v3 CSV files", length(all_csvs)))
+if (!pitch_data_loaded_from_backend) {
+  if (isTRUE(postgres_backend_required)) {
+    stop(
+      "PITCH_DATA_BACKEND=", backend_mode,
+      " is enabled but backend load returned no data. CSV fallback is disabled in Postgres mode."
+    )
+  }
+  all_csvs <- list.files(
+    path       = data_parent,
+    pattern    = "\\.csv$",
+    recursive  = TRUE,
+    full.names = TRUE
+  )
+  all_csvs <- all_csvs[ grepl("([/\\\\]practice[/\\\\])|([/\\\\]v3[/\\\\])", tolower(all_csvs)) ]
+  log_startup_timing(sprintf("Discovered %d practice/v3 CSV files", length(all_csvs)))
 
-if (!length(all_csvs)) stop("No CSVs found under: ", data_parent)
+  if (!length(all_csvs)) stop("No CSVs found under: ", data_parent)
+} else {
+  all_csvs <- unique(as.character(all_csvs %||% character(0)))
+}
 
 # Map folder → SessionType
 infer_session_from_path <- function(fp) {
@@ -5532,8 +5591,10 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
 }
 
 
-pitch_data <- purrr::map_dfr(all_csvs, read_one)
-log_startup_timing(sprintf("Read %d CSV files into pitch_data (%d rows)", length(all_csvs), nrow(pitch_data)))
+if (!pitch_data_loaded_from_backend) {
+  pitch_data <- purrr::map_dfr(all_csvs, read_one)
+  log_startup_timing(sprintf("Read %d CSV files into pitch_data (%d rows)", length(all_csvs), nrow(pitch_data)))
+}
 
 # Ensure required columns exist since downstream code expects them
 # ------ add to need_cols ------
@@ -5551,7 +5612,7 @@ need_cols <- c(
 
 
 
-for (nm in need_cols) if (!nm %in% names(pitch_data)) pitch_data[[nm]] <- NA_character_
+for (nm in need_cols) if (!nm %in% names(pitch_data)) pitch_data[[nm]] <- rep(NA_character_, nrow(pitch_data))
 
 # Type cleanup + standardization (now safe to coerce)
 pitch_data <- pitch_data %>%
@@ -5610,6 +5671,13 @@ if (!"VideoClip3" %in% names(pitch_data)) pitch_data$VideoClip3 <- NA_character_
 
 # Combine EdgeR and manual/iPhone video maps
 video_maps <- list()
+if (exists("video_map_read_all_neon", mode = "function")) {
+  neon_raw <- tryCatch(video_map_read_all_neon(), error = function(e) tibble::tibble())
+  if (nrow(neon_raw) > 0) {
+    video_maps[["neon"]] <- neon_raw
+    message("☁️ Loaded ", nrow(neon_raw), " videos from Neon")
+  }
+}
 if (file.exists(video_map_path)) {
   edger_raw <- suppressMessages(readr::read_csv(video_map_path, show_col_types = FALSE))
   if (nrow(edger_raw) > 0) {
@@ -5626,6 +5694,13 @@ if (file.exists(manual_map_path)) {
 }
 
 if (length(video_maps) > 0) {
+  video_maps <- lapply(video_maps, function(df) {
+    if (!is.data.frame(df)) return(df)
+    if ("uploaded_at" %in% names(df)) {
+      df$uploaded_at <- as.character(df$uploaded_at)
+    }
+    df
+  })
   vm_raw <- dplyr::bind_rows(video_maps) %>% dplyr::distinct()
   message("🎬 Combined total: ", nrow(vm_raw), " videos available")
   if (nrow(vm_raw)) {
@@ -5660,7 +5735,7 @@ if (length(video_maps) > 0) {
         { 
           vm_cols <- paste0(c("VideoClip","VideoClip2","VideoClip3"), ".vm")
           for (vm_col in vm_cols) {
-            if (!vm_col %in% names(.)) .[[vm_col]] <- NA_character_
+            if (!vm_col %in% names(.)) .[[vm_col]] <- rep(NA_character_, nrow(.))
           }
           .
         } %>%
@@ -5682,9 +5757,11 @@ log_startup_timing("Completed video map merge/attachment")
 pitch_data <- ensure_pitch_keys(pitch_data)
 log_startup_timing("Computed/validated PitchKey values")
 rows_before_dedupe <- nrow(pitch_data)
-pitch_data <- deduplicate_pitch_rows(pitch_data)
+# Keep startup dedupe cheap and always on to prevent doubled rows when upstream sync
+# includes overlapping files for the same PitchKey.
+pitch_data <- deduplicate_pitch_rows(pitch_data, fast = TRUE)
+rows_removed_dedupe <- rows_before_dedupe - nrow(pitch_data)
 rows_after_dedupe <- nrow(pitch_data)
-rows_removed_dedupe <- rows_before_dedupe - rows_after_dedupe
 log_startup_timing(sprintf("Deduplicated pitch rows (removed=%d)", rows_removed_dedupe))
 
 # Friendly load message
@@ -5702,7 +5779,20 @@ if (rows_removed_dedupe > 0) {
 # Read lookup table and keep Email in a separate column to avoid .x/.y
 lookup_table <- if (file.exists("lookup_table.csv")) {
   read.csv("lookup_table.csv", stringsAsFactors = FALSE) %>%
-    dplyr::rename(Pitcher = PlayerName, Email_lookup = Email)
+    dplyr::rename(Pitcher = PlayerName, Email_lookup = Email) %>%
+    dplyr::mutate(
+      Pitcher = trimws(as.character(Pitcher)),
+      Email_lookup = trimws(as.character(Email_lookup))
+    ) %>%
+    dplyr::filter(!is.na(Pitcher), nzchar(Pitcher)) %>%
+    dplyr::group_by(Pitcher) %>%
+    dplyr::summarise(
+      Email_lookup = {
+        vals <- unique(Email_lookup[!is.na(Email_lookup) & nzchar(Email_lookup)])
+        if (length(vals)) vals[[1]] else NA_character_
+      },
+      .groups = "drop"
+    )
 } else {
   data.frame(Pitcher = character(), Email_lookup = character(), stringsAsFactors = FALSE)
 }
@@ -5712,6 +5802,7 @@ pitch_data <- dplyr::left_join(pitch_data, lookup_table, by = "Pitcher") %>%
   dplyr::mutate(Email = dplyr::coalesce(Email, Email_lookup)) %>%
   dplyr::select(-Email_lookup)
 log_startup_timing("Joined lookup_table and finalized Email")
+log_startup_timing("Prepared global pitch datasets and lookup joins")
 
 
 # (keep your name_map construction the same)
@@ -5906,18 +5997,10 @@ session_type_choices <- function() {
 
 # Marker-based school verification removed: keep configured allowed player lists as-is.
 
-# Keep the full dataset for Hitting & global refs
-# but build a PITCHING-ONLY copy that is filtered to the whitelist
-# (affects Pitching, Comparison, Leaderboard modules that use pitch_data_pitching)
-# If you ever want admins to bypass this, wrap the filter in `if (!is_admin()) { ... }`.
-pitch_data_pitching <- pitch_data %>%
-  dplyr::mutate(
-    Pitcher = as.character(Pitcher),
-    # Build a "First Last" display from "Last, First" for matching either style
-    .disp = ifelse(grepl(",", Pitcher),
-                   paste0(trimws(sub(".*,", "", Pitcher)), " ", trimws(sub(",.*", "", Pitcher))),
-                   Pitcher)
-  )
+# Keep the full dataset for Hitting & global refs, but build a PITCHING-only
+# copy filtered to the whitelist.
+pitch_data_pitching <- pitch_data
+pitch_data_pitching$Pitcher <- as.character(pitch_data_pitching$Pitcher)
 
 # Accept either "Last, First" or "First Last" in ALLOWED_PITCHERS
 ALLOWED_PITCHERS_DL <- unique(c(
@@ -5945,7 +6028,7 @@ ALLOWED_CAMPERS_DL <- unique(c(
 ALL_ALLOWED_PITCHERS <- unique(c(ALLOWED_PITCHERS_DL, ALLOWED_CAMPERS_DL))
 ALL_ALLOWED_HITTERS  <- unique(c(ALLOWED_HITTERS_DL,  ALLOWED_CAMPERS_DL))
 
-# Robust, case/spacing/punctuation-insensitive filter
+# Robust, case/spacing/punctuation-insensitive filter.
 allowed_norm <- norm_name_ci(ALL_ALLOWED_PITCHERS)
 
 workload_filter_players_by_team <- function(names, team_type = "All") {
@@ -5973,18 +6056,38 @@ workload_filter_players_by_team <- function(names, team_type = "All") {
   sort(unique(res))
 }
 
-pitch_data_pitching <- pitch_data_pitching %>%
-  dplyr::mutate(.norm_raw  = norm_name_ci(Pitcher),
-                .norm_disp = norm_name_ci(.disp)) %>%
-  dplyr::filter(.norm_raw %in% allowed_norm | .norm_disp %in% allowed_norm) %>%
-  dplyr::select(-.disp, -.norm_raw, -.norm_disp)
+# Build an allowed lookup at unique-name level; this avoids repeated regex work
+# over every row and removes the startup hotspot.
+pitcher_raw <- as.character(pitch_data_pitching$Pitcher)
+uniq_pitchers <- unique(pitcher_raw)
+uniq_pitchers <- uniq_pitchers[!is.na(uniq_pitchers)]
+if (length(uniq_pitchers)) {
+  uniq_disp <- ifelse(
+    grepl(",", uniq_pitchers),
+    paste0(trimws(sub(".*,", "", uniq_pitchers)), " ", trimws(sub(",.*", "", uniq_pitchers))),
+    uniq_pitchers
+  )
+  uniq_allowed <- norm_name_ci(uniq_pitchers) %in% allowed_norm |
+    norm_name_ci(uniq_disp) %in% allowed_norm
+  allowed_lookup <- setNames(uniq_allowed, uniq_pitchers)
+  mask_pitching <- unname(allowed_lookup[pitcher_raw])
+  mask_pitching[is.na(mask_pitching)] <- FALSE
+} else {
+  mask_pitching <- rep(FALSE, nrow(pitch_data_pitching))
+}
+pitch_data_pitching <- pitch_data_pitching[mask_pitching, , drop = FALSE]
 
-pitch_data_pitching <- ensure_pitch_keys(pitch_data_pitching)
+# Only compute PitchKey when missing/blank to avoid expensive recomputation.
+if (!"PitchKey" %in% names(pitch_data_pitching) ||
+    any(is.na(pitch_data_pitching$PitchKey) | !nzchar(as.character(pitch_data_pitching$PitchKey)))) {
+  pitch_data_pitching <- ensure_pitch_keys(pitch_data_pitching)
+}
 
 # Name map for Pitching UI (restricted to the filtered set)
 raw_names_p <- sort(unique(pitch_data_pitching$Pitcher))
 display_names_p <- format_name_first_last(raw_names_p)
 name_map_pitching <- setNames(raw_names_p, display_names_p)
+log_startup_timing("Prepared pitching-only dataset and name maps")
 
 
 # ---- NEW: xStat reference bins from your data ----
@@ -6012,6 +6115,7 @@ x_overall <- xbin_ref %>%
     p1B = weighted.mean(p1B, n), p2B = weighted.mean(p2B, n),
     p3B = weighted.mean(p3B, n), pHR = weighted.mean(pHR, n)
   )
+log_startup_timing("Built xStat reference bins")
 
 # FanGraphs-like wOBA weights (approx)
 W_BB <- 0.69; W_1B <- 0.90; W_2B <- 1.24; W_3B <- 1.56; W_HR <- 1.95
@@ -6382,6 +6486,7 @@ compute_process_results <- function(df, mode = "All") {
 }
 
 # ---- Global table helpers shared by Pitching & Hitting ----
+log_startup_timing("Defined process/results calculators")
 safe_pct <- function(num, den) {
   num <- suppressWarnings(as.numeric(num))
   den <- suppressWarnings(as.numeric(den))
@@ -21533,6 +21638,7 @@ workload_panel_ui <- function() {
 }
 
 workload_data_dir <- function() file.path("data")
+log_startup_timing("Defined custom-report and workload helper functions")
 
 ensure_workload_data_dir <- function() {
   dir.create(workload_data_dir(), showWarnings = FALSE, recursive = TRUE)
@@ -21664,6 +21770,10 @@ ensure_manual_velocity_table <- function(con) {
 }
 
 load_manual_velocity_entries <- function(app_id = current_school()) {
+  app_id_scalar <- as.character(app_id %||% current_school())
+  app_id_scalar <- app_id_scalar[!is.na(app_id_scalar) & nzchar(app_id_scalar)]
+  app_id_scalar <- if (length(app_id_scalar)) app_id_scalar[[1]] else as.character(current_school())
+
   empty_tbl <- tibble::tibble(
     id = character(),
     app_id = character(),
@@ -21685,7 +21795,7 @@ load_manual_velocity_entries <- function(app_id = current_school()) {
     if (!is.null(con)) {
       on.exit(tryCatch(DBI::dbDisconnect(con), error = function(e) NULL), add = TRUE)
       try(ensure_manual_velocity_table(con), silent = TRUE)
-      quoted_app <- DBI::dbQuoteString(con, app_id)
+      quoted_app <- DBI::dbQuoteString(con, app_id_scalar)
       sql <- sprintf(
         "SELECT id, app_id, entry_date, pitcher, throw_type, plyo_drill, ball_weight_oz, velocity_mph, notes, created_at
          FROM manual_velocity_entries
@@ -21708,7 +21818,7 @@ load_manual_velocity_entries <- function(app_id = current_school()) {
   }
 
   if (!"id" %in% names(df)) df$id <- sprintf("legacy_%s", seq_len(nrow(df)))
-  if (!"app_id" %in% names(df)) df$app_id <- app_id
+  if (!"app_id" %in% names(df)) df$app_id <- rep(app_id_scalar, nrow(df))
   if (!"entry_date" %in% names(df)) df$entry_date <- as.Date(NA_real_)[seq_len(nrow(df))]
   if (!"pitcher" %in% names(df)) df$pitcher <- character(nrow(df))
   if (!"throw_type" %in% names(df)) df$throw_type <- character(nrow(df))
@@ -21716,10 +21826,10 @@ load_manual_velocity_entries <- function(app_id = current_school()) {
   if (!"ball_weight_oz" %in% names(df)) df$ball_weight_oz <- NA_real_
   if (!"velocity_mph" %in% names(df)) df$velocity_mph <- NA_real_
   if (!"notes" %in% names(df)) df$notes <- character(nrow(df))
-  if (!"created_at" %in% names(df)) df$created_at <- as.character(Sys.time())
+  if (!"created_at" %in% names(df)) df$created_at <- rep(as.character(Sys.time()), nrow(df))
   df <- df %>%
     dplyr::mutate(
-      app_id = as.character(app_id),
+      app_id = app_id_scalar,
       entry_date = suppressWarnings(as.Date(entry_date)),
       pitcher = as.character(pitcher %||% ""),
       throw_type = as.character(throw_type %||% ""),
@@ -21729,10 +21839,14 @@ load_manual_velocity_entries <- function(app_id = current_school()) {
       notes = as.character(notes %||% ""),
       created_at = suppressWarnings(as.POSIXct(created_at, tz = "UTC"))
     )
-  df[df$app_id == app_id, , drop = FALSE]
+  df[df$app_id == app_id_scalar, , drop = FALSE]
 }
 
 save_manual_velocity_entries <- function(entries, app_id = current_school()) {
+  app_id_scalar <- as.character(app_id %||% current_school())
+  app_id_scalar <- app_id_scalar[!is.na(app_id_scalar) & nzchar(app_id_scalar)]
+  app_id_scalar <- if (length(app_id_scalar)) app_id_scalar[[1]] else as.character(current_school())
+
   backend <- manual_velocity_backend()
 
   ensure_workload_data_dir()
@@ -21740,7 +21854,7 @@ save_manual_velocity_entries <- function(entries, app_id = current_school()) {
   normalize_manual_velocity_types <- function(df) {
     if (is.null(df) || !nrow(df)) return(as.data.frame(df, stringsAsFactors = FALSE))
     if (!"id" %in% names(df)) df$id <- sprintf("mv_legacy_%s", seq_len(nrow(df)))
-    if (!"app_id" %in% names(df)) df$app_id <- app_id
+    if (!"app_id" %in% names(df)) df$app_id <- rep(app_id_scalar, nrow(df))
     if (!"entry_date" %in% names(df)) df$entry_date <- as.Date(NA_real_)[seq_len(nrow(df))]
     if (!"pitcher" %in% names(df)) df$pitcher <- character(nrow(df))
     if (!"throw_type" %in% names(df)) df$throw_type <- character(nrow(df))
@@ -21748,7 +21862,7 @@ save_manual_velocity_entries <- function(entries, app_id = current_school()) {
     if (!"ball_weight_oz" %in% names(df)) df$ball_weight_oz <- NA_real_
     if (!"velocity_mph" %in% names(df)) df$velocity_mph <- NA_real_
     if (!"notes" %in% names(df)) df$notes <- character(nrow(df))
-    if (!"created_at" %in% names(df)) df$created_at <- as.character(Sys.time())
+    if (!"created_at" %in% names(df)) df$created_at <- rep(as.character(Sys.time()), nrow(df))
     df %>%
       dplyr::mutate(
         id = as.character(id),
@@ -21774,7 +21888,7 @@ save_manual_velocity_entries <- function(entries, app_id = current_school()) {
       ok <- tryCatch({
         ensure_manual_velocity_table(con)
         DBI::dbBegin(con)
-        quoted_app <- DBI::dbQuoteString(con, app_id)
+        quoted_app <- DBI::dbQuoteString(con, app_id_scalar)
         DBI::dbExecute(con, sprintf("DELETE FROM manual_velocity_entries WHERE app_id = %s", quoted_app))
         if (nrow(entries)) {
           DBI::dbWriteTable(con, "manual_velocity_entries", entries, append = TRUE, row.names = FALSE)
@@ -21828,6 +21942,7 @@ workload_session_bucket_weights <- c(
 # ==================================
 # == AUTHENTICATION SETUP ==
 # ==================================
+log_startup_timing("Reached authentication/global setup boundary")
 
 # Using shinyapps.io native authentication instead of shinymanager
 # Three-tier access system:
@@ -21845,6 +21960,7 @@ admin_emails <- c(
 # They will only see data where Email matches their login email
 
 
+log_startup_timing("Starting UI object construction")
 ui <- tagList(
   # --- Custom navbar colors & styling ---
   tags$head(
@@ -23506,6 +23622,7 @@ ui <- tagList(
     tabPanel("Logout", value = "Logout", fluidPage())
   )
 )
+log_startup_timing("Completed UI object construction")
 
 # Custom authentication disabled - using shinyapps.io native authentication
 
@@ -38186,5 +38303,8 @@ deg_to_clock <- function(x) {
   custom_reports_server("creports")
 }
 # ---------- Run ----------
-shinyApp(ui=ui, server=server)# app.R
+log_startup_timing("Registering shiny app object")
+app <- shinyApp(ui = ui, server = server) # app.R
+log_startup_timing("Shiny app object ready")
+app
 # Shiny pitching report with per-player privacy + admin view + customized Stuff+ metric per pitch type
