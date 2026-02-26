@@ -8464,10 +8464,18 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       # ---------- CHART grid (2 per row) ----------
       chart_rows <- list()
       for (i in seq_len(n_pa)) {
-        dat <- pa_list[[i]] %>% dplyr::mutate(
+        pa_i <- pa_list[[i]]
+        n_i <- nrow(pa_i)
+        if (!"ExitSpeed" %in% names(pa_i)) pa_i$ExitSpeed <- rep(NA_real_, n_i)
+        if (!"Angle" %in% names(pa_i)) pa_i$Angle <- rep(NA_real_, n_i)
+        if (!"Distance" %in% names(pa_i)) pa_i$Distance <- rep(NA_real_, n_i)
+        dat <- pa_i %>% dplyr::mutate(
           pitch_idx = dplyr::row_number(),
           Result    = factor(compute_result(PitchCall, PlayResult), levels = result_levels),
           tt_fill   = dplyr::coalesce(colors_for_mode(is_dark_mode())[as.character(TaggedPitchType)], "gray80"),
+          ExitSpeed = suppressWarnings(as.numeric(ExitSpeed)),
+          Angle     = suppressWarnings(as.numeric(Angle)),
+          Distance  = suppressWarnings(as.numeric(Distance)),
           tt        = paste0(
             "EV: ", ifelse(is.finite(ExitSpeed), sprintf("%.1f", ExitSpeed), "—"), " mph\n",
             "LA: ", ifelse(is.finite(Angle),     sprintf("%.1f", Angle),     "—"), "°\n",
@@ -8569,7 +8577,17 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         out_table_id <- ns(paste0("abTable_", pid))
         
         local({
-          dat_local <- pa_list[[i]] %>% dplyr::mutate(pitch_idx = dplyr::row_number())
+          pa_tbl <- pa_list[[i]]
+          n_tbl <- nrow(pa_tbl)
+          if (!"ExitSpeed" %in% names(pa_tbl)) pa_tbl$ExitSpeed <- rep(NA_real_, n_tbl)
+          if (!"Angle" %in% names(pa_tbl)) pa_tbl$Angle <- rep(NA_real_, n_tbl)
+          if (!"Distance" %in% names(pa_tbl)) pa_tbl$Distance <- rep(NA_real_, n_tbl)
+          dat_local <- pa_tbl %>% dplyr::mutate(
+            pitch_idx = dplyr::row_number(),
+            ExitSpeed = suppressWarnings(as.numeric(ExitSpeed)),
+            Angle     = suppressWarnings(as.numeric(Angle)),
+            Distance  = suppressWarnings(as.numeric(Distance))
+          )
           out_table_id_local <- paste0("abTable_", pid)
           output[[out_table_id_local]] <- DT::renderDT({
             tbl <- dat_local %>% dplyr::transmute(
@@ -11016,6 +11034,9 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       }
       
       to_num <- function(x) suppressWarnings(as.numeric(x))
+      for (nm in c("ThrowSpeed", "ExchangeTime", "PopTime")) {
+        if (!nm %in% names(df_all)) df_all[[nm]] <- NA_real_
+      }
       
       # ---------- SL+ on TAKES from the full dataset ----------
       # Safe logical operations for takes calculation
@@ -11244,6 +11265,9 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
     loc_throws <- reactive({
       df <- filtered_catch()
       if (!nrow(df)) return(df[0, , drop=FALSE])
+      for (nm in c("PopTime", "ThrowSpeed")) {
+        if (!nm %in% names(df)) df[[nm]] <- NA_real_
+      }
       
       # Only rows with PopTime AND ThrowSpeed ≥ 70 mph are considered throws
       df$PopTime_num     <- loc_to_num(df$PopTime)
@@ -12900,6 +12924,9 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       }
       
       to_num <- function(x) suppressWarnings(as.numeric(x))
+      for (nm in c("ThrowSpeed", "ExchangeTime", "PopTime")) {
+        if (!nm %in% names(df_all)) df_all[[nm]] <- NA_real_
+      }
       takes_all   <- tryCatch({
         pitch_call_safe <- as.character(df_all$PitchCall)
         (!is.na(pitch_call_safe)) & (pitch_call_safe %in% c("StrikeCalled","BallCalled"))
@@ -13896,6 +13923,9 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       }
       
       out <- res_tbl
+      for (nm in c("RelSpeed", "InducedVertBreak", "HorzBreak", "Distance")) {
+        if (!nm %in% names(df)) df[[nm]] <- NA_real_
+      }
       # coerce numerics (avoid backtick headaches with tidyselect)
       num_cols <- c("PA","AB","AVG","SLG","OBP","OPS","wOBA","xWOBA","ISO","xISO","BABIP",
                     "Swing%","Whiff%","GB%","K%","BB%","Barrel%","EV","LA")
@@ -14039,6 +14069,9 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       }
       
       to_num <- function(x) suppressWarnings(as.numeric(x))
+      for (nm in c("ThrowSpeed", "ExchangeTime", "PopTime")) {
+        if (!nm %in% names(df_all)) df_all[[nm]] <- NA_real_
+      }
       
       # pre-compute take buckets
       takes_all   <- tryCatch({
