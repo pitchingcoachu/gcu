@@ -345,9 +345,14 @@ pitch_data_db_get_query <- function(con, sql) {
         ignore.case = TRUE
       )
       if (!recoverable) stop(e1)
-      res <- DBI::dbSendQuery(con, sql)
-      on.exit(tryCatch(DBI::dbClearResult(res), error = function(...) NULL), add = TRUE)
-      DBI::dbFetch(res)
+      tryCatch(
+        DBI::dbGetQuery(con, sql, immediate = TRUE),
+        error = function(e2) {
+          res <- DBI::dbSendQuery(con, sql, immediate = TRUE)
+          on.exit(tryCatch(DBI::dbClearResult(res), error = function(...) NULL), add = TRUE)
+          DBI::dbFetch(res)
+        }
+      )
     }
   )
 }

@@ -9656,6 +9656,19 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
             wOBA = safe_div(wOBA_num, wOBA_den)
           )
         
+        # Guard optional columns so summary tables still render when source files omit them
+        for (nm in c("ExitSpeed", "Angle", "RelSpeed", "InducedVertBreak", "HorzBreak", "Distance", "RunsScored", "PlateLocSide", "PlateLocHeight")) {
+          if (!nm %in% names(df)) df[[nm]] <- NA_real_
+        }
+        for (nm in c("SessionType", "PitchCall", "TaggedHitType", "Balls", "Strikes")) {
+          if (!nm %in% names(df)) df[[nm]] <- NA
+        }
+        df <- df %>%
+          dplyr::mutate(
+            Distance_num = suppressWarnings(as.numeric(Distance)),
+            RunsScored_num = suppressWarnings(as.numeric(RunsScored))
+          )
+        
         # Calculate raw barrel counts per split
         barrel_counts <- df %>%
           dplyr::filter(
@@ -9699,9 +9712,9 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
             Velo = mean(RelSpeed, na.rm = TRUE),
             IVB = mean(InducedVertBreak, na.rm = TRUE),
             HB = mean(HorzBreak, na.rm = TRUE),
-            Distance = mean(suppressWarnings(as.numeric(Distance[SessionType == "Live" & PitchCall == "InPlay"])), na.rm = TRUE),
+            Distance = mean(Distance_num[SessionType == "Live" & PitchCall == "InPlay"], na.rm = TRUE),
             `RV/100` = {
-              rv <- sum(suppressWarnings(as.numeric(RunsScored)), na.rm = TRUE)
+              rv <- sum(RunsScored_num, na.rm = TRUE)
               safe_div(rv * 100, dplyr::n())
             },
             .groups = "drop"
@@ -9945,8 +9958,8 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         all_row$Velo <- mean(df$RelSpeed, na.rm = TRUE)
         all_row$IVB <- mean(df$InducedVertBreak, na.rm = TRUE)
         all_row$HB <- mean(df$HorzBreak, na.rm = TRUE)
-        all_row$Distance <- mean(suppressWarnings(as.numeric(df$Distance[df$SessionType == "Live" & df$PitchCall == "InPlay"])), na.rm = TRUE)
-        all_row$`RV/100` <- safe_div(sum(suppressWarnings(as.numeric(df$RunsScored)), na.rm = TRUE) * 100, nrow(df))
+        all_row$Distance <- mean(df$Distance_num[df$SessionType == "Live" & df$PitchCall == "InPlay"], na.rm = TRUE)
+        all_row$`RV/100` <- safe_div(sum(df$RunsScored_num, na.rm = TRUE) * 100, nrow(df))
         
         # Discipline stats for All row
         first_pitch_all <- sum(df$Balls == 0 & df$Strikes == 0, na.rm = TRUE)
