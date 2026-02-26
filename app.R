@@ -5668,7 +5668,8 @@ need_cols <- c(
   "ExitSpeed","Angle","BatterSide",
   "PlayResult","TaggedHitType","OutsOnPlay",
   "Batter", "Catcher",
-  "VideoClip","VideoClip2","VideoClip3"
+  "VideoClip","VideoClip2","VideoClip3",
+  "SourceFile"
 )
 
 
