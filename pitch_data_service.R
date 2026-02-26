@@ -322,9 +322,19 @@ pitch_data_cache_file <- function(school_code = "") {
   dir <- path.expand(dir)
   dir.create(dir, recursive = TRUE, showWarnings = FALSE)
 
+  # Bump whenever the expected column shape changes.
+  cache_shape_version <- "2026-02-26-spray-catch"
   cfg <- pitch_data_backend_config()
   fingerprint <- if (identical(cfg$type, "postgres")) {
-    paste(cfg$config$host, cfg$config$dbname, Sys.getenv("PITCH_DATA_DB_SCHEMA", "public"), Sys.getenv("PITCH_DATA_DB_TABLE", "pitch_events"), school_code, sep = "|")
+    paste(
+      cache_shape_version,
+      cfg$config$host,
+      cfg$config$dbname,
+      Sys.getenv("PITCH_DATA_DB_SCHEMA", "public"),
+      Sys.getenv("PITCH_DATA_DB_TABLE", "pitch_events"),
+      school_code,
+      sep = "|"
+    )
   } else {
     paste("csv", school_code, sep = "|")
   }
@@ -643,8 +653,12 @@ load_pitch_data_from_postgres <- function(school_code = "", startup_logger = NUL
   ttl <- pitch_data_cache_ttl()
   cached <- pitch_data_load_cached(cache_file, ttl)
   if (!is.null(cached) && is.list(cached) && !is.null(cached$data)) {
-    pitch_data_logger(startup_logger, sprintf("Loaded pitch_data from cache (%d rows)", nrow(cached$data)))
-    return(cached)
+    required_cols <- c("Distance", "Direction", "ThrowSpeed", "ExchangeTime", "PopTime")
+    if (all(required_cols %in% names(cached$data))) {
+      pitch_data_logger(startup_logger, sprintf("Loaded pitch_data from cache (%d rows)", nrow(cached$data)))
+      return(cached)
+    }
+    pitch_data_logger(startup_logger, "Ignoring stale cache snapshot missing required spray/catching columns")
   }
 
   con <- do.call(DBI::dbConnect, c(list(RPostgres::Postgres()), cfg))
