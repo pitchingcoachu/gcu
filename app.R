@@ -3721,6 +3721,20 @@ assign_where <- function(vec, cond, value) {
   vec
 }
 
+# Choose a recent window from available event dates instead of a single day.
+# This avoids blank charts/tables when the latest date has no qualifying rows.
+recent_date_window <- function(date_vec, n_days = 7L) {
+  dv <- suppressWarnings(as.Date(date_vec))
+  dv <- sort(unique(dv[is.finite(dv)]))
+  if (!length(dv)) return(NULL)
+  n_days <- suppressWarnings(as.integer(n_days))
+  if (is.na(n_days) || n_days < 1L) n_days <- 7L
+  end_date <- dv[[length(dv)]]
+  start_idx <- max(1L, length(dv) - n_days + 1L)
+  start_date <- dv[[start_idx]]
+  c(start_date, end_date)
+}
+
 # ----- Hover tooltip helpers -----
 inzone_label <- function(side, height) {
   comp   <- !is.na(side) & !is.na(height) &
@@ -8823,7 +8837,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       user_changed_dates(TRUE)
     }, ignoreInit = TRUE)
     
-    # Default date range to last date for selected hitter (LSU only)
+    # Default date range to a recent window for selected hitter (LSU only)
     # Only update if user hasn't manually changed dates
     observeEvent(input$hitter, {
       req(is_active())
@@ -8832,14 +8846,14 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       if (user_changed_dates()) return()
       
       d <- pd_team()
-      last_date <- if (isTRUE(input$hitter == "All")) {
-        max(d$Date, na.rm = TRUE)
+      date_pool <- if (isTRUE(input$hitter == "All")) {
+        d$Date
       } else {
-        mx <- max(d$Date[d$Batter == input$hitter], na.rm = TRUE)
-        if (is.finite(mx)) mx else max(d$Date, na.rm = TRUE)
+        d$Date[d$Batter == input$hitter]
       }
-      if (is.finite(last_date)) {
-        updateDateRangeInput(session, "dates", start = last_date, end = last_date)
+      win <- recent_date_window(date_pool, n_days = 7L)
+      if (!is.null(win)) {
+        updateDateRangeInput(session, "dates", start = win[[1]], end = win[[2]])
       }
     }, ignoreInit = TRUE)
     
@@ -10920,17 +10934,17 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       }
     }, ignoreInit = TRUE)
     
-    # Default dates to last date for selected catcher (or global last)
+    # Default dates to a recent window for selected catcher.
     observeEvent(input$catcher, {
       req(is_active())
-      last_date <- if (isTRUE(input$catcher == "All")) {
-        max(pitch_data$Date, na.rm = TRUE)
+      date_pool <- if (isTRUE(input$catcher == "All")) {
+        pitch_data$Date
       } else {
-        mx <- max(pitch_data$Date[pitch_data$Catcher == input$catcher], na.rm = TRUE)
-        if (is.finite(mx)) mx else max(pitch_data$Date, na.rm = TRUE)
+        pitch_data$Date[pitch_data$Catcher == input$catcher]
       }
-      if (is.finite(last_date)) {
-        updateDateRangeInput(session, "dates", start = last_date, end = last_date)
+      win <- recent_date_window(date_pool, n_days = 7L)
+      if (!is.null(win)) {
+        updateDateRangeInput(session, "dates", start = win[[1]], end = win[[2]])
       }
     }, ignoreInit = TRUE)
     
@@ -13269,13 +13283,13 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
     })
     
     
-    # Default the date range to the most recent date with data for the chosen domain/sessionType
+    # Default the date range to a recent window with data for the chosen domain/sessionType
     observe({
       req(is_active())
       base <- team_base()
-      last_date <- suppressWarnings(max(base$Date, na.rm = TRUE))
-      if (is.finite(last_date)) {
-        updateDateRangeInput(session, "dates", start = last_date, end = last_date)
+      win <- recent_date_window(base$Date, n_days = 7L)
+      if (!is.null(win)) {
+        updateDateRangeInput(session, "dates", start = win[[1]], end = win[[2]])
       }
     })
     
@@ -27790,8 +27804,13 @@ deg_to_clock <- function(x) {
   observe({
     if (is.null(global_date_range())) {
       if (exists("pitch_data") && nrow(pitch_data) > 0) {
-        max_date <- max(pitch_data$Date, na.rm = TRUE)
-        global_date_range(c(max_date, max_date))
+        win <- recent_date_window(pitch_data$Date, n_days = 7L)
+        if (!is.null(win)) {
+          global_date_range(win)
+        } else {
+          today <- Sys.Date()
+          global_date_range(c(today, today))
+        }
       } else {
         global_date_range(c(Sys.Date(), Sys.Date()))
       }
@@ -28265,19 +28284,26 @@ deg_to_clock <- function(x) {
     }, delay = 0.3)
   }, ignoreInit = TRUE)
   
-  # Set date once on startup
+  # Set date once on startup (prefer persisted global range over single-day defaults).
   observeEvent(TRUE, {
     req(input$sessionType, input$pitcher)
-    df_base <- apply_session_type_filter(pitch_data_pitching, input$sessionType)
     
-    last_date <- if (input$pitcher == "All") {
-      max(df_base$Date, na.rm = TRUE)
-    } else {
-      mx <- max(df_base$Date[df_base$Pitcher == input$pitcher], na.rm = TRUE)
-      if (is.finite(mx)) mx else max(df_base$Date, na.rm = TRUE)
+    if (!is.null(global_date_range())) {
+      gd <- global_date_range()
+      updateDateRangeInput(session, "dates", start = gd[[1]], end = gd[[2]])
+      return()
     }
-    if (is.finite(last_date)) {
-      updateDateRangeInput(session, "dates", start = last_date, end = last_date)
+    
+    df_base <- apply_session_type_filter(pitch_data_pitching, input$sessionType)
+    date_pool <- if (input$pitcher == "All") {
+      df_base$Date
+    } else {
+      df_base$Date[df_base$Pitcher == input$pitcher]
+    }
+    win <- recent_date_window(date_pool, n_days = 7L)
+    if (!is.null(win)) {
+      updateDateRangeInput(session, "dates", start = win[[1]], end = win[[2]])
+      global_date_range(win)
     }
   }, once = TRUE)
   
@@ -28299,16 +28325,17 @@ deg_to_clock <- function(x) {
                              end = global_dates[2])
       }
     } else {
-      # Only fall back to last date if no global date range is set
-      last_date <- if (input$pitcher == "All") {
-        max(pitch_data_pitching$Date, na.rm = TRUE)
+      # Only fall back if no global date range is set
+      date_pool <- if (input$pitcher == "All") {
+        pitch_data_pitching$Date
       } else {
-        max(pitch_data_pitching$Date[pitch_data_pitching$Pitcher == input$pitcher], na.rm = TRUE)
+        pitch_data_pitching$Date[pitch_data_pitching$Pitcher == input$pitcher]
       }
-      if (is.finite(last_date)) {
-        updateDateRangeInput(session, "dates", start = last_date, end = last_date)
-        # Update global date range with this new value
-        global_date_range(c(last_date, last_date))
+      win <- recent_date_window(date_pool, n_days = 7L)
+      if (!is.null(win)) {
+        updateDateRangeInput(session, "dates", start = win[[1]], end = win[[2]])
+        # Update global date range with this new value.
+        global_date_range(win)
       }
     }
   }, ignoreInit = TRUE)
