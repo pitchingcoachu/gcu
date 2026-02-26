@@ -17,7 +17,9 @@ pitch_data_default_columns <- function() {
     "SpinEfficiency", "SpinRate", "RelHeight", "RelSide", "Extension",
     "VertApprAngle", "HorzApprAngle", "PlateLocSide", "PlateLocHeight",
     "PitchCall", "KorBB", "Balls", "Strikes", "SessionType", "PlayID",
-    "ExitSpeed", "Angle", "BatterSide", "PlayResult", "TaggedHitType", "OutsOnPlay",
+    "ExitSpeed", "Angle", "Distance", "Direction", "BatterSide", "PlayResult", "TaggedHitType", "OutsOnPlay",
+    "ThrowSpeed", "ExchangeTime", "PopTime", "TimeToBase",
+    "BasePositionX", "BasePositionY", "BasePositionZ", "TargetBase",
     "Batter", "Catcher", "VideoClip", "VideoClip2", "VideoClip3",
     "PitchUID", "PitchID", "PitchGuid", "SourceFile", "PitchKey"
   )
@@ -97,6 +99,16 @@ pitch_data_storage_name_map <- function() {
     PlayID = "playid",
     ExitSpeed = "exitspeed",
     Angle = "angle",
+    Distance = "distance",
+    Direction = "direction",
+    ThrowSpeed = "throwspeed",
+    ExchangeTime = "exchangetime",
+    PopTime = "poptime",
+    TimeToBase = "timetobase",
+    BasePositionX = "basepositionx",
+    BasePositionY = "basepositiony",
+    BasePositionZ = "basepositionz",
+    TargetBase = "targetbase",
     BatterSide = "batterside",
     PlayResult = "playresult",
     TaggedHitType = "taggedhittype",
@@ -769,6 +781,7 @@ ensure_pitch_key_unique_guard <- function(con, school_code = "") {
 sync_csv_file_to_neon <- function(con, csv_path, school_code = "") {
   school_code <- toupper(trimws(as.character(school_code)))
   if (!nzchar(school_code)) school_code <- toupper(trimws(Sys.getenv("TEAM_CODE", "OSU")))
+  force_resync <- pitch_data_parse_bool(Sys.getenv("PITCH_DATA_FORCE_RESYNC", "0"), default = FALSE)
 
   schema <- gsub("[^A-Za-z0-9_]", "_", Sys.getenv("PITCH_DATA_DB_SCHEMA", "public"))
   mtbl <- DBI::Id(schema = schema, table = "pitch_data_files")
@@ -786,7 +799,7 @@ sync_csv_file_to_neon <- function(con, csv_path, school_code = "") {
     as.character(DBI::dbQuoteLiteral(con, source_file))
   )
   existing <- tryCatch(pitch_data_db_get_query(con, existing_sql), error = function(e) data.frame())
-  if (nrow(existing) == 1L) {
+  if (!isTRUE(force_resync) && nrow(existing) == 1L) {
     file_id_existing <- suppressWarnings(as.integer(existing$file_id[[1]]))
     expected_rows <- suppressWarnings(as.integer(existing$row_count[[1]]))
     remote_mtime <- suppressWarnings(as.numeric(existing$file_mtime_epoch[[1]]))
@@ -808,7 +821,7 @@ sync_csv_file_to_neon <- function(con, csv_path, school_code = "") {
   }
 
   checksum <- digest::digest(file = csv_path, algo = "xxhash64")
-  if (nrow(existing) == 1L) {
+  if (!isTRUE(force_resync) && nrow(existing) == 1L) {
     same_checksum <- !is.na(existing$file_checksum[[1]]) &&
       identical(as.character(existing$file_checksum[[1]]), as.character(checksum))
     if (same_checksum) {

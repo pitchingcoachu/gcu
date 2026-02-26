@@ -5665,7 +5665,9 @@ need_cols <- c(
   "SpinEfficiency","SpinRate","RelHeight","RelSide","Extension",
   "VertApprAngle","HorzApprAngle","PlateLocSide","PlateLocHeight",
   "PitchCall","KorBB","Balls","Strikes","SessionType","PlayID",
-  "ExitSpeed","Angle","BatterSide",
+  "ExitSpeed","Angle","Distance","Direction","BatterSide",
+  "ThrowSpeed","ExchangeTime","PopTime","TimeToBase",
+  "BasePositionX","BasePositionY","BasePositionZ","TargetBase",
   "PlayResult","TaggedHitType","OutsOnPlay",
   "Batter", "Catcher",
   "VideoClip","VideoClip2","VideoClip3",
@@ -5700,6 +5702,8 @@ pitch_data <- pitch_data %>%
     Extension       = as.numeric(Extension),
     ExitSpeed       = as.numeric(ExitSpeed),   # ← NEW
     Angle           = as.numeric(Angle),       # ← NEW
+    Distance        = as.numeric(Distance),
+    Direction       = as.numeric(Direction),
     BatterSide      = as.character(BatterSide), # ← NEW
     PlayResult      = as.character(PlayResult),
     Batter         = as.character(Batter),
