@@ -143,6 +143,8 @@ school_config <- list(
   # Optional: Custom Reports page only (light mode + light PDF) alternate right-side logo.
   # If omitted or file is missing in /www, app automatically falls back to `logo`.
   custom_reports_light_logo = "GCUpurplelogo.png",
+  # GCU currently does not use shared Neon video-map attachments.
+  enable_neon_video_map = FALSE,
   coaches_emails = c(
     "banni17@yahoo.com",
     "adam.racine@aol.com",

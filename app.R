@@ -1477,9 +1477,10 @@ compute_pitch_key <- function(df) {
   }
   vapply(seq_len(nrow(df)), function(i) {
     row <- df[i, , drop = FALSE]
+    row_date <- tryCatch(parse_date_flex(row$Date), error = function(...) as.Date(NA))
     parts <- c(
       safe_col(row, "Pitcher"),
-      safe_chr(as.Date(row$Date)),
+      safe_chr(row_date),
       safe_col(row, "SessionType"),
       safe_col(row, "Batter"),
       safe_col(row, "PitchCall"),
@@ -5838,12 +5839,15 @@ if (!"VideoClip3" %in% names(pitch_data)) pitch_data$VideoClip3 <- NA_character_
 
 # Combine EdgeR and manual/iPhone video maps
 video_maps <- list()
-if (exists("video_map_read_all_neon", mode = "function")) {
+enable_neon_video_map <- isTRUE(school_setting("enable_neon_video_map", TRUE))
+if (enable_neon_video_map && exists("video_map_read_all_neon", mode = "function")) {
   neon_raw <- tryCatch(video_map_read_all_neon(), error = function(e) tibble::tibble())
   if (nrow(neon_raw) > 0) {
     video_maps[["neon"]] <- neon_raw
     message("☁️ Loaded ", nrow(neon_raw), " videos from Neon")
   }
+} else if (!enable_neon_video_map) {
+  message("🎥 Neon video map disabled for this school config")
 }
 if (file.exists(video_map_path)) {
   edger_raw <- suppressMessages(readr::read_csv(video_map_path, show_col_types = FALSE))
