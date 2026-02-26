@@ -13923,7 +13923,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       
       if (identical(mode, "Swing Decisions")) {
         out <- sd_tbl
-        pct_cols <- c("Swing%","FPS%","Called%","Chase%","GoZoneSw%","IZswing%","EdgeSwing%","PosSD%")
+        pct_cols <- intersect(c("Swing%","FPS%","Called%","Chase%","GoZoneSw%","IZswing%","EdgeSwing%","PosSD%"), names(out))
         out[pct_cols] <- lapply(out[pct_cols], function(z) ifelse(is.finite(z), paste0(round(z,1), "%"), ""))
         default_visible <- c("Player", pct_cols)
         if (identical(mode, "Custom")) {
@@ -13948,7 +13948,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
                     "Swing%","Whiff%","GB%","K%","BB%","Barrel%","EV","LA")
       out <- out %>%
         dplyr::mutate(
-          dplyr::across(dplyr::all_of(num_cols), ~ suppressWarnings(as.numeric(.)))
+          dplyr::across(dplyr::any_of(num_cols), ~ suppressWarnings(as.numeric(.)))
         )
       
       safe_mean_numeric <- function(x) {
@@ -13994,9 +13994,9 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       out$LA <- ifelse(is.finite(out$LA), round(out$LA, 1), out$LA)
       
       # 3-dec rates (no leading 0); percents to 0–100%
-          pct_cols  <- c("Swing%","Whiff%","GB%","K%","BB%","Barrel%",
-                         "FPS%","Called-S%","Take%","Chase%","GoZoneSw%","IZswing%","EdgeSwing%","PosSD%","QP%")
-      rate_cols <- c("AVG","SLG","OBP","OPS","wOBA","xWOBA","ISO","xISO","BABIP")
+      pct_cols  <- intersect(c("Swing%","Whiff%","GB%","K%","BB%","Barrel%",
+                     "FPS%","Called-S%","Take%","Chase%","GoZoneSw%","IZswing%","EdgeSwing%","PosSD%","QP%"), names(out))
+      rate_cols <- intersect(c("AVG","SLG","OBP","OPS","wOBA","xWOBA","ISO","xISO","BABIP"), names(out))
       out[pct_cols]  <- lapply(out[pct_cols],  function(z) ifelse(is.finite(z), paste0(round(z*100,1), "%"), ""))
       out[rate_cols] <- lapply(out[rate_cols], fmt_rate3)
       
