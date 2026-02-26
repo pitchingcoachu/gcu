@@ -1258,6 +1258,7 @@ state_backend <- function() {
 }
 
 state_backend_cfg <- state_backend()
+message("State backend selected: ", state_backend_cfg$type)
 
 state_db_connect <- function() {
   state_backend_cfg$connect()

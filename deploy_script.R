@@ -17,6 +17,9 @@ suppressPackageStartupMessages({
 deploy_app <- function() {
   tryCatch({
     cat("Starting deployment of Harvard app...\n")
+    if (file.exists(".Renviron")) {
+      readRenviron(".Renviron")
+    }
     
     # Run package installation script
     cat("Running package installation script...\n")
@@ -57,9 +60,17 @@ deploy_app <- function() {
     
     # Deploy the app with better error handling
     cat("Deploying to shinyapps.io...\n")
+    runtime_env_vars <- c(
+      "MYSQL_HOST", "MYSQL_DB", "MYSQL_USER", "MYSQL_PASSWORD", "MYSQL_PORT", "MYSQL_SSL_CA",
+      "TEAM_CODE", "PITCH_DATA_BACKEND", "PITCH_DATA_DB_URL",
+      "PITCH_DATA_SYNC_AFTER_FTP", "PITCH_DATA_SYNC_WORKERS",
+      "TM_SYNC_START_YEAR", "CREDENTIALS_SQLITE_PATH"
+    )
+    runtime_env_vars <- runtime_env_vars[nzchar(Sys.getenv(runtime_env_vars))]
     deployApp(
       appDir = ".",
       appName = "gcubaseball",
+      envVars = runtime_env_vars,
       forceUpdate = TRUE,
       launch.browser = FALSE,
       logLevel = "verbose"
