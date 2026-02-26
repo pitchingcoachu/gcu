@@ -19238,7 +19238,7 @@ custom_reports_server <- function(id) {
                 axis.title.x = element_text(color = axis_col),
                 axis.title.y = element_text(color = axis_col)
               ) +
-              labs(title = "Velocity Chart (Game/Inning)", x = "Pitch Count", y = "Velocity (MPH)")
+              labs(x = "Pitch Count", y = "Velocity (MPH)")
 
             # Dashed inning boundary lines (matches Pitching velocity chart behavior for Live-only data).
             if ("SessionType" %in% names(df2) &&
@@ -19327,7 +19327,7 @@ custom_reports_server <- function(id) {
                 axis.title.x = element_text(color = axis_col),
                 axis.title.y = element_text(color = axis_col)
               ) +
-              labs(title = "Average Velocity by Game", x = "Game Date", y = "Velocity (MPH)")
+              labs(x = "Game Date", y = "Velocity (MPH)")
 
             return(girafe_transparent(
               ggobj = p,
@@ -19408,7 +19408,7 @@ custom_reports_server <- function(id) {
               axis.title.x = element_text(color = axis_col),
               axis.title.y = element_text(color = axis_col)
             ) +
-            labs(title = "Average Velocity by Inning", x = "Inning of Appearance", y = "Velocity (MPH)")
+            labs(x = "Inning of Appearance", y = "Velocity (MPH)")
 
           girafe_transparent(
             ggobj = p,
