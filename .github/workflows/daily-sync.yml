@@ -92,7 +92,7 @@ jobs:
       run: |
         Rscript -e "rsconnect::setAccountInfo(name='${{ secrets.SHINYAPPS_ACCOUNT }}', token='${{ secrets.SHINYAPPS_TOKEN }}', secret='${{ secrets.SHINYAPPS_SECRET }}')"
         
-    - name: Sync PCU data
+    - name: Sync GCU data
       env:
         R_LIBS_USER: packrat/lib-R
       run: Rscript automated_data_sync.R
