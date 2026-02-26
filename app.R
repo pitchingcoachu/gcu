@@ -10595,14 +10595,14 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         showNotification("Please enter a name and choose at least one column.", type = "warning")
         return()
       }
-      # Get is_admin function safely
-      is_admin_fun <- get0("is_admin", mode = "function", inherits = TRUE)
-      is_admin_val <- if (!is.null(is_admin_fun)) {
-        tryCatch(is_admin_fun(), error = function(e) FALSE)
+      # Get can_share_global function safely
+      can_share_global_fun <- get0("can_share_global", mode = "function", inherits = TRUE)
+      can_share_global_val <- if (!is.null(can_share_global_fun)) {
+        tryCatch(can_share_global_fun(), error = function(e) FALSE)
       } else {
         FALSE
       }
-      scope <- if (isTRUE(is_admin_val) && isTRUE(input$dpCustomGlobal)) GLOBAL_SCOPE else current_school()
+      scope <- if (isTRUE(can_share_global_val) && isTRUE(input$dpCustomGlobal)) GLOBAL_SCOPE else current_school()
       ct <- custom_tables()
       ct[[nm]] <- list(cols = cols, school_code = scope)
       custom_tables(ct)
@@ -16954,10 +16954,10 @@ custom_reports_ui <- function(id) {
 custom_reports_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
-    is_admin_fun <- get0("is_admin", mode = "function", inherits = TRUE)
-    is_admin_local <- reactive({
-      if (is.null(is_admin_fun)) return(FALSE)
-      val <- try(is_admin_fun(), silent = TRUE)
+    can_share_global_fun <- get0("can_share_global", mode = "function", inherits = TRUE)
+    can_share_global_local <- reactive({
+      if (is.null(can_share_global_fun)) return(FALSE)
+      val <- try(can_share_global_fun(), silent = TRUE)
       if (inherits(val, "try-error")) FALSE else isTRUE(val)
     })
     
@@ -16991,7 +16991,7 @@ custom_reports_server <- function(id) {
     }
     
     output$report_global_toggle <- renderUI({
-      if (!isTRUE(is_admin_local())) return(NULL)
+      if (!isTRUE(can_share_global_local())) return(NULL)
       checkboxInput(ns("report_global"), "Share with all schools (admin)", value = FALSE)
     })
     
@@ -17066,7 +17066,7 @@ custom_reports_server <- function(id) {
       }
       rep_cells <- rep$cells
       if (!is.list(rep_cells)) rep_cells <- list()
-      if (isTRUE(is_admin_local())) {
+      if (isTRUE(can_share_global_local())) {
         updateCheckboxInput(session, "report_global", value = identical(rep$school_code, GLOBAL_SCOPE))
       }
       
@@ -17501,7 +17501,7 @@ custom_reports_server <- function(id) {
         }
       }
       
-      scope <- if (isTRUE(is_admin_local()) && isTRUE(input$report_global)) GLOBAL_SCOPE else current_school()
+      scope <- if (isTRUE(can_share_global_local()) && isTRUE(input$report_global)) GLOBAL_SCOPE else current_school()
       rep <- list(
         title = nm,
         subtitle = trimws(input$report_subtitle %||% ""),
@@ -17559,7 +17559,7 @@ custom_reports_server <- function(id) {
         flush_row_note_now(r, value = "")
         flush_row_note_span_now(r, value = 1)
       }
-      if (isTRUE(is_admin_local())) updateCheckboxInput(session, "report_global", value = FALSE)
+      if (isTRUE(can_share_global_local())) updateCheckboxInput(session, "report_global", value = FALSE)
 
       loading_report_handle <<- later::later(function() {
         if (loading_report_cycle != new_cycle) return()
@@ -22091,6 +22091,11 @@ admin_emails <- c(
   "ahalverson@pitchingcoachu.com"
 )
 
+# Only this account can publish custom reports/tables as GLOBAL across schools.
+global_share_emails <- c(
+  "jgaynor@pitchingcoachu.com"
+)
+
 # Coach emails - defined per-school via `config/school_config.R`
 # Players are identified by their email being in the lookup_table.csv Email column
 # They will only see data where Email matches their login email
@@ -23784,6 +23789,11 @@ server <- function(input, output, session) {
   is_admin <- reactive({
     u <- user_email()
     !is.na(u) && u %in% admin_emails
+  })
+
+  can_share_global <- reactive({
+    u <- user_email()
+    !is.na(u) && tolower(trimws(u)) %in% tolower(trimws(global_share_emails))
   })
   
   # Check if current user is a coach (can see all data)
@@ -28402,7 +28412,7 @@ deg_to_clock <- function(x) {
             multiple = TRUE,
             options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
           ),
-          if (isTRUE(is_admin())) {
+          if (isTRUE(can_share_global())) {
             checkboxInput("summaryCustomGlobal", "Share with all schools (admin)", value = FALSE)
           },
           actionButton("summarySaveCustom", "Save / Update", class = "btn-primary btn-sm"),
@@ -28463,7 +28473,7 @@ deg_to_clock <- function(x) {
             multiple = TRUE,
             options  = list(plugins = list("drag_drop","remove_button"), placeholder = "Choose columns…")
           ),
-          if (isTRUE(is_admin())) {
+          if (isTRUE(can_share_global())) {
             checkboxInput("dpCustomGlobal", "Share with all schools (admin)", value = FALSE)
           },
           actionButton("dpSaveCustom", "Save / Update", class = "btn-primary btn-sm"),
@@ -31310,7 +31320,7 @@ deg_to_clock <- function(x) {
       showNotification("Please enter a name and choose at least one column.", type = "warning")
       return()
     }
-    scope <- if (isTRUE(is_admin()) && isTRUE(input$summaryCustomGlobal)) GLOBAL_SCOPE else current_school()
+    scope <- if (isTRUE(can_share_global()) && isTRUE(input$summaryCustomGlobal)) GLOBAL_SCOPE else current_school()
     ct <- custom_tables()
     ct[[nm]] <- list(cols = cols, school_code = scope)
     custom_tables(ct); save_custom_tables(ct); update_custom_table_choices(session)
@@ -31345,7 +31355,7 @@ deg_to_clock <- function(x) {
       showNotification("Please enter a name and choose at least one column.", type = "warning")
       return()
     }
-    scope <- if (isTRUE(is_admin()) && isTRUE(input$dpCustomGlobal)) GLOBAL_SCOPE else current_school()
+    scope <- if (isTRUE(can_share_global()) && isTRUE(input$dpCustomGlobal)) GLOBAL_SCOPE else current_school()
     ct <- custom_tables()
     ct[[nm]] <- list(cols = cols, school_code = scope)
     custom_tables(ct); save_custom_tables(ct); update_custom_table_choices(session)
