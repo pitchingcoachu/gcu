@@ -1091,6 +1091,64 @@ mod_db_connect <- function() {
   con
 }
 
+db_error_message <- function(x, default = "connection returned NULL") {
+  if (inherits(x, "condition")) return(conditionMessage(x))
+  if (is.character(x) && length(x) >= 1L && nzchar(x[[1]])) return(x[[1]])
+  default
+}
+
+db_get_query_safe <- function(con, sql, params = NULL) {
+  tryCatch(
+    {
+      if (is.null(params)) {
+        DBI::dbGetQuery(con, sql)
+      } else {
+        DBI::dbGetQuery(con, sql, params = params)
+      }
+    },
+    error = function(e1) {
+      msg <- conditionMessage(e1)
+      recoverable <- grepl(
+        "unnamed prepared statement does not exist|query needs to be bound before fetching|Failed to retrieve query result metadata",
+        msg,
+        ignore.case = TRUE
+      )
+      if (!recoverable) stop(e1)
+      if (is.null(params)) {
+        DBI::dbGetQuery(con, sql, immediate = TRUE)
+      } else {
+        DBI::dbGetQuery(con, sql, params = params, immediate = TRUE)
+      }
+    }
+  )
+}
+
+db_execute_safe <- function(con, sql, params = NULL) {
+  tryCatch(
+    {
+      if (is.null(params)) {
+        DBI::dbExecute(con, sql)
+      } else {
+        DBI::dbExecute(con, sql, params = params)
+      }
+    },
+    error = function(e1) {
+      msg <- conditionMessage(e1)
+      recoverable <- grepl(
+        "unnamed prepared statement does not exist|query needs to be bound before fetching|Failed to retrieve query result metadata",
+        msg,
+        ignore.case = TRUE
+      )
+      if (!recoverable) stop(e1)
+      if (is.null(params)) {
+        DBI::dbExecute(con, sql, immediate = TRUE)
+      } else {
+        DBI::dbExecute(con, sql, params = params, immediate = TRUE)
+      }
+    }
+  )
+}
+
 pitch_mod_table_name <- function() {
   tbl <- Sys.getenv("PITCH_MOD_DB_TABLE", "modifications")
   tbl <- gsub("[^A-Za-z0-9_]", "_", tbl, perl = TRUE)
@@ -1564,7 +1622,7 @@ refresh_missing_pitch_keys <- function(con, mods_df, base_data) {
     tbl <- as.character(pitch_mod_table_clause(con))
     for (idx in newly_filled) {
       query <- sprintf("UPDATE %s SET pitch_key = ? WHERE id = ?", tbl)
-      try(dbExecute(con, query, list(mods_with_keys$pitch_key[idx], mods_with_keys$id[idx])), silent = TRUE)
+      try(db_execute_safe(con, query, params = list(mods_with_keys$pitch_key[idx], mods_with_keys$id[idx])), silent = TRUE)
     }
   }
   mods_with_keys
@@ -1636,7 +1694,7 @@ write_modifications_snapshot <- function(con) {
   # Get all modifications from database
   tbl <- as.character(pitch_mod_table_clause(con))
   ns <- pitch_mod_namespace_clause(con)
-  mods <- try(dbGetQuery(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl, ns)), silent = TRUE)
+  mods <- try(db_get_query_safe(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl, ns)), silent = TRUE)
   if (inherits(mods, "try-error") || !nrow(mods)) return()
   if (!"is_deleted" %in% names(mods)) mods$is_deleted <- 0
 
@@ -1686,7 +1744,7 @@ import_modifications_from_export <- function(con, base_data) {
   # Get existing modifications from database
   tbl <- as.character(pitch_mod_table_clause(con))
   ns_clause <- pitch_mod_namespace_clause(con)
-  existing <- try(dbGetQuery(con, sprintf("SELECT pitcher, date, rel_speed, horz_break, induced_vert_break, new_pitch_type, new_pitcher, is_deleted, pitch_key FROM %s WHERE namespace = %s", tbl, ns_clause)), silent = TRUE)
+  existing <- try(db_get_query_safe(con, sprintf("SELECT pitcher, date, rel_speed, horz_break, induced_vert_break, new_pitch_type, new_pitcher, is_deleted, pitch_key FROM %s WHERE namespace = %s", tbl, ns_clause)), silent = TRUE)
 
   if (inherits(existing, "try-error") || !nrow(existing)) {
     new_rows <- mods_csv
@@ -1810,7 +1868,7 @@ init_modifications_db <- function() {
 
   con <- mod_db_connect()
   if (inherits(con, "error") || is.null(con)) {
-    warning(sprintf("Could not connect to pitch modifications backend (%s)", conditionMessage(con)))
+    warning(sprintf("Could not connect to pitch modifications backend (%s)", db_error_message(con)))
     return(invisible(NULL))
   }
   on.exit(dbDisconnect(con), add = TRUE)
@@ -1860,26 +1918,26 @@ init_modifications_db <- function() {
       )
       ", tbl_clause, ns_default)
     }
-    dbExecute(con, table_sql)
-    dbExecute(con, sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (pitcher, date, rel_speed, horz_break, induced_vert_break)", idx_lookup, tbl_clause))
-    dbExecute(con, sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (pitch_key)", idx_key, tbl_clause))
+    db_execute_safe(con, table_sql)
+    db_execute_safe(con, sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (pitcher, date, rel_speed, horz_break, induced_vert_break)", idx_lookup, tbl_clause))
+    db_execute_safe(con, sprintf("CREATE INDEX IF NOT EXISTS %s ON %s (pitch_key)", idx_key, tbl_clause))
     cols <- try(dbListFields(con, pitch_mod_table_name()), silent = TRUE)
     if (!inherits(cols, "try-error")) {
       if (!"new_pitcher" %in% cols) {
-        try(dbExecute(con, sprintf("ALTER TABLE %s ADD COLUMN new_pitcher TEXT", tbl_clause)), silent = TRUE)
+        try(db_execute_safe(con, sprintf("ALTER TABLE %s ADD COLUMN new_pitcher TEXT", tbl_clause)), silent = TRUE)
         cols <- try(dbListFields(con, pitch_mod_table_name()), silent = TRUE)
       }
       if (!"namespace" %in% cols) {
-        try(dbExecute(con, sprintf("ALTER TABLE %s ADD COLUMN namespace TEXT NOT NULL DEFAULT %s", tbl_clause, ns_default)), silent = TRUE)
+        try(db_execute_safe(con, sprintf("ALTER TABLE %s ADD COLUMN namespace TEXT NOT NULL DEFAULT %s", tbl_clause, ns_default)), silent = TRUE)
       }
       if (!"is_deleted" %in% cols) {
-        try(dbExecute(con, sprintf("ALTER TABLE %s ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0", tbl_clause)), silent = TRUE)
+        try(db_execute_safe(con, sprintf("ALTER TABLE %s ADD COLUMN is_deleted INTEGER NOT NULL DEFAULT 0", tbl_clause)), silent = TRUE)
       }
     }
     base_data <- get0("pitch_data_pitching", ifnotfound = NULL)
     import_modifications_from_export(con, base_data)
     ns_clause <- pitch_mod_namespace_clause(con)
-    mods <- try(dbGetQuery(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl_clause, ns_clause)), silent = TRUE)
+    mods <- try(db_get_query_safe(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl_clause, ns_clause)), silent = TRUE)
     db_count <- if (inherits(mods, "try-error")) NA_integer_ else nrow(mods)
     message(sprintf("Pitch modifications backend (%s) rows: %s", backend_label, db_count))
 
@@ -1889,12 +1947,12 @@ init_modifications_db <- function() {
         message(sprintf("Deduplicating stored modifications (%d -> %d rows)", nrow(mods), nrow(mods_dedup)))
         tryCatch({
           dbBegin(con)
-          dbExecute(con, sprintf("DELETE FROM %s WHERE namespace = %s", tbl_clause, ns_clause))
+          db_execute_safe(con, sprintf("DELETE FROM %s WHERE namespace = %s", tbl_clause, ns_clause))
           mods_write <- mods_dedup
           mods_write$id <- NULL
           dbWriteTable(con, pitch_mod_table_name(), mods_write, append = TRUE)
           dbCommit(con)
-          mods <- try(dbGetQuery(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl_clause, ns_clause)), silent = TRUE)
+          mods <- try(db_get_query_safe(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl_clause, ns_clause)), silent = TRUE)
         }, error = function(e) {
           try(dbRollback(con), silent = TRUE)
           warning(sprintf("Could not deduplicate stored modifications: %s", conditionMessage(e)))
@@ -1926,7 +1984,7 @@ init_modifications_db <- function() {
       if (!is.null(csv_info$path) && is.finite(csv_info$n) && csv_info$n > db_count) {
         message(sprintf("Rebuilding modifications backend from %s (%d -> %d rows)", 
                         csv_info$path, db_count, csv_info$n))
-        try(dbExecute(con, sprintf("DELETE FROM %s WHERE namespace = %s", tbl_clause, ns_clause)), silent = TRUE)
+        try(db_execute_safe(con, sprintf("DELETE FROM %s WHERE namespace = %s", tbl_clause, ns_clause)), silent = TRUE)
         mods_csv <- try(readr::read_csv(csv_info$path, show_col_types = FALSE), silent = TRUE)
         if (!inherits(mods_csv, "try-error") && nrow(mods_csv)) {
           mods_csv <- as.data.frame(mods_csv, stringsAsFactors = FALSE, check.names = FALSE)
@@ -1956,7 +2014,7 @@ init_modifications_db <- function() {
           if ("created_at" %in% names(new_rows)) new_rows$created_at <- normalize_mod_date_column(new_rows$created_at, is_datetime = TRUE)
           try(dbWriteTable(con, pitch_mod_table_name(), new_rows, append = TRUE), silent = TRUE)
         }
-        mods <- try(dbGetQuery(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl_clause, ns_clause)), silent = TRUE)
+        mods <- try(db_get_query_safe(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl_clause, ns_clause)), silent = TRUE)
         if (!inherits(mods, "try-error")) {
           refresh_missing_pitch_keys(con, mods, base_data)
           write_modifications_snapshot(con)
@@ -1975,7 +2033,7 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
   init_modifications_db()
   con <- mod_db_connect()
   if (inherits(con, "error") || is.null(con)) {
-    return(list(success = FALSE, error = conditionMessage(con)))
+    return(list(success = FALSE, error = db_error_message(con)))
   }
   on.exit(dbDisconnect(con), add = TRUE)
 
@@ -2035,7 +2093,7 @@ save_pitch_modifications_db <- function(selected_pitches, new_type, new_pitcher 
     for (i in seq_len(nrow(new_mods))) {
       key_literal <- DBI::dbQuoteString(con, new_mods$pitch_key[i])
       delete_sql <- sprintf("DELETE FROM %s WHERE pitch_key = %s AND namespace = %s", tbl_clause, key_literal, ns_clause)
-      dbExecute(con, delete_sql)
+      db_execute_safe(con, delete_sql)
     }
     dbWriteTable(con, pitch_mod_table_name(), new_mods, append = TRUE)
     dbCommit(con)
@@ -2097,14 +2155,14 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
     init_modifications_db()
     con <- mod_db_connect()
     if (inherits(con, "error") || is.null(con)) {
-      warning(sprintf("Could not open pitch modifications backend (%s)", conditionMessage(con)))
+      warning(sprintf("Could not open pitch modifications backend (%s)", db_error_message(con)))
       return(fallback_result)
     }
     on.exit(dbDisconnect(con), add = TRUE)
 
     tbl_clause <- as.character(pitch_mod_table_clause(con))
     ns_clause <- pitch_mod_namespace_clause(con)
-    mods <- try(dbGetQuery(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl_clause, ns_clause)), silent = TRUE)
+    mods <- try(db_get_query_safe(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl_clause, ns_clause)), silent = TRUE)
     if (inherits(mods, "error") || !nrow(mods)) {
       return(list(
         data = ensure_pitch_keys(pitch_data) %>% mutate(original_row_id = row_number()),
@@ -2299,15 +2357,15 @@ get_modification_stats <- function() {
   tryCatch({
     tbl <- as.character(pitch_mod_table_clause(con))
     ns_clause <- pitch_mod_namespace_clause(con)
-    total <- dbGetQuery(con, sprintf("SELECT COUNT(*) as count FROM %s WHERE namespace = %s", tbl, ns_clause))$count
-    by_player <- dbGetQuery(con, sprintf("
+    total <- db_get_query_safe(con, sprintf("SELECT COUNT(*) as count FROM %s WHERE namespace = %s", tbl, ns_clause))$count
+    by_player <- db_get_query_safe(con, sprintf("
       SELECT pitcher, COUNT(*) as modifications 
       FROM %s 
       WHERE namespace = %s
       GROUP BY pitcher 
       ORDER BY modifications DESC
     ", tbl, ns_clause))
-    recent <- dbGetQuery(con, sprintf("
+    recent <- db_get_query_safe(con, sprintf("
       SELECT pitcher, date, original_pitch_type, new_pitch_type, modified_at 
       FROM %s 
       WHERE namespace = %s
@@ -20663,7 +20721,7 @@ init_biomech_db <- function() {
     if (backend$type == "sqlite") {
       # SQLite syntax
       message("Creating SQLite table...")
-      DBI::dbExecute(con, "
+      db_execute_safe(con, "
         CREATE TABLE IF NOT EXISTS newtforce_data (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           app_id TEXT NOT NULL,
@@ -20693,13 +20751,13 @@ init_biomech_db <- function() {
       ")
       
       message("Creating SQLite index...")
-      DBI::dbExecute(con, "
+      db_execute_safe(con, "
         CREATE INDEX IF NOT EXISTS idx_newtforce_app_id ON newtforce_data(app_id)
       ")
     } else {
       # PostgreSQL syntax
       message("Creating PostgreSQL table...")
-      DBI::dbExecute(con, "
+      db_execute_safe(con, "
         CREATE TABLE IF NOT EXISTS newtforce_data (
           id SERIAL PRIMARY KEY,
           app_id TEXT NOT NULL,
@@ -20729,7 +20787,7 @@ init_biomech_db <- function() {
       ")
       
       message("Creating PostgreSQL index...")
-      DBI::dbExecute(con, "
+      db_execute_safe(con, "
         CREATE INDEX IF NOT EXISTS idx_newtforce_app_id ON newtforce_data(app_id)
       ")
     }
@@ -20861,10 +20919,10 @@ load_newtforce_data <- function(app_id) {
     # Use appropriate parameterized query syntax
     if (backend$type == "sqlite") {
       query <- "SELECT * FROM newtforce_data WHERE app_id = ? ORDER BY date DESC, last_name, first_name"
-      result <- DBI::dbGetQuery(con, query, params = list(app_id))
+      result <- db_get_query_safe(con, query, params = list(app_id))
     } else {
       query <- "SELECT * FROM newtforce_data WHERE app_id = $1 ORDER BY date DESC, last_name, first_name"
-      result <- DBI::dbGetQuery(con, query, params = list(app_id))
+      result <- db_get_query_safe(con, query, params = list(app_id))
     }
     DBI::dbDisconnect(con)
     
@@ -20921,10 +20979,10 @@ get_newtforce_pitchers <- function(app_id) {
     # Use appropriate parameterized query syntax
     if (backend$type == "sqlite") {
       query <- "SELECT DISTINCT first_name, last_name FROM newtforce_data WHERE app_id = ? ORDER BY last_name, first_name"
-      result <- DBI::dbGetQuery(con, query, params = list(app_id))
+      result <- db_get_query_safe(con, query, params = list(app_id))
     } else {
       query <- "SELECT DISTINCT first_name, last_name FROM newtforce_data WHERE app_id = $1 ORDER BY last_name, first_name"
-      result <- DBI::dbGetQuery(con, query, params = list(app_id))
+      result <- db_get_query_safe(con, query, params = list(app_id))
     }
     DBI::dbDisconnect(con)
     
@@ -21188,6 +21246,22 @@ biomech_server <- function(input, output, session, app_id_fn) {
     if (!is.null(app_id) && nzchar(app_id)) {
       data <- load_newtforce_data(app_id)
       newtforce_data(data)
+      if (!is.null(data) && nrow(data) && "Date" %in% names(data)) {
+        parsed_dates <- suppressWarnings(as.Date(as.character(data$Date), format = "%m/%d/%Y"))
+        missing_dates <- is.na(parsed_dates)
+        if (any(missing_dates)) {
+          parsed_dates[missing_dates] <- suppressWarnings(as.Date(as.character(data$Date[missing_dates])))
+        }
+        parsed_dates <- parsed_dates[is.finite(as.numeric(parsed_dates))]
+        if (length(parsed_dates)) {
+          updateDateRangeInput(
+            session,
+            "newtforce_date_range",
+            start = min(parsed_dates, na.rm = TRUE),
+            end = max(parsed_dates, na.rm = TRUE)
+          )
+        }
+      }
     }
   })
   
@@ -21291,12 +21365,20 @@ biomech_server <- function(input, output, session, app_id_fn) {
       }
     }
     
-    # Filter by date range
+    # Filter by date range (accept both mm/dd/YYYY and yyyy-mm-dd data values).
+    range_vals <- input$newtforce_date_range
+    range_start <- suppressWarnings(as.Date(range_vals[1]))
+    range_end <- suppressWarnings(as.Date(range_vals[2]))
     data <- data %>%
-      mutate(date_obj = as.Date(Date, format = "%m/%d/%Y")) %>%
-      filter(date_obj >= input$newtforce_date_range[1],
-             date_obj <= input$newtforce_date_range[2]) %>%
-      dplyr::select(-date_obj)
+      mutate(
+        date_obj = suppressWarnings(as.Date(Date, format = "%m/%d/%Y")),
+        date_obj = dplyr::coalesce(date_obj, suppressWarnings(as.Date(Date)))
+      )
+    if (is.finite(as.numeric(range_start)) && is.finite(as.numeric(range_end))) {
+      data <- data %>%
+        filter(date_obj >= range_start, date_obj <= range_end)
+    }
+    data <- data %>% dplyr::select(-date_obj)
     
     # Filter by pitch type
     if (input$newtforce_pitch_type != "All") {
@@ -27693,7 +27775,7 @@ deg_to_clock <- function(x) {
       on.exit(dbDisconnect(con), add = TRUE)
       tbl <- as.character(pitch_mod_table_clause(con))
       ns_clause <- pitch_mod_namespace_clause(con)
-      mods <- try(dbGetQuery(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl, ns_clause)), silent = TRUE)
+      mods <- try(db_get_query_safe(con, sprintf("SELECT * FROM %s WHERE namespace = %s ORDER BY created_at", tbl, ns_clause)), silent = TRUE)
       if (inherits(mods, "try-error") || !nrow(mods)) {
         readr::write_csv(data.frame(message = "No pitch edits saved yet"), file)
       } else {

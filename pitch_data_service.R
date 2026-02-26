@@ -1046,7 +1046,7 @@ sync_csv_file_to_neon <- function(con, csv_path, school_code = "") {
   invisible(nrow(db_df))
 }
 
-sync_csv_tree_to_neon <- function(data_dir = file.path("data"), school_code = "", workers = 2L) {
+sync_csv_tree_to_neon <- function(data_dir = file.path("data"), school_code = "", workers = 2L, csv_paths = NULL) {
   con <- pitch_data_db_connect()
   on.exit(tryCatch(DBI::dbDisconnect(con), error = function(...) NULL), add = TRUE)
 
@@ -1059,8 +1059,15 @@ sync_csv_tree_to_neon <- function(data_dir = file.path("data"), school_code = ""
     error = function(e) message("Pitch-key unique guard ensure skipped: ", e$message)
   )
 
-  csvs <- list.files(data_dir, pattern = "\\.csv$", recursive = TRUE, full.names = TRUE)
+  if (is.null(csv_paths)) {
+    csvs <- list.files(data_dir, pattern = "\\.csv$", recursive = TRUE, full.names = TRUE)
+  } else {
+    csvs <- as.character(csv_paths)
+  }
+  csvs <- csvs[file.exists(csvs)]
+  csvs <- csvs[grepl("\\.csv$", csvs, ignore.case = TRUE)]
   csvs <- csvs[grepl("([/\\\\]practice[/\\\\])|([/\\\\]v3[/\\\\])", tolower(csvs))]
+  csvs <- unique(normalizePath(csvs, winslash = "/", mustWork = FALSE))
   if (!length(csvs)) {
     message("No pitch CSV files found under ", data_dir)
     return(invisible(0L))
