@@ -57,7 +57,7 @@ jobs:
         MYSQL_PASSWORD=${{ secrets.MYSQL_PASSWORD }}
         MYSQL_PORT=3306
         MYSQL_SSL_CA=
-        TEAM_CODE=PCU
+        TEAM_CODE=GCU
         PITCH_DATA_BACKEND=postgres
         PITCH_DATA_DB_URL=${{ secrets.PITCH_DATA_DB_URL }}
         PITCH_DATA_SYNC_AFTER_FTP=1
@@ -92,7 +92,7 @@ jobs:
       run: |
         Rscript -e "rsconnect::setAccountInfo(name='${{ secrets.SHINYAPPS_ACCOUNT }}', token='${{ secrets.SHINYAPPS_TOKEN }}', secret='${{ secrets.SHINYAPPS_SECRET }}')"
         
-    - name: Sync PCU data
+    - name: Sync GCU data
       env:
         R_LIBS_USER: packrat/lib-R
       run: Rscript automated_data_sync.R
