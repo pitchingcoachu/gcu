@@ -9270,9 +9270,19 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       st <- tolower(trimws(as.character(df$SessionType)))
       live_mask <- grepl("live|game|ab", st)
       
-      # Require in-play with numeric distance/direction
-      dist_num <- suppressWarnings(as.numeric(df$Distance))
-      dir_num  <- suppressWarnings(as.numeric(df$Direction))
+      # Require in-play with numeric distance/direction (fallback to legacy fields when needed)
+      dist_src <- if ("Distance" %in% names(df)) df$Distance else rep(NA, nrow(df))
+      if ("LastTrackedDistance" %in% names(df)) {
+        use_last <- !is.finite(suppressWarnings(as.numeric(dist_src)))
+        dist_src[use_last] <- df$LastTrackedDistance[use_last]
+      }
+      dir_src <- if ("Direction" %in% names(df)) df$Direction else rep(NA, nrow(df))
+      if ("Bearing" %in% names(df)) {
+        use_bearing <- !is.finite(suppressWarnings(as.numeric(dir_src)))
+        dir_src[use_bearing] <- df$Bearing[use_bearing]
+      }
+      dist_num <- suppressWarnings(as.numeric(dist_src))
+      dir_num  <- suppressWarnings(as.numeric(dir_src))
       ok <- which(live_mask & df$PitchCall == "InPlay" &
                     is.finite(dist_num) & is.finite(dir_num))
       
@@ -10563,19 +10573,18 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         )
       }, error = function(e) {
         # Provide detailed error information for debugging
-        error_msg <- conditionMessage(e)
-        error_details <- paste(
-          "Detailed error in Hitting dpTable:",
-          "Error:", error_msg,
-          "Call stack available in R console",
-          sep = "\n"
-        )
+        error_msg <- trimws(conditionMessage(e) %||% "")
+        if (!nzchar(error_msg)) {
+          error_msg <- paste(capture.output(str(e)), collapse = " ")
+        }
+        if (!nzchar(error_msg)) {
+          error_msg <- "Unknown hitting table error"
+        }
         
         # Log the full error for debugging
         cat("Hitting dpTable error:\n")
         cat("Message:", error_msg, "\n")
-        cat("Traceback:\n")
-        traceback()
+        cat("Error class:", paste(class(e), collapse = ","), "\n")
         
         DT::datatable(
           data.frame(
@@ -10618,6 +10627,17 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       if (!nzchar(nm)) return()
       ct <- custom_tables()
       if (nm %in% names(ct)) {
+        item_scope <- toupper(trimws(as.character(ct[[nm]]$school_code %||% current_school())))
+        can_share_global_fun <- get0("can_share_global", mode = "function", inherits = TRUE)
+        can_share_global_val <- if (!is.null(can_share_global_fun)) {
+          tryCatch(can_share_global_fun(), error = function(e) FALSE)
+        } else {
+          FALSE
+        }
+        if (identical(item_scope, GLOBAL_SCOPE) && !isTRUE(can_share_global_val)) {
+          showNotification("Only jgaynor@pitchingcoachu.com can delete global custom tables.", type = "error")
+          return()
+        }
         ct[[nm]] <- NULL
         custom_tables(ct)
         save_custom_tables(ct)
@@ -12703,8 +12723,18 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       st <- tolower(trimws(as.character(df$SessionType)))
       live_mask <- grepl("live|game|ab", st)
       
-      dist_num <- suppressWarnings(as.numeric(df$Distance))
-      dir_num  <- suppressWarnings(as.numeric(df$Direction))
+      dist_src <- if ("Distance" %in% names(df)) df$Distance else rep(NA, nrow(df))
+      if ("LastTrackedDistance" %in% names(df)) {
+        use_last <- !is.finite(suppressWarnings(as.numeric(dist_src)))
+        dist_src[use_last] <- df$LastTrackedDistance[use_last]
+      }
+      dir_src <- if ("Direction" %in% names(df)) df$Direction else rep(NA, nrow(df))
+      if ("Bearing" %in% names(df)) {
+        use_bearing <- !is.finite(suppressWarnings(as.numeric(dir_src)))
+        dir_src[use_bearing] <- df$Bearing[use_bearing]
+      }
+      dist_num <- suppressWarnings(as.numeric(dist_src))
+      dir_num  <- suppressWarnings(as.numeric(dir_src))
       ok <- which(live_mask & df$PitchCall == "InPlay" & is.finite(dist_num) & is.finite(dir_num))
       
       fence_pts <- data.frame(deg = c(-45,-22.5,0,22.5,45), r = c(330,370,400,370,330))
@@ -16618,6 +16648,17 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
       if (!nzchar(nm)) return()
       ct <- custom_tables()
       if (nm %in% names(ct)) {
+        item_scope <- toupper(trimws(as.character(ct[[nm]]$school_code %||% current_school())))
+        can_share_global_fun <- get0("can_share_global", mode = "function", inherits = TRUE)
+        can_share_global_val <- if (!is.null(can_share_global_fun)) {
+          tryCatch(can_share_global_fun(), error = function(e) FALSE)
+        } else {
+          FALSE
+        }
+        if (identical(item_scope, GLOBAL_SCOPE) && !isTRUE(can_share_global_val)) {
+          showNotification("Only jgaynor@pitchingcoachu.com can delete global custom tables.", type = "error")
+          return()
+        }
         ct[[nm]] <- NULL
         custom_tables(ct); save_custom_tables(ct); update_custom_table_choices(session)
         updateSelectInput(session, "cmpA_customSaved", choices = c("", names(ct)), selected = "")
@@ -16652,6 +16693,17 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
       if (!nzchar(nm)) return()
       ct <- custom_tables()
       if (nm %in% names(ct)) {
+        item_scope <- toupper(trimws(as.character(ct[[nm]]$school_code %||% current_school())))
+        can_share_global_fun <- get0("can_share_global", mode = "function", inherits = TRUE)
+        can_share_global_val <- if (!is.null(can_share_global_fun)) {
+          tryCatch(can_share_global_fun(), error = function(e) FALSE)
+        } else {
+          FALSE
+        }
+        if (identical(item_scope, GLOBAL_SCOPE) && !isTRUE(can_share_global_val)) {
+          showNotification("Only jgaynor@pitchingcoachu.com can delete global custom tables.", type = "error")
+          return()
+        }
         ct[[nm]] <- NULL
         custom_tables(ct); save_custom_tables(ct); update_custom_table_choices(session)
         updateSelectInput(session, "cmpB_customSaved", choices = c("", names(ct)), selected = "")
@@ -16955,11 +17007,9 @@ custom_reports_ui <- function(id) {
 custom_reports_server <- function(id) {
   moduleServer(id, function(input, output, session) {
     ns <- session$ns
-    can_share_global_fun <- get0("can_share_global", mode = "function", inherits = TRUE)
     can_share_global_local <- reactive({
-      if (is.null(can_share_global_fun)) return(FALSE)
-      val <- try(can_share_global_fun(), silent = TRUE)
-      if (inherits(val, "try-error")) FALSE else isTRUE(val)
+      u <- tolower(trimws(as.character(session$user %||% "")))
+      nzchar(u) && grepl("jgaynor@pitchingcoachu.com", u, fixed = TRUE)
     })
     
     get_team_filtered_players <- function(report_type, team_type) {
@@ -17531,6 +17581,11 @@ custom_reports_server <- function(id) {
       if (!nzchar(nm)) return()
       cr <- custom_reports_store()
       if (nm %in% names(cr)) {
+        item_scope <- toupper(trimws(as.character(cr[[nm]]$school_code %||% current_school())))
+        if (identical(item_scope, GLOBAL_SCOPE) && !isTRUE(can_share_global_local())) {
+          showNotification("Only jgaynor@pitchingcoachu.com can delete global custom reports.", type = "error")
+          return()
+        }
         cr[[nm]] <- NULL
         custom_reports_store(cr); save_custom_reports(cr)
         updateSelectInput(session, "saved_report", choices = c("", names(cr)), selected = "")
@@ -19896,9 +19951,19 @@ custom_reports_server <- function(id) {
           st <- tolower(trimws(as.character(df_spray$SessionType)))
           live_mask <- grepl("live|game|ab", st)
           
-          # Require in-play with numeric distance/direction
-          dist_num <- suppressWarnings(as.numeric(df_spray$Distance))
-          dir_num  <- suppressWarnings(as.numeric(df_spray$Direction))
+          # Require in-play with numeric distance/direction (fallback to legacy fields when needed)
+          dist_src <- if ("Distance" %in% names(df_spray)) df_spray$Distance else rep(NA, nrow(df_spray))
+          if ("LastTrackedDistance" %in% names(df_spray)) {
+            use_last <- !is.finite(suppressWarnings(as.numeric(dist_src)))
+            dist_src[use_last] <- df_spray$LastTrackedDistance[use_last]
+          }
+          dir_src <- if ("Direction" %in% names(df_spray)) df_spray$Direction else rep(NA, nrow(df_spray))
+          if ("Bearing" %in% names(df_spray)) {
+            use_bearing <- !is.finite(suppressWarnings(as.numeric(dir_src)))
+            dir_src[use_bearing] <- df_spray$Bearing[use_bearing]
+          }
+          dist_num <- suppressWarnings(as.numeric(dist_src))
+          dir_num  <- suppressWarnings(as.numeric(dir_src))
           ok <- which(live_mask & df_spray$PitchCall == "InPlay" &
                         is.finite(dist_num) & is.finite(dir_num))
           
@@ -23793,8 +23858,9 @@ server <- function(input, output, session) {
   })
 
   can_share_global <- reactive({
-    u <- user_email()
-    !is.na(u) && tolower(trimws(u)) %in% tolower(trimws(global_share_emails))
+    u <- tolower(trimws(as.character(user_email() %||% "")))
+    allowed <- tolower(trimws(as.character(global_share_emails)))
+    any(vapply(allowed, function(em) nzchar(em) && grepl(em, u, fixed = TRUE), logical(1)))
   })
   
   # Check if current user is a coach (can see all data)
@@ -31333,6 +31399,11 @@ deg_to_clock <- function(x) {
     if (!nzchar(nm)) return()
     ct <- custom_tables()
     if (nm %in% names(ct)) {
+      item_scope <- toupper(trimws(as.character(ct[[nm]]$school_code %||% current_school())))
+      if (identical(item_scope, GLOBAL_SCOPE) && !isTRUE(can_share_global())) {
+        showNotification("Only jgaynor@pitchingcoachu.com can delete global custom tables.", type = "error")
+        return()
+      }
       ct[[nm]] <- NULL
       custom_tables(ct); save_custom_tables(ct); update_custom_table_choices(session)
       updateSelectInput(session, "summaryCustomSaved", choices = c("", names(ct)), selected = "")
@@ -31368,6 +31439,11 @@ deg_to_clock <- function(x) {
     if (!nzchar(nm)) return()
     ct <- custom_tables()
     if (nm %in% names(ct)) {
+      item_scope <- toupper(trimws(as.character(ct[[nm]]$school_code %||% current_school())))
+      if (identical(item_scope, GLOBAL_SCOPE) && !isTRUE(can_share_global())) {
+        showNotification("Only jgaynor@pitchingcoachu.com can delete global custom tables.", type = "error")
+        return()
+      }
       ct[[nm]] <- NULL
       custom_tables(ct); save_custom_tables(ct); update_custom_table_choices(session)
       updateSelectInput(session, "dpCustomSaved", choices = c("", names(ct)), selected = "")
