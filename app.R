@@ -5357,12 +5357,6 @@ if (!is.null(pitch_data_backend_result) &&
 
 # Find every CSV under data/, keep only those under practice/ or V3/
 if (!pitch_data_loaded_from_backend) {
-  if (isTRUE(postgres_backend_required)) {
-    stop(
-      "PITCH_DATA_BACKEND=", backend_mode,
-      " is enabled but backend load returned no data. CSV fallback is disabled in Postgres mode."
-    )
-  }
   all_csvs <- list.files(
     path       = data_parent,
     pattern    = "\\.csv$",
@@ -5372,7 +5366,16 @@ if (!pitch_data_loaded_from_backend) {
   all_csvs <- all_csvs[ grepl("([/\\\\]practice[/\\\\])|([/\\\\]v3[/\\\\])", tolower(all_csvs)) ]
   log_startup_timing(sprintf("Discovered %d practice/v3 CSV files", length(all_csvs)))
 
-  if (!length(all_csvs)) stop("No CSVs found under: ", data_parent)
+  if (!length(all_csvs)) {
+    if (isTRUE(postgres_backend_required)) {
+      warning(
+        "PITCH_DATA_BACKEND=", backend_mode,
+        " load failed and no local CSV fallback files were found under ", data_parent,
+        ". Starting with empty pitch_data."
+      )
+    }
+    pitch_data <- data.frame()
+  }
 } else {
   all_csvs <- unique(as.character(all_csvs %||% character(0)))
 }

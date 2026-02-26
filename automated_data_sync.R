@@ -170,7 +170,7 @@ is_date_in_range <- function(file_path) {
   file_date <- as.Date(paste(date_match[2], date_match[3], date_match[4], sep = "-"))
   
   # Include all data from configured sync start year onward.
-  start_date <- as.Date(sprintf("2026-02-13", SYNC_START_YEAR))
+  start_date <- as.Date(sprintf("%d-01-01", SYNC_START_YEAR))
   return(file_date >= start_date)
 }
 
