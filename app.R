@@ -1501,6 +1501,71 @@ compute_pitch_key <- function(df) {
   }, character(1))
 }
 
+compute_pitch_key_legacy_hash <- function(df) {
+  if (!nrow(df)) return(character(0))
+  safe_chr <- function(x) {
+    out <- tryCatch(as.character(x), warning = function(...) "", error = function(...) "")
+    out[is.na(out)] <- ""
+    trimws(out)
+  }
+  safe_num_chr <- function(x) {
+    val <- suppressWarnings(as.numeric(x))
+    out <- ifelse(is.finite(val), sprintf("%.3f", round(val, 3)), "")
+    out[is.na(out)] <- ""
+    out
+  }
+  paste_parts <- paste(
+    safe_chr(df$Pitcher %||% ""),
+    safe_chr(as.Date(df$Date)),
+    safe_chr(df$SessionType %||% ""),
+    safe_chr(df$Batter %||% ""),
+    safe_chr(df$PitchCall %||% ""),
+    safe_chr(df$PlayResult %||% ""),
+    safe_chr(df$TaggedPitchType %||% ""),
+    safe_chr(df$Inning %||% ""),
+    safe_chr(df$Balls %||% ""),
+    safe_chr(df$Strikes %||% ""),
+    safe_num_chr(df$RelSpeed %||% NA),
+    safe_num_chr(df$InducedVertBreak %||% NA),
+    safe_num_chr(df$HorzBreak %||% NA),
+    safe_num_chr(df$Extension %||% NA),
+    safe_num_chr(df$VertApprAngle %||% NA),
+    safe_num_chr(df$HorzApprAngle %||% NA),
+    safe_num_chr(df$PlateLocSide %||% NA),
+    safe_num_chr(df$PlateLocHeight %||% NA),
+    sep = "|"
+  )
+  vapply(paste_parts, function(x) digest::digest(x, algo = "xxhash64", serialize = FALSE), character(1))
+}
+
+compute_pitch_key_service_hash <- function(df) {
+  if (!nrow(df)) return(character(0))
+  safe_chr <- function(x) {
+    out <- tryCatch(as.character(x), warning = function(...) "", error = function(...) "")
+    out[is.na(out)] <- ""
+    trimws(out)
+  }
+  paste_parts <- paste(
+    safe_chr(df$Date %||% ""),
+    safe_chr(df$Pitcher %||% ""),
+    safe_chr(df$Batter %||% ""),
+    safe_chr(df$PlayID %||% ""),
+    safe_chr(df$PitchCall %||% ""),
+    safe_chr(df$PlayResult %||% ""),
+    safe_chr(df$TaggedPitchType %||% ""),
+    safe_chr(df$Balls %||% ""),
+    safe_chr(df$Strikes %||% ""),
+    safe_chr(df$RelSpeed %||% ""),
+    safe_chr(df$InducedVertBreak %||% ""),
+    safe_chr(df$HorzBreak %||% ""),
+    safe_chr(df$Extension %||% ""),
+    safe_chr(df$PlateLocSide %||% ""),
+    safe_chr(df$PlateLocHeight %||% ""),
+    sep = "|"
+  )
+  vapply(paste_parts, function(x) digest::digest(x, algo = "xxhash64", serialize = FALSE), character(1))
+}
+
 ensure_pitch_keys <- function(df) {
   if (!nrow(df)) {
     if (!"PitchKey" %in% names(df)) df$PitchKey <- character(0)
@@ -2190,6 +2255,14 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
 
     temp_data <- base_data %>% mutate(original_row_id = row_number())
     deleted_mask <- logical(nrow(temp_data))
+    temp_key <- as.character(temp_data$PitchKey %||% "")
+    temp_pitch_uid <- as.character(temp_data$PitchUID %||% "")
+    temp_pitch_guid <- as.character(temp_data$PitchGuid %||% "")
+    temp_pitch_id <- as.character(temp_data$PitchID %||% "")
+    temp_play_id <- as.character(temp_data$PlayID %||% "")
+    temp_legacy_hash <- tryCatch(compute_pitch_key_legacy_hash(temp_data), error = function(e) rep("", nrow(temp_data)))
+    temp_service_hash <- tryCatch(compute_pitch_key_service_hash(temp_data), error = function(e) rep("", nrow(temp_data)))
+    temp_date_norm <- as.character(parse_date_flex(temp_data$Date))
 
     modifications_applied <- 0
     modifications_not_found <- 0
@@ -2209,14 +2282,27 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
 
     for (i in seq_len(nrow(mods))) {
       mod <- mods[i, ]
+      mod_key <- trimws(as.character(mod$pitch_key %||% ""))
+      mod_date_norm <- as.character(parse_date_flex(mod$date))
       match_idx <- integer(0)
-      if ("PitchKey" %in% names(temp_data) && !is.na(mod$pitch_key) && nzchar(mod$pitch_key)) {
-        match_idx <- which(temp_data$PitchKey == mod$pitch_key)
+      if ("PitchKey" %in% names(temp_data) && nzchar(mod_key)) {
+        match_idx <- which(temp_key == mod_key)
+      }
+      if (!length(match_idx) && nzchar(mod_key)) {
+        # Handle key-shape drift across loaders by checking raw IDs + legacy hash variants.
+        match_idx <- which(
+          temp_pitch_uid == mod_key |
+            temp_pitch_guid == mod_key |
+            temp_pitch_id == mod_key |
+            temp_play_id == mod_key |
+            temp_legacy_hash == mod_key |
+            temp_service_hash == mod_key
+        )
       }
       if (!length(match_idx)) {
         match_idx <- which(
           temp_data$Pitcher == mod$pitcher &
-            temp_data$Date == mod$date &
+            temp_date_norm == mod_date_norm &
             abs(temp_data$RelSpeed - mod$rel_speed) < 0.1 &
             abs(temp_data$HorzBreak - mod$horz_break) < 0.1 &
             abs(temp_data$InducedVertBreak - mod$induced_vert_break) < 0.1
@@ -2225,7 +2311,7 @@ load_pitch_modifications_db <- function(pitch_data, verbose = TRUE) {
       if (length(match_idx) == 0) {
         match_idx <- which(
           temp_data$Pitcher == mod$pitcher &
-            temp_data$Date == mod$date &
+            temp_date_norm == mod_date_norm &
             abs(temp_data$RelSpeed - mod$rel_speed) < 0.5
         )
       }
