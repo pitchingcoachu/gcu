@@ -21955,8 +21955,8 @@ load_manual_velocity_entries <- function(app_id = current_school()) {
   if (!"pitcher" %in% names(df)) df$pitcher <- character(nrow(df))
   if (!"throw_type" %in% names(df)) df$throw_type <- character(nrow(df))
   if (!"plyo_drill" %in% names(df)) df$plyo_drill <- character(nrow(df))
-  if (!"ball_weight_oz" %in% names(df)) df$ball_weight_oz <- NA_real_
-  if (!"velocity_mph" %in% names(df)) df$velocity_mph <- NA_real_
+  if (!"ball_weight_oz" %in% names(df)) df$ball_weight_oz <- rep(NA_real_, nrow(df))
+  if (!"velocity_mph" %in% names(df)) df$velocity_mph <- rep(NA_real_, nrow(df))
   if (!"notes" %in% names(df)) df$notes <- character(nrow(df))
   if (!"created_at" %in% names(df)) df$created_at <- rep(as.character(Sys.time()), nrow(df))
   df <- df %>%
@@ -21991,8 +21991,8 @@ save_manual_velocity_entries <- function(entries, app_id = current_school()) {
     if (!"pitcher" %in% names(df)) df$pitcher <- character(nrow(df))
     if (!"throw_type" %in% names(df)) df$throw_type <- character(nrow(df))
     if (!"plyo_drill" %in% names(df)) df$plyo_drill <- character(nrow(df))
-    if (!"ball_weight_oz" %in% names(df)) df$ball_weight_oz <- NA_real_
-    if (!"velocity_mph" %in% names(df)) df$velocity_mph <- NA_real_
+    if (!"ball_weight_oz" %in% names(df)) df$ball_weight_oz <- rep(NA_real_, nrow(df))
+    if (!"velocity_mph" %in% names(df)) df$velocity_mph <- rep(NA_real_, nrow(df))
     if (!"notes" %in% names(df)) df$notes <- character(nrow(df))
     if (!"created_at" %in% names(df)) df$created_at <- rep(as.character(Sys.time()), nrow(df))
     df %>%
