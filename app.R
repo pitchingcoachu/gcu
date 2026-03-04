@@ -28861,8 +28861,22 @@ deg_to_clock <- function(x) {
     df_base <- apply_session_type_filter(pitching_base_for_team(input$teamType, include_modifications = FALSE), input$sessionType)
     df_base <- apply_pitching_team_filter(df_base, input$teamType)
     
-    # Create name map for the filtered dataset
-    raw_names_team <- sort(unique(df_base$Pitcher))
+    # Build pitcher options with strict team-type scoping.
+    raw_names_team <- sort(unique(as.character(df_base$Pitcher)))
+    raw_names_team <- raw_names_team[!is.na(raw_names_team) & nzchar(raw_names_team)]
+    pitchers_norm <- norm_name_ci(ALLOWED_PITCHERS_DL)
+    campers_norm <- norm_name_ci(ALLOWED_CAMPERS_DL)
+    team_only_norm <- setdiff(pitchers_norm, campers_norm)
+    if (identical(input$teamType, TEAM_CODE)) {
+      raw_names_team <- raw_names_team[norm_name_ci(raw_names_team) %in% team_only_norm]
+    } else if (identical(input$teamType, "Campers")) {
+      raw_names_team <- raw_names_team[norm_name_ci(raw_names_team) %in% campers_norm]
+    } else if (identical(input$teamType, "Opponents")) {
+      known_norm <- unique(c(team_only_norm, campers_norm))
+      raw_names_team <- raw_names_team[!(norm_name_ci(raw_names_team) %in% known_norm)]
+    }
+
+    # Create name map for the team-scoped dataset
     display_names_team <- format_name_first_last(raw_names_team)
     name_map_team <- setNames(raw_names_team, display_names_team)
     
