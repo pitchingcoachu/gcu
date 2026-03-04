@@ -31075,7 +31075,17 @@ deg_to_clock <- function(x) {
             BABIP = safe_div(H, Inplay_All)
           )
         
-        # Calculate xWOBA, xISO, and Barrel% per split
+        # Calculate xWOBA/xISO from shared process calculator (same logic as Pitching suite)
+        proc_extras <- compute_process_results(df, mode) %>%
+          dplyr::rename(SplitColumn = PitchType) %>%
+          dplyr::mutate(
+            SplitColumn = as.character(SplitColumn),
+            xWOBA = suppressWarnings(as.numeric(xWOBA)),
+            xISO  = suppressWarnings(as.numeric(xISO))
+          ) %>%
+          dplyr::select(SplitColumn, xWOBA, xISO)
+
+        # Calculate Barrel% per split locally for this batted-ball table
         splits <- unique(df$SplitColumn)
         xstats_list <- lapply(splits, function(spl) {
           split_df <- df[df$SplitColumn == spl, , drop = FALSE]
@@ -31111,15 +31121,10 @@ deg_to_clock <- function(x) {
             xSLG <- safe_div(xTB, split_AB)
             xISO <- xSLG - xAVG
             
-            # xWOBA calculation (match pitching: live-only BB over live BF)
-            split_BB_live <- sum(
-              split_df$SessionType == "Live" &
-                (split_df$KorBB == "Walk" | split_df$PlayResult == "Walk"),
-              na.rm = TRUE
-            )
-            BF_live <- sum(split_df$SessionType == "Live" & split_df$Balls == 0 & split_df$Strikes == 0, na.rm = TRUE)
-            if (exists("W_BB") && exists("W_1B") && exists("W_2B") && exists("W_3B") && exists("W_HR")) {
-              xWOBA <- safe_div(W_BB*split_BB_live + W_1B*x1B + W_2B*x2B + W_3B*x3B + W_HR*xHR, BF_live)
+            proc_row <- proc_extras[proc_extras$SplitColumn == as.character(spl), , drop = FALSE]
+            if (nrow(proc_row)) {
+              xWOBA <- proc_row$xWOBA[[1]]
+              xISO  <- proc_row$xISO[[1]]
             }
           }
           
@@ -31206,14 +31211,10 @@ deg_to_clock <- function(x) {
           xSLG_all <- safe_div(xTB_all, AB_all)
           xISO_all <- xSLG_all - xAVG_all
           
-          BB_live_all <- sum(
-            df$SessionType == "Live" &
-              (df$KorBB == "Walk" | df$PlayResult == "Walk"),
-            na.rm = TRUE
-          )
-          BF_live_all <- sum(df$SessionType == "Live" & df$Balls == 0 & df$Strikes == 0, na.rm = TRUE)
-          if (exists("W_BB") && exists("W_1B") && exists("W_2B") && exists("W_3B") && exists("W_HR")) {
-            xWOBA_all <- safe_div(W_BB*BB_live_all + W_1B*x1B_all + W_2B*x2B_all + W_3B*x3B_all + W_HR*xHR_all, BF_live_all)
+          proc_all <- proc_extras[proc_extras$SplitColumn == "All", , drop = FALSE]
+          if (nrow(proc_all)) {
+            xWOBA_all <- proc_all$xWOBA[[1]]
+            xISO_all  <- proc_all$xISO[[1]]
           }
         }
         
@@ -32565,7 +32566,17 @@ deg_to_clock <- function(x) {
           BABIP = safe_div(H, Inplay_All)
         )
       
-      # Calculate xWOBA, xISO, and Barrel% per split
+      # Calculate xWOBA/xISO from shared process calculator (same logic as Pitching suite)
+      proc_extras <- compute_process_results(df, mode) %>%
+        dplyr::rename(SplitColumn = PitchType) %>%
+        dplyr::mutate(
+          SplitColumn = as.character(SplitColumn),
+          xWOBA = suppressWarnings(as.numeric(xWOBA)),
+          xISO  = suppressWarnings(as.numeric(xISO))
+        ) %>%
+        dplyr::select(SplitColumn, xWOBA, xISO)
+
+      # Calculate Barrel% per split locally for this batted-ball table
       splits <- unique(term$SplitColumn)
       xstats_list <- lapply(splits, function(spl) {
         split_df <- term[term$SplitColumn == spl, , drop = FALSE]
@@ -32601,15 +32612,10 @@ deg_to_clock <- function(x) {
           xSLG <- safe_div(xTB, split_AB)
           xISO <- xSLG - xAVG
           
-          # xWOBA calculation (match pitching: live-only BB over live BF)
-          split_BB_live <- sum(
-            split_df$SessionType == "Live" &
-              (split_df$KorBB == "Walk" | split_df$PlayResult == "Walk"),
-            na.rm = TRUE
-          )
-          BF_live <- sum(split_df$SessionType == "Live" & split_df$Balls == 0 & split_df$Strikes == 0, na.rm = TRUE)
-          if (exists("W_BB") && exists("W_1B") && exists("W_2B") && exists("W_3B") && exists("W_HR")) {
-            xWOBA <- safe_div(W_BB*split_BB_live + W_1B*x1B + W_2B*x2B + W_3B*x3B + W_HR*xHR, BF_live)
+          proc_row <- proc_extras[proc_extras$SplitColumn == as.character(spl), , drop = FALSE]
+          if (nrow(proc_row)) {
+            xWOBA <- proc_row$xWOBA[[1]]
+            xISO  <- proc_row$xISO[[1]]
           }
         }
         
@@ -32696,14 +32702,10 @@ deg_to_clock <- function(x) {
         xSLG_all <- safe_div(xTB_all, AB_all)
         xISO_all <- xSLG_all - xAVG_all
         
-        BB_live_all <- sum(
-          term$SessionType == "Live" &
-            (term$KorBB == "Walk" | term$PlayResult == "Walk"),
-          na.rm = TRUE
-        )
-        BF_live_all <- sum(term$SessionType == "Live" & term$Balls == 0 & term$Strikes == 0, na.rm = TRUE)
-        if (exists("W_BB") && exists("W_1B") && exists("W_2B") && exists("W_3B") && exists("W_HR")) {
-          xWOBA_all <- safe_div(W_BB*BB_live_all + W_1B*x1B_all + W_2B*x2B_all + W_3B*x3B_all + W_HR*xHR_all, BF_live_all)
+        proc_all <- proc_extras[proc_extras$SplitColumn == "All", , drop = FALSE]
+        if (nrow(proc_all)) {
+          xWOBA_all <- proc_all$xWOBA[[1]]
+          xISO_all  <- proc_all$xISO[[1]]
         }
       }
       
