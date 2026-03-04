@@ -13371,14 +13371,6 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
     }
     ns <- session$ns
     
-    # ---------- constants ----------
-    TEAM_CODE <- "GRA_CAN"
-    
-    # Map team-code synonyms (extend this list as needed)
-    TEAM_SYNONYMS <- list(
-      GRA_CAN = c("GRA_CAN")
-    )
-    
     # ---------- small helpers ----------
     nnz <- function(x) !is.null(x) && !is.na(x)
     safe_div <- function(a,b) {
@@ -13441,22 +13433,53 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
         "Catching" = apply_session_type_filter(pitch_data, input$sessionType)
       )
       
-      # Filter by team selection
-      if (input$teamType == "Campers") {
-        if (identical(input$domain, "Hitting")) {
-          dplyr::filter(base, Batter %in% ALLOWED_CAMPERS)
+      team_type <- input$teamType %||% "All"
+      if (!nzchar(team_type) || identical(team_type, "All")) return(base)
+
+      campers_norm <- norm_name_ci(ALLOWED_CAMPERS_DL)
+      pitch_team_norm <- norm_name_ci(ALLOWED_PITCHERS_DL)
+      hit_team_norm <- norm_name_ci(ALLOWED_HITTERS_DL)
+      pitch_team_only_norm <- setdiff(pitch_team_norm, campers_norm)
+      hit_team_only_norm <- setdiff(hit_team_norm, campers_norm)
+      known_pitch_norm <- unique(c(pitch_team_only_norm, campers_norm))
+      known_hit_norm <- unique(c(hit_team_only_norm, campers_norm))
+
+      if (identical(input$domain, "Hitting")) {
+        batter_norm <- norm_name_ci(as.character(base$Batter %||% ""))
+        keep <- if (identical(team_type, "Campers")) {
+          batter_norm %in% campers_norm
+        } else if (identical(team_type, TEAM_CODE)) {
+          batter_norm %in% hit_team_only_norm
+        } else if (identical(team_type, "Opponents")) {
+          !(batter_norm %in% known_hit_norm)
         } else {
-          dplyr::filter(base, Pitcher %in% ALLOWED_CAMPERS)
+          rep(TRUE, length(batter_norm))
         }
-      } else if (input$teamType == TEAM_CODE) {
-        if (identical(input$domain, "Hitting")) {
-          dplyr::filter(base, Batter %in% ALLOWED_HITTERS)
+      } else if (identical(input$domain, "Catching")) {
+        catcher_norm <- norm_name_ci(as.character(base$Catcher %||% ""))
+        keep <- if (identical(team_type, "Campers")) {
+          catcher_norm %in% campers_norm
+        } else if (identical(team_type, TEAM_CODE)) {
+          catcher_norm %in% pitch_team_only_norm
+        } else if (identical(team_type, "Opponents")) {
+          !(catcher_norm %in% known_pitch_norm)
         } else {
-          dplyr::filter(base, Pitcher %in% ALLOWED_PITCHERS)
+          rep(TRUE, length(catcher_norm))
         }
       } else {
-        base
+        pitcher_norm <- norm_name_ci(as.character(base$Pitcher %||% ""))
+        keep <- if (identical(team_type, "Campers")) {
+          pitcher_norm %in% campers_norm
+        } else if (identical(team_type, TEAM_CODE)) {
+          pitcher_norm %in% pitch_team_only_norm
+        } else if (identical(team_type, "Opponents")) {
+          !(pitcher_norm %in% known_pitch_norm)
+        } else {
+          rep(TRUE, length(pitcher_norm))
+        }
       }
+      keep[is.na(keep)] <- FALSE
+      base[keep, , drop = FALSE]
     })
     
     
