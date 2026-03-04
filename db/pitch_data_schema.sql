@@ -53,6 +53,10 @@ CREATE TABLE IF NOT EXISTS public.pitch_events (
   Angle text,
   Distance text,
   Direction text,
+  BatSpeed text,
+  VerticalAttackAngle text,
+  HorizontalAttackAngle text,
+  HitSpinRate text,
   ThrowSpeed text,
   ExchangeTime text,
   PopTime text,
@@ -109,6 +113,10 @@ CREATE INDEX IF NOT EXISTS idx_pitch_events_video_partial
 
 ALTER TABLE public.pitch_events ADD COLUMN IF NOT EXISTS Distance text;
 ALTER TABLE public.pitch_events ADD COLUMN IF NOT EXISTS Direction text;
+ALTER TABLE public.pitch_events ADD COLUMN IF NOT EXISTS BatSpeed text;
+ALTER TABLE public.pitch_events ADD COLUMN IF NOT EXISTS VerticalAttackAngle text;
+ALTER TABLE public.pitch_events ADD COLUMN IF NOT EXISTS HorizontalAttackAngle text;
+ALTER TABLE public.pitch_events ADD COLUMN IF NOT EXISTS HitSpinRate text;
 ALTER TABLE public.pitch_events ADD COLUMN IF NOT EXISTS ThrowSpeed text;
 ALTER TABLE public.pitch_events ADD COLUMN IF NOT EXISTS ExchangeTime text;
 ALTER TABLE public.pitch_events ADD COLUMN IF NOT EXISTS PopTime text;
