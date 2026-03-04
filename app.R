@@ -6302,11 +6302,12 @@ workload_filter_players_by_team <- function(names, team_type = "All") {
   norm_names <- norm_name_ci(names)
   campers_norm <- norm_name_ci(ALLOWED_CAMPERS_DL)
   pitchers_norm <- norm_name_ci(ALLOWED_PITCHERS_DL)
+  team_only_norm <- setdiff(pitchers_norm, campers_norm)
   known_norm <- unique(c(campers_norm, pitchers_norm))
   if (team_type == "Campers") {
     mask <- norm_names %in% campers_norm
   } else if (team_type == TEAM_CODE) {
-    mask <- norm_names %in% pitchers_norm
+    mask <- norm_names %in% team_only_norm
   } else if (team_type == "Opponents") {
     mask <- !(norm_names %in% known_norm)
   } else {
@@ -8419,18 +8420,8 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
     pd_team <- reactive({
       req(is_active())
       d <- pitch_data
-      
-      # If specific hitter or pitcher is selected, skip team filtering
-      # This allows selecting any opponent player
-      has_specific_hitter <- !is.null(input$hitter) && input$hitter != "All"
-      has_specific_pitcher <- !is.null(input$oppPitcher) && input$oppPitcher != "All"
-      
-      if (has_specific_hitter || has_specific_pitcher) {
-        # When specific player selected, show all data (team filter ignored)
-        return(d)
-      }
-      
-      # Apply team filtering based on selection when no specific player chosen
+
+      # Apply team filtering based on Team selector
       # For HITTING suite: filter by Batter (our hitters)
       if (!is.null(input$teamType)) {
         if (input$teamType == "Campers") {
@@ -28840,11 +28831,12 @@ deg_to_clock <- function(x) {
     pitcher_norm <- norm_name_ci(pitcher_chr)
     campers_norm <- norm_name_ci(ALLOWED_CAMPERS_DL)
     team_norm <- norm_name_ci(ALLOWED_PITCHERS_DL)
+    team_only_norm <- setdiff(team_norm, campers_norm)
     known_norm <- unique(c(campers_norm, team_norm))
     mask <- switch(
       team_type,
       "Campers" = pitcher_norm %in% campers_norm,
-      TEAM_CODE = pitcher_norm %in% team_norm,
+      TEAM_CODE = pitcher_norm %in% team_only_norm,
       "Opponents" = !(pitcher_norm %in% known_norm),
       rep(TRUE, length(pitcher_chr))
     )
