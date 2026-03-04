@@ -1584,6 +1584,27 @@ ensure_pitch_keys <- function(df) {
   df
 }
 
+safe_date_pair <- function(x) {
+  if (is.null(x) || length(x) != 2) return(NULL)
+  d <- suppressWarnings(as.Date(x))
+  if (length(d) != 2 || any(is.na(d)) || any(!is.finite(d))) return(NULL)
+  d
+}
+
+safe_update_date_range_input <- function(session, input_id, start, end) {
+  d <- safe_date_pair(c(start, end))
+  if (is.null(d)) return(invisible(FALSE))
+  s <- d[[1]]
+  e <- d[[2]]
+  if (e < s) {
+    tmp <- s
+    s <- e
+    e <- tmp
+  }
+  updateDateRangeInput(session, input_id, start = s, end = e)
+  invisible(TRUE)
+}
+
 deduplicate_pitch_rows <- function(df, fast = FALSE) {
   if (!nrow(df)) return(df)
   if (!"PitchKey" %in% names(df)) return(df)
@@ -8374,18 +8395,14 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
     # Sync local date input with global date range
     if (!is.null(global_date_range)) {
       observe({
-        if (!is.null(global_date_range()) && length(global_date_range()) == 2) {
-          updateDateRangeInput(session, "dates", 
-                               start = global_date_range()[1], 
-                               end = global_date_range()[2])
-        }
+        gd <- safe_date_pair(global_date_range())
+        if (!is.null(gd)) safe_update_date_range_input(session, "dates", gd[[1]], gd[[2]])
       })
       
       # Update global date range when local input changes
       observeEvent(input$dates, {
-        if (!is.null(input$dates) && length(input$dates) == 2) {
-          global_date_range(input$dates)
-        }
+        d_in <- safe_date_pair(input$dates)
+        if (!is.null(d_in)) global_date_range(d_in)
       })
     }
     ns <- session$ns
@@ -8449,7 +8466,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       if (nrow(d)) {
         rng <- range(d$Date, na.rm = TRUE)
         if (all(is.finite(rng))) {
-          updateDateRangeInput(session, "dates", start = rng[1], end = rng[2])
+          safe_update_date_range_input(session, "dates", rng[1], rng[2])
         }
       }
     }, ignoreInit = FALSE)
@@ -9012,7 +9029,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       }
       win <- recent_date_window(date_pool, n_days = 7L)
       if (!is.null(win)) {
-        updateDateRangeInput(session, "dates", start = win[[1]], end = win[[2]])
+        safe_update_date_range_input(session, "dates", win[[1]], win[[2]])
       }
     }, ignoreInit = TRUE)
     
@@ -9628,7 +9645,9 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
             selectizeInput(
               ns("dpCustomCols"), label = "Columns (drag to order):",
               choices  = c("#","PA","AB","AVG","SLG","OBP","OPS","wOBA","xWOBA","ISO","xISO","BABIP",
-                           "Velo","IVB","HB","Distance","RV/100","1-1W%","QP%","QP+",
+                           "Velo","IVB","HB","Distance","RV/100",
+                           "Bat Speed","V. Attack Angle","H. Attack Angle","Hit Spin Rate",
+                           "1-1W%","QP%","QP+",
                            "Swing%","FPS%","Called-S%","Take%","Whiff%","CSW%","GB%","K%","BB%","Barrel%",
                            "Chase%","GoZoneSw%","IZswing%","EdgeSwing%","PosSD%","EV","LA",
                            "Swings","Takes","Called-S","Whiffs","Chases","IZswings","Barrels","FPS","EdgeSwings","PosSD","GoZoneSw"),
@@ -9849,7 +9868,8 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           )
         
         # Guard optional columns so summary tables still render when source files omit them
-        for (nm in c("ExitSpeed", "Angle", "RelSpeed", "InducedVertBreak", "HorzBreak", "Distance", "RunsScored", "PlateLocSide", "PlateLocHeight")) {
+        for (nm in c("ExitSpeed", "Angle", "RelSpeed", "InducedVertBreak", "HorzBreak", "Distance", "RunsScored", "PlateLocSide", "PlateLocHeight",
+                     "BatSpeed", "VerticalAttackAngle", "HorizontalAttackAngle", "HitSpinRate")) {
           if (!nm %in% names(df)) df[[nm]] <- NA_real_
         }
         for (nm in c("SessionType", "PitchCall", "TaggedHitType", "Balls", "Strikes")) {
@@ -9897,7 +9917,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           dplyr::select(SplitColumn, xWOBA, xISO, BABIP, `Barrel%`) %>%
           dplyr::rename(!!split_col_name := SplitColumn)
         
-        # Additional stats for custom tables: Velo, IVB, HB, Distance, RV/100, discipline stats
+        # Additional stats for custom tables: Velo/shape, batted-ball, and bat sensor metrics.
         pitch_metrics <- df %>%
           dplyr::group_by(SplitColumn) %>%
           dplyr::summarise(
@@ -9905,6 +9925,10 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
             IVB = mean(InducedVertBreak, na.rm = TRUE),
             HB = mean(HorzBreak, na.rm = TRUE),
             Distance = mean(Distance_num[SessionType == "Live" & PitchCall == "InPlay"], na.rm = TRUE),
+            `Bat Speed` = mean(suppressWarnings(as.numeric(BatSpeed))[SessionType == "Live"], na.rm = TRUE),
+            `V. Attack Angle` = mean(suppressWarnings(as.numeric(VerticalAttackAngle))[SessionType == "Live"], na.rm = TRUE),
+            `H. Attack Angle` = mean(suppressWarnings(as.numeric(HorizontalAttackAngle))[SessionType == "Live"], na.rm = TRUE),
+            `Hit Spin Rate` = mean(suppressWarnings(as.numeric(HitSpinRate))[SessionType == "Live"], na.rm = TRUE),
             `RV/100` = {
               rv <- sum(RunsScored_num, na.rm = TRUE)
               safe_div(rv * 100, dplyr::n())
@@ -10151,6 +10175,10 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         all_row$IVB <- mean(df$InducedVertBreak, na.rm = TRUE)
         all_row$HB <- mean(df$HorzBreak, na.rm = TRUE)
         all_row$Distance <- mean(df$Distance_num[df$SessionType == "Live" & df$PitchCall == "InPlay"], na.rm = TRUE)
+        all_row$`Bat Speed` <- mean(suppressWarnings(as.numeric(df$BatSpeed))[df$SessionType == "Live"], na.rm = TRUE)
+        all_row$`V. Attack Angle` <- mean(suppressWarnings(as.numeric(df$VerticalAttackAngle))[df$SessionType == "Live"], na.rm = TRUE)
+        all_row$`H. Attack Angle` <- mean(suppressWarnings(as.numeric(df$HorizontalAttackAngle))[df$SessionType == "Live"], na.rm = TRUE)
+        all_row$`Hit Spin Rate` <- mean(suppressWarnings(as.numeric(df$HitSpinRate))[df$SessionType == "Live"], na.rm = TRUE)
         all_row$`RV/100` <- safe_div(sum(df$RunsScored_num, na.rm = TRUE) * 100, nrow(df))
         
         # Discipline stats for All row
@@ -10342,6 +10370,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         num_cols <- c("PA","AB","AVG","SLG","OBP","OPS","wOBA","xWOBA","ISO","xISO","BABIP",
                       "Swing%","Whiff%","GB%","K%","BB%","Barrel%","EV","LA",
                       "Velo","IVB","HB","Distance","RV/100",
+                      "Bat Speed","V. Attack Angle","H. Attack Angle","Hit Spin Rate",
                       "FPS%","Called-S%","Take%","Chase%","GoZoneSw%","IZswing%",
                       "EdgeSwing%","1-1W%","QP%","QP+","PosSD%")
         
@@ -10402,6 +10431,12 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
                                 round(suppressWarnings(as.numeric(df_out$LA)), 1), "")
           }
           for (col in c("Velo", "IVB", "HB")) {
+            if (col %in% names(df_out)) {
+              df_out[[col]] <- ifelse(is.finite(suppressWarnings(as.numeric(df_out[[col]]))),
+                                      round(suppressWarnings(as.numeric(df_out[[col]])), 1), "")
+            }
+          }
+          for (col in c("Bat Speed", "V. Attack Angle", "H. Attack Angle", "Hit Spin Rate")) {
             if (col %in% names(df_out)) {
               df_out[[col]] <- ifelse(is.finite(suppressWarnings(as.numeric(df_out[[col]]))),
                                       round(suppressWarnings(as.numeric(df_out[[col]])), 1), "")
@@ -10995,18 +11030,14 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
     # Sync local date input with global date range
     if (!is.null(global_date_range)) {
       observe({
-        if (!is.null(global_date_range()) && length(global_date_range()) == 2) {
-          updateDateRangeInput(session, "dates", 
-                               start = global_date_range()[1], 
-                               end = global_date_range()[2])
-        }
+        gd <- safe_date_pair(global_date_range())
+        if (!is.null(gd)) safe_update_date_range_input(session, "dates", gd[[1]], gd[[2]])
       })
       
       # Update global date range when local input changes
       observeEvent(input$dates, {
-        if (!is.null(input$dates) && length(input$dates) == 2) {
-          global_date_range(input$dates)
-        }
+        d_in <- safe_date_pair(input$dates)
+        if (!is.null(d_in)) global_date_range(d_in)
       })
     }
     ns <- session$ns
@@ -11103,7 +11134,7 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       }
       win <- recent_date_window(date_pool, n_days = 7L)
       if (!is.null(win)) {
-        updateDateRangeInput(session, "dates", start = win[[1]], end = win[[2]])
+        safe_update_date_range_input(session, "dates", win[[1]], win[[2]])
       }
     }, ignoreInit = TRUE)
     
@@ -12110,7 +12141,7 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       first_date <- min(all_dates, na.rm = TRUE)
       last_date  <- max(all_dates, na.rm = TRUE)
       if (is.finite(first_date) && is.finite(last_date)) {
-        updateDateRangeInput(session, "dates", start = first_date, end = last_date)
+        safe_update_date_range_input(session, "dates", first_date, last_date)
       }
     })
     
@@ -13337,18 +13368,14 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
     # Sync local date input with global date range
     if (!is.null(global_date_range)) {
       observe({
-        if (!is.null(global_date_range()) && length(global_date_range()) == 2) {
-          updateDateRangeInput(session, "dates", 
-                               start = global_date_range()[1], 
-                               end = global_date_range()[2])
-        }
+        gd <- safe_date_pair(global_date_range())
+        if (!is.null(gd)) safe_update_date_range_input(session, "dates", gd[[1]], gd[[2]])
       })
       
       # Update global date range when local input changes
       observeEvent(input$dates, {
-        if (!is.null(input$dates) && length(input$dates) == 2) {
-          global_date_range(input$dates)
-        }
+        d_in <- safe_date_pair(input$dates)
+        if (!is.null(d_in)) global_date_range(d_in)
       })
     }
     ns <- session$ns
@@ -13448,7 +13475,7 @@ mod_leader_server <- function(id, is_active = shiny::reactive(TRUE), global_date
       base <- team_base()
       win <- recent_date_window(base$Date, n_days = 7L)
       if (!is.null(win)) {
-        updateDateRangeInput(session, "dates", start = win[[1]], end = win[[2]])
+        safe_update_date_range_input(session, "dates", win[[1]], win[[2]])
       }
     })
     
@@ -14806,13 +14833,10 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
     if (!is.null(global_date_range)) {
       # Comp module has different date input names (cmpA_dates, cmpB_dates)
       observe({
-        if (!is.null(global_date_range()) && length(global_date_range()) == 2) {
-          updateDateRangeInput(session, "cmpA_dates", 
-                               start = global_date_range()[1], 
-                               end = global_date_range()[2])
-          updateDateRangeInput(session, "cmpB_dates", 
-                               start = global_date_range()[1], 
-                               end = global_date_range()[2])
+        gd <- safe_date_pair(global_date_range())
+        if (!is.null(gd)) {
+          safe_update_date_range_input(session, "cmpA_dates", gd[[1]], gd[[2]])
+          safe_update_date_range_input(session, "cmpB_dates", gd[[1]], gd[[2]])
         }
       })
     }
@@ -14870,12 +14894,12 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
     observeEvent(list(input$domain, input$cmpA_player, input$cmpA_sessionType), {
       req(is_active())
       last_date <- .last_date_for(input$domain, input$cmpA_player, input$cmpA_sessionType)
-      if (is.finite(last_date)) updateDateRangeInput(session, "cmpA_dates", start = last_date, end = last_date)
+      if (is.finite(last_date)) safe_update_date_range_input(session, "cmpA_dates", last_date, last_date)
     }, ignoreInit = TRUE)
     observeEvent(list(input$domain, input$cmpB_player, input$cmpB_sessionType), {
       req(is_active())
       last_date <- .last_date_for(input$domain, input$cmpB_player, input$cmpB_sessionType)
-      if (is.finite(last_date)) updateDateRangeInput(session, "cmpB_dates", start = last_date, end = last_date)
+      if (is.finite(last_date)) safe_update_date_range_input(session, "cmpB_dates", last_date, last_date)
     }, ignoreInit = TRUE)
     
     # ---------- Common filtering helper ----------
@@ -17189,23 +17213,33 @@ custom_reports_server <- function(id) {
       team_type <- team_type %||% "All"
       switch(report_type,
         "Pitching" = {
-          pool <- unique(stats::na.omit(c(pitch_data_pitching$Pitcher, pitch_data$Pitcher)))
+          pool <- if (identical(team_type, "Opponents")) {
+            unique(stats::na.omit(as.character(pitch_data$Pitcher)))
+          } else {
+            unique(stats::na.omit(as.character(pitch_data_pitching$Pitcher)))
+          }
           pool <- pool[nzchar(pool)]
           if (team_type == "Campers") {
-            sort(intersect(ALLOWED_CAMPERS, pool))
+            sort(intersect(ALLOWED_CAMPERS_DL, pool))
           } else if (team_type == TEAM_CODE) {
-            sort(intersect(ALLOWED_PITCHERS, pool))
+            sort(intersect(ALLOWED_PITCHERS_DL, pool))
+          } else if (team_type == "Opponents") {
+            known_norm <- unique(c(norm_name_ci(ALLOWED_PITCHERS_DL), norm_name_ci(ALLOWED_CAMPERS_DL)))
+            sort(unique(pool[!(norm_name_ci(pool) %in% known_norm)]))
           } else {
             sort(pool)
           }
         },
         "Hitting" = {
-          pool <- unique(stats::na.omit(c(pitch_data$Batter, pitch_data_pitching$Batter)))
+          pool <- unique(stats::na.omit(as.character(pitch_data$Batter)))
           pool <- pool[nzchar(pool)]
           if (team_type == "Campers") {
-            sort(intersect(ALLOWED_CAMPERS, pool))
+            sort(intersect(ALLOWED_CAMPERS_DL, pool))
           } else if (team_type == TEAM_CODE) {
-            sort(intersect(ALLOWED_HITTERS, pool))
+            sort(intersect(ALLOWED_HITTERS_DL, pool))
+          } else if (team_type == "Opponents") {
+            known_norm <- unique(c(norm_name_ci(ALLOWED_HITTERS_DL), norm_name_ci(ALLOWED_CAMPERS_DL)))
+            sort(unique(pool[!(norm_name_ci(pool) %in% known_norm)]))
           } else {
             sort(pool)
           }
@@ -24008,12 +24042,6 @@ log_startup_timing("Completed UI object construction")
 
 # Server logic
 server <- function(input, output, session) {
-  if (isTRUE(defer_video_map_load) && isTRUE(video_map_warmup_enabled)) {
-    session$onFlushed(function() {
-      start_video_map_warmup(video_map_warmup_delay_ms)
-    }, once = TRUE)
-  }
-  
   # Get user email from shinyapps.io authentication
   # In shinyapps.io, session$user contains the authenticated user's email
   user_email <- reactive({
@@ -24048,6 +24076,31 @@ server <- function(input, output, session) {
   
   # Helper to normalize email for comparison
   norm_email <- function(x) tolower(trimws(as.character(x)))
+  
+  trigger_video_intent_warmup <- function(reason = "intent") {
+    if (!isTRUE(defer_video_map_load) || !isTRUE(video_map_warmup_enabled)) return(invisible(FALSE))
+    if (isTRUE(video_map_warmup_started) || isTRUE(video_map_warmup_completed)) return(invisible(FALSE))
+    message("🎬 Video intent detected: ", reason)
+    start_video_map_warmup(0L)
+  }
+  
+  observeEvent(input$withVideo, {
+    if (identical(input$withVideo, "Yes")) {
+      trigger_video_intent_warmup("withVideo=Yes")
+    }
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$pitch_click_action, {
+    if (identical(input$pitch_click_action, "video")) {
+      trigger_video_intent_warmup("pitch_click_action=video")
+    }
+  }, ignoreInit = TRUE)
+  
+  observeEvent(input$top, {
+    if (identical(input$top, "Video Upload")) {
+      trigger_video_intent_warmup("entered Video Upload tab")
+    }
+  }, ignoreInit = TRUE)
   
   # Initialize database on startup
   init_modifications_db()
@@ -25474,6 +25527,7 @@ deg_to_clock <- function(x) {
   
   show_pitch_video_sequence <- function(rows, label = NULL, start_index = 1,
                                         compare_pool = NULL, primary_pool_idx = NA_integer_) {
+    trigger_video_intent_warmup("open video modal")
     rows_df <- tryCatch(as.data.frame(rows), error = function(e) NULL)
     if (is.null(rows_df) || !nrow(rows_df)) {
       showModal(modalDialog("No video available for this selection.", easyClose = TRUE, footer = NULL))
@@ -27975,6 +28029,9 @@ deg_to_clock <- function(x) {
   
   # Global persistent date range - initializes to most recent date on startup
   global_date_range <- reactiveVal()
+  coerce_date_pair <- function(x) {
+    safe_date_pair(x)
+  }
   
   # Initialize global date range on startup
   observe({
@@ -27995,25 +28052,24 @@ deg_to_clock <- function(x) {
   
   # Update global date range when main input changes
   observeEvent(input$dates, {
-    if (!is.null(input$dates) && length(input$dates) == 2) {
+    d_in <- coerce_date_pair(input$dates)
+    if (!is.null(d_in)) {
       # Only update if the dates are actually different to prevent loops
-      current_global <- global_date_range()
-      if (is.null(current_global) || 
-          !identical(as.Date(input$dates), as.Date(current_global))) {
-        global_date_range(input$dates)
+      current_global <- coerce_date_pair(global_date_range())
+      if (is.null(current_global) || !identical(d_in, current_global)) {
+        global_date_range(d_in)
       }
     }
   })
   
   # Sync date range input with global value - only when global changes
   observe({
-    global_dates <- global_date_range()
-    if (!is.null(global_dates) && !is.null(input$dates)) {
+    global_dates <- coerce_date_pair(global_date_range())
+    input_dates <- coerce_date_pair(input$dates)
+    if (!is.null(global_dates)) {
       # Only update UI if the values are actually different to prevent loops
-      if (!identical(as.Date(input$dates), as.Date(global_dates))) {
-        updateDateRangeInput(session, "dates", 
-                             start = global_dates[1], 
-                             end = global_dates[2])
+      if (is.null(input_dates) || !identical(input_dates, global_dates)) {
+        safe_update_date_range_input(session, "dates", global_dates[1], global_dates[2])
       }
     }
   })
@@ -28443,7 +28499,7 @@ deg_to_clock <- function(x) {
       if (nzchar(x$sess))    updateSelectInput(session, "sessionType", selected = x$sess)
       if (nzchar(x$pitcher)) updateSelectInput(session, "pitcher",      selected = x$pitcher)
       if (nzchar(x$ds) && nzchar(x$de))
-        updateDateRangeInput(session, "dates", start = as.Date(x$ds), end = as.Date(x$de))
+        safe_update_date_range_input(session, "dates", x$ds, x$de)
       # sub-tabs by suite
       if (identical(x$suite, "Pitching")) {
         if (nzchar(x$page)) updateTabsetPanel(session, "tabs", selected = x$page)
@@ -28466,7 +28522,7 @@ deg_to_clock <- function(x) {
     
     if (!is.null(global_date_range())) {
       gd <- global_date_range()
-      updateDateRangeInput(session, "dates", start = gd[[1]], end = gd[[2]])
+      safe_update_date_range_input(session, "dates", gd[[1]], gd[[2]])
       return()
     }
     
@@ -28478,7 +28534,7 @@ deg_to_clock <- function(x) {
     }
     win <- recent_date_window(date_pool, n_days = 7L)
     if (!is.null(win)) {
-      updateDateRangeInput(session, "dates", start = win[[1]], end = win[[2]])
+      safe_update_date_range_input(session, "dates", win[[1]], win[[2]])
       global_date_range(win)
     }
   }, once = TRUE)
@@ -28496,9 +28552,7 @@ deg_to_clock <- function(x) {
       global_dates <- global_date_range()
       if (is.null(current_input) || 
           !identical(as.Date(current_input), as.Date(global_dates))) {
-        updateDateRangeInput(session, "dates", 
-                             start = global_dates[1], 
-                             end = global_dates[2])
+        safe_update_date_range_input(session, "dates", global_dates[1], global_dates[2])
       }
     } else {
       # Only fall back if no global date range is set
@@ -28509,7 +28563,7 @@ deg_to_clock <- function(x) {
       }
       win <- recent_date_window(date_pool, n_days = 7L)
       if (!is.null(win)) {
-        updateDateRangeInput(session, "dates", start = win[[1]], end = win[[2]])
+        safe_update_date_range_input(session, "dates", win[[1]], win[[2]])
         # Update global date range with this new value.
         global_date_range(win)
       }
@@ -28778,20 +28832,42 @@ deg_to_clock <- function(x) {
     )
   })
   
+  apply_pitching_team_filter <- function(df, team_type = "All") {
+    if (is.null(df) || !nrow(df) || !"Pitcher" %in% names(df)) return(df)
+    team_type <- team_type %||% "All"
+    if (!nzchar(team_type) || identical(team_type, "All")) return(df)
+    pitcher_chr <- as.character(df$Pitcher %||% "")
+    pitcher_norm <- norm_name_ci(pitcher_chr)
+    campers_norm <- norm_name_ci(ALLOWED_CAMPERS_DL)
+    team_norm <- norm_name_ci(ALLOWED_PITCHERS_DL)
+    known_norm <- unique(c(campers_norm, team_norm))
+    mask <- switch(
+      team_type,
+      "Campers" = pitcher_norm %in% campers_norm,
+      TEAM_CODE = pitcher_norm %in% team_norm,
+      "Opponents" = !(pitcher_norm %in% known_norm),
+      rep(TRUE, length(pitcher_chr))
+    )
+    mask[is.na(mask)] <- FALSE
+    df[mask, , drop = FALSE]
+  }
+  
+  pitching_base_for_team <- function(team_type = "All", include_modifications = TRUE) {
+    team_type <- team_type %||% "All"
+    if (identical(team_type, "Opponents")) return(pitch_data)
+    if (isTRUE(include_modifications)) {
+      df_mod <- tryCatch(modified_pitch_data(), error = function(e) NULL)
+      if (!is.null(df_mod) && nrow(df_mod)) return(df_mod)
+    }
+    pitch_data_pitching
+  }
+  
   # 1) Pitcher selector
   output$pitcher_ui <- renderUI({
     req(input$sessionType, input$teamType)
     
-    df_base <- apply_session_type_filter(pitch_data_pitching, input$sessionType)
-    
-    # Apply team filtering to get the available pitchers
-    if (input$teamType == "Campers") {
-      df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_CAMPERS)
-    } else if (input$teamType == TEAM_CODE) {
-      # Filter to only GCU allowed pitchers (exclude campers)
-      df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_PITCHERS)
-    }
-    # If "All" is selected, df_base already contains all pitchers
+    df_base <- apply_session_type_filter(pitching_base_for_team(input$teamType, include_modifications = FALSE), input$sessionType)
+    df_base <- apply_pitching_team_filter(df_base, input$teamType)
     
     # Create name map for the filtered dataset
     raw_names_team <- sort(unique(df_base$Pitcher))
@@ -28843,24 +28919,42 @@ deg_to_clock <- function(x) {
   observeEvent(list(input$sessionType, input$teamType), {
     req(input$sessionType, input$teamType)
     
-    df_base <- apply_session_type_filter(pitch_data_pitching, input$sessionType)
+    df_base <- apply_session_type_filter(pitching_base_for_team(input$teamType, include_modifications = FALSE), input$sessionType)
+    df_base <- apply_pitching_team_filter(df_base, input$teamType)
     
-    # Apply team filtering
-    if (input$teamType == "Campers") {
-      df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_CAMPERS)
-    } else if (input$teamType == TEAM_CODE) {
-      df_base <- dplyr::filter(df_base, Pitcher %in% ALLOWED_PITCHERS)
-    }
-    # If "All" is selected, don't filter - show all data
-    
+    if (!("Date" %in% names(df_base))) return()
+    all_dates <- suppressWarnings(as.Date(df_base$Date))
+    all_dates <- all_dates[is.finite(all_dates)]
+    if (!length(all_dates)) return()
     last_date <- if (is.null(input$pitcher) || input$pitcher == "All") {
-      max(df_base$Date, na.rm = TRUE)
+      max(all_dates, na.rm = TRUE)
     } else {
-      ld <- max(df_base$Date[df_base$Pitcher == input$pitcher], na.rm = TRUE)
-      if (is.finite(ld)) ld else max(df_base$Date, na.rm = TRUE)
+      pit_dates <- suppressWarnings(as.Date(df_base$Date[df_base$Pitcher == input$pitcher]))
+      pit_dates <- pit_dates[is.finite(pit_dates)]
+      if (length(pit_dates)) max(pit_dates, na.rm = TRUE) else max(all_dates, na.rm = TRUE)
     }
-    updateDateRangeInput(session, "dates", start = last_date, end = last_date)
+    if (length(last_date) == 1 && is.finite(last_date)) {
+      safe_update_date_range_input(session, "dates", last_date, last_date)
+    }
   }, ignoreInit = TRUE)
+  
+  observe({
+    req(input$sessionType, input$teamType)
+    df_base <- apply_session_type_filter(pitching_base_for_team(input$teamType, include_modifications = FALSE), input$sessionType)
+    df_base <- apply_pitching_team_filter(df_base, input$teamType)
+    pit <- input$pitcher %||% "All"
+    if (!identical(pit, "All") && "Pitcher" %in% names(df_base)) {
+      df_base <- dplyr::filter(df_base, Pitcher == pit)
+    }
+    if (!is.null(input$dates) && length(input$dates) == 2 && all(is.finite(input$dates)) && "Date" %in% names(df_base)) {
+      df_base <- dplyr::filter(df_base, Date >= input$dates[1], Date <= input$dates[2])
+    }
+    hitters <- sort(unique(stats::na.omit(as.character(df_base$Batter))))
+    hitter_choices <- c("All" = "All", setNames(hitters, format_name_first_last(hitters)))
+    current <- isolate(input$oppHitter)
+    if (is.null(current) || !(current %in% unname(hitter_choices))) current <- "All"
+    updateSelectInput(session, "oppHitter", choices = hitter_choices, selected = current)
+  })
 
   # ---- Manual Velocity Entry (Pitching Suite) ----
   manual_velocity_entries <- reactiveVal(load_manual_velocity_entries(current_school()))
@@ -29181,17 +29275,10 @@ deg_to_clock <- function(x) {
     
     pitch_types <- if (is.null(input$pitchType) || !length(input$pitchType)) "All" else input$pitchType
     
-    # Session type - use modified data instead of original
-    df <- apply_session_type_filter(modified_pitch_data(), input$sessionType)
-    
-    # ⛔️ Team filtering - Filter by team selection ⛔️
-    if (!is.null(input$teamType)) {
-      if (input$teamType == "Campers") {
-        # Filter to only allowed campers
-        df <- dplyr::filter(df, Pitcher %in% ALLOWED_CAMPERS)
-      }
-      # If "GCU" is selected, use the existing data (already filtered to ALLOWED_PITCHERS)
-    }
+    # Session type/team source:
+    # Opponents must come from full pitch_data; team/campers use modified pitching data.
+    df <- apply_session_type_filter(pitching_base_for_team(input$teamType, include_modifications = TRUE), input$sessionType)
+    df <- apply_pitching_team_filter(df, input$teamType)
     
     # ⛔️ Drop warmups & blank pitch types
     if ("TaggedPitchType" %in% names(df)) {
@@ -29298,8 +29385,10 @@ deg_to_clock <- function(x) {
     # protect against NULL during app init
     pitch_types <- if (is.null(input$pitchType)) "All" else input$pitchType
     
-    # first, honor Session Type
-    df <- apply_session_type_filter(pitch_data_pitching, input$sessionType)
+    # Session type/team source:
+    # Opponents must come from full pitch_data; team/campers use pitching dataset.
+    df <- apply_session_type_filter(pitching_base_for_team(input$teamType, include_modifications = FALSE), input$sessionType)
+    df <- apply_pitching_team_filter(df, input$teamType)
     
     # Live-only BatterSide filter
     if (!is.null(input$batterSide) && input$batterSide != "All") {
@@ -32896,21 +32985,25 @@ deg_to_clock <- function(x) {
   
   # Build the PA-level result label (same logic as hitting)
   .abp_pa_result_label <- function(last_row) {
-    pr <- as.character(last_row$PlayResult)
-    kc <- as.character(last_row$KorBB)
-    pc <- as.character(last_row$PitchCall)
-    th <- as.character(last_row$TaggedHitType)
+    clean_val <- function(x) {
+      x <- trimws(as.character(x))
+      ifelse(is.na(x) | x == "" | x == "Undefined", NA_character_, x)
+    }
+    pr <- clean_val(last_row$PlayResult)
+    kc <- clean_val(last_row$KorBB)
+    pc <- clean_val(last_row$PitchCall)
+    th <- clean_val(last_row$TaggedHitType)
     
     if (!is.na(pc) && pc == "HitByPitch") return("HitByPitch")
     if (!is.na(kc) && kc %in% c("Strikeout","Walk")) return(kc)
     
-    if (!is.na(pr) && pr != "" && pr != "Undefined") {
+    if (!is.na(pr)) {
       if (pr == "HomeRun") return("HomeRun")
-      th_clean <- ifelse(is.na(th) | th == "", "", paste0(th, " "))
+      th_clean <- ifelse(is.na(th), "", paste0(th, " "))
       return(paste0(th_clean, pr))
     }
-    if (!is.na(pr) && pr != "") return(pr)
-    if (!is.na(pc) && pc != "") return(pc)
+    if (!is.na(pr)) return(pr)
+    if (!is.na(pc)) return(pc)
     "Result"
   }
   
@@ -32920,6 +33013,167 @@ deg_to_clock <- function(x) {
     (!is.na(df$PlayResult) & df$PlayResult != "Undefined") |
       (!is.na(df$KorBB)     & df$KorBB %in% c("Strikeout","Walk")) |
       (!is.na(df$PitchCall) & df$PitchCall == "HitByPitch")
+  }
+  
+  .abp_game_key <- function(df) {
+    key_cols <- c("GameID", "GameUID", "GameForeignID")
+    key_cols <- key_cols[key_cols %in% names(df)]
+    if (length(key_cols)) {
+      for (nm in key_cols) {
+        vals <- trimws(as.character(df[[nm]]))
+        vals[is.na(vals)] <- ""
+        if (any(nzchar(vals))) return(ifelse(nzchar(vals), vals, NA_character_))
+      }
+    }
+    dt <- suppressWarnings(as.Date(df$Date))
+    dt_chr <- as.character(dt)
+    dt_chr[is.na(dt)] <- NA_character_
+    dt_chr
+  }
+  
+  .abp_order_cols <- function(df) {
+    cols <- c(
+      "Date", "UTCDateTime", "LocalDateTime",
+      "GameID", "GameUID", "GameForeignID",
+      "Inning", "Top/Bottom", "PAofInning", "PitchofPA", "PitchNo"
+    )
+    cols[cols %in% names(df)]
+  }
+  
+  .abp_arrange_rows <- function(df) {
+    if (!nrow(df)) return(df)
+    gk <- .abp_game_key(df)
+    gk[is.na(gk) | !nzchar(gk)] <- "unknown_game"
+    src_idx <- seq_len(nrow(df))
+
+    # Preferred fallback for backend-loaded data: preserve insertion order.
+    # Neon loader returns DESC by date/id, so AB needs BackendRowID ascending.
+    if ("BackendRowID" %in% names(df)) {
+      rid <- suppressWarnings(as.numeric(df$BackendRowID))
+      if (any(is.finite(rid))) {
+        ord <- order(gk, rid, src_idx, na.last = TRUE)
+        return(df[ord, , drop = FALSE])
+      }
+    }
+
+    # Next fallback for CSVs or feeds that carry PitchNo.
+    if ("PitchNo" %in% names(df)) {
+      pno <- suppressWarnings(as.numeric(df$PitchNo))
+      if (any(is.finite(pno))) {
+        ord <- order(gk, pno, src_idx, na.last = TRUE)
+        return(df[ord, , drop = FALSE])
+      }
+    }
+
+    # Otherwise keep current order.
+    df
+  }
+  
+  .abp_struct_pa_key <- function(df) {
+    needed <- c("Inning", "PAofInning")
+    if (!all(needed %in% names(df))) return(rep(NA_character_, nrow(df)))
+    inning <- trimws(as.character(df$Inning))
+    pa_inning <- trimws(as.character(df$PAofInning))
+    tb <- if ("Top/Bottom" %in% names(df)) trimws(as.character(df[["Top/Bottom"]])) else rep("", nrow(df))
+    gk <- .abp_game_key(df)
+    valid <- nzchar(inning) & nzchar(pa_inning)
+    out <- rep(NA_character_, nrow(df))
+    out[valid] <- paste(gk[valid], inning[valid], tb[valid], pa_inning[valid], sep = "::")
+    out
+  }
+  
+  .abp_struct_pa_key_from_pitchofpa <- function(df) {
+    needed <- c("Inning", "PitchofPA")
+    if (!all(needed %in% names(df))) return(rep(NA_character_, nrow(df)))
+    inning <- trimws(as.character(df$Inning))
+    tb <- if ("Top/Bottom" %in% names(df)) trimws(as.character(df[["Top/Bottom"]])) else rep("", nrow(df))
+    pitchofpa <- suppressWarnings(as.numeric(df$PitchofPA))
+    gk <- .abp_game_key(df)
+    valid_base <- nzchar(inning) & is.finite(pitchofpa)
+    out <- rep(NA_character_, nrow(df))
+    if (!any(valid_base)) return(out)
+    frame <- data.frame(
+      row_id = seq_len(nrow(df)),
+      game_key = ifelse(is.na(gk) | !nzchar(gk), "unknown_game", gk),
+      inning = inning,
+      tb = tb,
+      pitchofpa = pitchofpa,
+      valid = valid_base,
+      stringsAsFactors = FALSE
+    )
+    frame <- frame %>% dplyr::filter(valid)
+    if (!nrow(frame)) return(out)
+    frame <- frame %>%
+      dplyr::group_by(game_key, inning, tb) %>%
+      dplyr::mutate(pa_seq = cumsum(dplyr::if_else(dplyr::row_number() == 1L | pitchofpa == 1, 1L, 0L))) %>%
+      dplyr::ungroup()
+    out[frame$row_id] <- paste(frame$game_key, frame$inning, frame$tb, frame$pa_seq, sep = "::")
+    out
+  }
+  
+  .abp_score_pa_key <- function(keys, term_mask) {
+    valid <- !is.na(keys) & nzchar(keys)
+    if (!any(valid)) return(list(score = -Inf))
+    
+    idx_by_key <- split(which(valid), keys[valid])
+    done <- vapply(idx_by_key, function(idx) any(term_mask[idx], na.rm = TRUE), logical(1))
+    if (!any(done)) return(list(score = -Inf))
+    
+    done_groups <- idx_by_key[done]
+    group_sizes <- vapply(done_groups, length, integer(1))
+    term_counts <- vapply(done_groups, function(idx) sum(term_mask[idx], na.rm = TRUE), integer(1))
+    
+    # Prefer keys that retain multi-pitch PAs; penalize keys that merge multiple terminal events.
+    score <- sum(group_sizes - 1L) - (3L * sum(pmax(term_counts - 1L, 0L)))
+    list(score = score)
+  }
+  
+  .abp_best_struct_pa_key <- function(df, term_mask) {
+    key_by_paofinning <- .abp_struct_pa_key(df)
+    key_by_pitchofpa <- .abp_struct_pa_key_from_pitchofpa(df)
+    
+    s_pa <- .abp_score_pa_key(key_by_paofinning, term_mask)
+    s_po <- .abp_score_pa_key(key_by_pitchofpa, term_mask)
+    
+    if (is.finite(s_po$score) && (!is.finite(s_pa$score) || s_po$score > s_pa$score)) {
+      return(key_by_pitchofpa)
+    }
+    if (is.finite(s_pa$score)) return(key_by_paofinning)
+    if (is.finite(s_po$score)) return(key_by_pitchofpa)
+    rep(NA_character_, nrow(df))
+  }
+  
+  .abp_count_pa_key <- function(df) {
+    needed <- c("Balls", "Strikes")
+    if (!all(needed %in% names(df))) return(rep(NA_character_, nrow(df)))
+    gk <- .abp_game_key(df)
+    game_key <- ifelse(is.na(gk) | !nzchar(gk), "unknown_game", gk)
+    balls <- suppressWarnings(as.numeric(df$Balls))
+    strikes <- suppressWarnings(as.numeric(df$Strikes))
+    valid <- is.finite(balls) & is.finite(strikes)
+    
+    out <- rep(NA_character_, nrow(df))
+    for (g in unique(game_key)) {
+      idx <- which(game_key == g)
+      if (!length(idx)) next
+      b <- balls[idx]
+      s <- strikes[idx]
+      v <- valid[idx]
+      start <- rep(FALSE, length(idx))
+      start[1] <- TRUE
+      if (length(idx) > 1) {
+        for (k in 2:length(idx)) {
+          reset_to_00 <- v[k] && (b[k] == 0) && (s[k] == 0)
+          prev_is_00 <- v[k - 1] && (b[k - 1] == 0) && (s[k - 1] == 0)
+          count_drop <- v[k] && v[k - 1] && ((b[k] < b[k - 1]) || (s[k] < s[k - 1]))
+          valid_edge <- (!v[k - 1] && v[k])
+          start[k] <- (reset_to_00 && !prev_is_00) || count_drop || valid_edge
+        }
+      }
+      pa_seq <- cumsum(start)
+      out[idx] <- paste(game_key[idx], pa_seq, sep = "::")
+    }
+    out
   }
   
   .abp_fmt_mdy <- function(d) format(as.Date(d), "%m/%d/%Y")
@@ -32952,7 +33206,9 @@ deg_to_clock <- function(x) {
     pit <- input$pitcher
     if (is.null(pit) || identical(pit, "All")) return(as.Date(character(0)))
     
-    d <- pitch_data_pitching %>% dplyr::filter(Pitcher == pit)
+    d <- apply_session_type_filter(pitching_base_for_team(input$teamType, include_modifications = TRUE), input$sessionType)
+    d <- apply_pitching_team_filter(d, input$teamType)
+    d <- d %>% dplyr::filter(Pitcher == pit)
     term <- .abp_is_terminal(d)
     sort(unique(as.Date(d$Date[term])))
   })
@@ -32976,7 +33232,9 @@ deg_to_clock <- function(x) {
     
     # Pitch-type legend: only types this pitcher actually threw
     types_for_legend <- {
-      d <- pitch_data_pitching %>% dplyr::filter(Pitcher == pit)
+      d <- apply_session_type_filter(pitching_base_for_team(input$teamType, include_modifications = TRUE), input$sessionType)
+      d <- apply_pitching_team_filter(d, input$teamType)
+      d <- d %>% dplyr::filter(Pitcher == pit)
       intersect(names(all_colors), as.character(unique(d$TaggedPitchType)))
     }
     dark_on <- isTRUE(input$dark_mode)
@@ -33037,59 +33295,163 @@ deg_to_clock <- function(x) {
     dt_chr <- input$abpGameDate; req(!is.null(dt_chr))
     the_date <- as.Date(dt_chr)
     
-    # Filter: selected pitcher on selected date (ignore the global date range for this page)
-    df_all <- pitch_data_pitching %>% dplyr::filter(Pitcher == pit, as.Date(Date) == the_date)    
+    # Filter: selected pitcher on selected date (ignore the global date range for this page),
+    # but keep same suite context (session/team/hand/batter-side) as Summary filters.
+    df_all <- apply_session_type_filter(pitching_base_for_team(input$teamType, include_modifications = TRUE), input$sessionType)
+    df_all <- apply_pitching_team_filter(df_all, input$teamType)
+    df_all <- df_all %>% dplyr::filter(Pitcher == pit)
+    if (!is.null(input$hand) && input$hand != "All") {
+      df_all <- dplyr::filter(df_all, PitcherThrows == input$hand)
+    }
+    if (!is.null(input$batterSide) && input$batterSide != "All") {
+      df_all <- df_all %>% dplyr::filter(SessionType != "Live" | (SessionType == "Live" & BatterSide == input$batterSide))
+    }
+    if (!is.null(input$oppHitter) && input$oppHitter != "All") {
+      df_all <- dplyr::filter(df_all, Batter == input$oppHitter)
+    }
+    # Select the game(s) that have completed PAs for this pitcher on the selected date,
+    # then include all pitches from those game(s) even if some rows have a different Date value.
+    gk_all <- .abp_game_key(df_all)
+    term_all_pre <- .abp_is_terminal(df_all)
+    term_all_pre[is.na(term_all_pre)] <- FALSE
+    selected_game_keys <- unique(gk_all[term_all_pre & as.Date(df_all$Date) == the_date])
+    selected_game_keys <- selected_game_keys[!is.na(selected_game_keys) & nzchar(selected_game_keys)]
+    if (length(selected_game_keys)) {
+      df_all <- df_all[!is.na(gk_all) & gk_all %in% selected_game_keys, , drop = FALSE]
+    } else {
+      df_all <- df_all %>% dplyr::filter(as.Date(Date) == the_date)
+    }
+    
+    df_all <- .abp_arrange_rows(df_all)
     
     if (!nrow(df_all)) return(div(tags$em("No pitches for this pitcher on the selected date.")))
     
-    # Order batters by first appearance that day
-    first_idx <- df_all %>%
-      dplyr::mutate(.row_id = dplyr::row_number()) %>%
-      dplyr::group_by(Batter) %>%
-      dplyr::summarise(first_row = min(.row_id), .groups = "drop") %>%
-      dplyr::arrange(first_row)
+    # Group plate appearances directly from game structure, preserving CSV order.
+    gk_all <- .abp_game_key(df_all)
+    df_all$._game_key <- ifelse(is.na(gk_all) | !nzchar(gk_all), "unknown_game", gk_all)
+    inning_chr <- if ("Inning" %in% names(df_all)) trimws(as.character(df_all$Inning)) else rep("", nrow(df_all))
+    tb_chr <- if ("Top/Bottom" %in% names(df_all)) trimws(as.character(df_all[["Top/Bottom"]])) else rep("", nrow(df_all))
+    paofinning_chr <- if ("PAofInning" %in% names(df_all)) trimws(as.character(df_all$PAofInning)) else rep("", nrow(df_all))
+    pitchofpa_num <- if ("PitchofPA" %in% names(df_all)) suppressWarnings(as.numeric(df_all$PitchofPA)) else rep(NA_real_, nrow(df_all))
     
-    # Build one row per batter
-    rows <- lapply(seq_len(nrow(first_idx)), function(bi) {
-      bat <- first_idx$Batter[bi]
-      dB  <- df_all %>% dplyr::filter(Batter == bat)
+    valid_struct <- nzchar(inning_chr) & nzchar(paofinning_chr)
+    pa_key_all <- rep(NA_character_, nrow(df_all))
+    pa_key_all[valid_struct] <- paste(df_all$._game_key[valid_struct], inning_chr[valid_struct], tb_chr[valid_struct], paofinning_chr[valid_struct], sep = "::")
+    
+    # Fallback when PAofInning is missing: split by robust pitch-order transitions.
+    if (any(!valid_struct)) {
+      fallback_id <- integer(nrow(df_all))
+      batter_chr <- if ("Batter" %in% names(df_all)) trimws(as.character(df_all$Batter)) else rep("", nrow(df_all))
+      balls_num <- if ("Balls" %in% names(df_all)) suppressWarnings(as.numeric(df_all$Balls)) else rep(NA_real_, nrow(df_all))
+      strikes_num <- if ("Strikes" %in% names(df_all)) suppressWarnings(as.numeric(df_all$Strikes)) else rep(NA_real_, nrow(df_all))
+      for (gk in unique(df_all$._game_key)) {
+        idx <- which(df_all$._game_key == gk)
+        if (!length(idx)) next
+        start <- rep(FALSE, length(idx))
+        start[1] <- TRUE
+        if (length(idx) > 1) {
+          p <- pitchofpa_num[idx]
+          inn <- inning_chr[idx]
+          tb <- tb_chr[idx]
+          bat <- batter_chr[idx]
+          bb <- balls_num[idx]
+          ss <- strikes_num[idx]
+          for (k in 2:length(idx)) {
+            prev <- p[k - 1]
+            cur <- p[k]
+            by_pitch_reset <- is.finite(cur) && is.finite(prev) && (cur == 1 || cur < prev)
+            by_inning <- nzchar(inn[k]) && nzchar(inn[k - 1]) && (inn[k] != inn[k - 1])
+            by_tb <- nzchar(tb[k]) && nzchar(tb[k - 1]) && (tb[k] != tb[k - 1])
+            by_batter <- nzchar(bat[k]) && nzchar(bat[k - 1]) && (bat[k] != bat[k - 1])
+            by_count_reset <- is.finite(bb[k]) && is.finite(ss[k]) && is.finite(bb[k - 1]) && is.finite(ss[k - 1]) &&
+              (bb[k] == 0 && ss[k] == 0) && (bb[k - 1] > 0 || ss[k - 1] > 0)
+            start[k] <- by_pitch_reset || by_inning || by_tb || by_batter || by_count_reset
+          }
+        }
+        fallback_id[idx] <- cumsum(start)
+      }
+      fallback_key <- paste(df_all$._game_key, fallback_id, sep = "::")
+      pa_key_all[!valid_struct] <- fallback_key[!valid_struct]
+    }
+    
+    # Last fallback: each row as its own PA key (only if keys are still missing).
+    missing_key <- is.na(pa_key_all) | !nzchar(pa_key_all)
+    if (any(missing_key)) pa_key_all[missing_key] <- paste(df_all$._game_key[missing_key], seq_len(sum(missing_key)), sep = "::row::")
+    
+    pa_levels <- unique(pa_key_all)
+    pa_list_all <- split(df_all, factor(pa_key_all, levels = pa_levels))
+    
+    pa_meta <- list()
+    pa_keys <- names(pa_list_all)
+    for (pi in seq_along(pa_list_all)) {
+      pa_df <- pa_list_all[[pi]]
+      pa_name <- pa_keys[[pi]]
+      raw_n <- nrow(pa_df)
+      
+      term_pa <- .abp_is_terminal(pa_df)
+      term_pa[is.na(term_pa)] <- FALSE
+      term_idx <- if (any(term_pa)) tail(which(term_pa), 1) else NA_integer_
+      term_row <- if (is.finite(term_idx)) pa_df[term_idx, , drop = FALSE] else pa_df[nrow(pa_df), , drop = FALSE]
+      
+      bvals <- trimws(as.character(pa_df$Batter %||% ""))
+      bvals <- bvals[nzchar(bvals)]
+      batter_label <- if (length(bvals)) bvals[[1]] else "Unknown Batter"
+      svals <- trimws(as.character(pa_df$BatterSide %||% ""))
+      svals <- svals[nzchar(svals)]
+      side_val <- if (length(svals)) svals[[1]] else ""
+      
+      pa_meta[[length(pa_meta) + 1L]] <- list(
+        pa_key = pa_name,
+        batter = batter_label,
+        side = side_val,
+        data = pa_df,
+        result_row = term_row,
+        debug = list(
+          raw_n = raw_n,
+          shown_n = raw_n,
+          has_terminal = any(term_pa),
+          first_term_idx = term_idx,
+          terminal_pitchcall = as.character(term_row$PitchCall %||% ""),
+          terminal_playresult = as.character(term_row$PlayResult %||% ""),
+          terminal_korbb = as.character(term_row$KorBB %||% "")
+        )
+      )
+    }
+    
+    batter_order <- unique(vapply(pa_meta, function(x) x$batter, character(1)))
+    
+    # Build one row per batter, with all completed PAs in chronological order.
+    rows <- lapply(seq_along(batter_order), function(bi) {
+      bat <- batter_order[[bi]]
+      idx_for_batter <- which(vapply(pa_meta, function(x) identical(x$batter, bat), logical(1)))
+      if (!length(idx_for_batter)) return(NULL)
+      pa_for_batter <- pa_meta[idx_for_batter]
       
       # Batter side & name label with color (Left = red, Right = black)
-      side <- as.character(dplyr::coalesce(dB$BatterSide[which.max(seq_len(nrow(dB)))], NA))
-      lr   <- ifelse(is.na(side), "", ifelse(grepl("^L", side, ignore.case = TRUE), "L", "R"))
+      side <- pa_for_batter[[length(pa_for_batter)]]$side %||% ""
+      lr   <- ifelse(!nzchar(side), "", ifelse(grepl("^L", side, ignore.case = TRUE), "L", "R"))
       is_left <- identical(lr, "L")
       dark_on <- isTRUE(input$dark_mode)
       name_col <- if (is_left) "#d32f2f" else if (dark_on) "#e5e7eb" else "#000000"
+      name_suffix <- if (nzchar(lr)) paste0(" (", lr, ")") else ""
       name_html <- tags$div(
         style = paste0("font-weight:700; color:", name_col, ";"),
-        paste0(.abp_pretty_name(bat), " (", lr, ")")
+        paste0(.abp_pretty_name(bat), name_suffix)
       )
       
-      # Segment PAs within this batter
-      term <- .abp_is_terminal(dB)
-      # cumsum starts a new PA *after* a terminal pitch:
-      pa_id <- cumsum(c(1L, as.integer(utils::head(term, -1))))
-      dB$._pa_id <- pa_id
-      done_ids <- unique(dB$._pa_id[term])
-      dB <- dplyr::filter(dB, ._pa_id %in% done_ids)
-      if (!nrow(dB)) {
-        return(fluidRow(
-          column(3, div(style="padding:10px 6px;", name_html)),
-          column(9, div(style="padding:10px 6px;", tags$em("No completed PAs")))
-        ))
-      }
+      n_pa <- length(pa_for_batter)
       
-      pa_list <- split(dB, dB$._pa_id)
-      n_pa <- length(pa_list)
-      
-      # Build one mini zone chart per PA (left→right, 1st→last)
+      # Build one mini zone chart per PA (left→right, 1st→last for this batter)
       chart_cells <- lapply(seq_len(n_pa), function(i) {
         # build the per-PA data first
-        dat <- pa_list[[i]] %>%
+        dat <- pa_for_batter[[i]]$data %>%
           dplyr::mutate(
             pitch_idx = dplyr::row_number(),
             Result    = factor(compute_result(PitchCall, PlayResult), levels = result_levels),
             tt_fill   = dplyr::coalesce(all_colors[as.character(TaggedPitchType)], "gray80"),
+            ExitSpeed = suppressWarnings(as.numeric(ExitSpeed)),
+            Angle     = suppressWarnings(as.numeric(Angle)),
+            Distance  = suppressWarnings(as.numeric(Distance)),
             tt        = paste0(
               "Pitch: ", as.character(TaggedPitchType), "\n",
               "Result: ", dplyr::case_when(
@@ -33098,15 +33460,82 @@ deg_to_clock <- function(x) {
               ), "\n",
               "Velo: ", ifelse(is.finite(RelSpeed), sprintf("%.1f", RelSpeed), "—"), "\n",
               "IVB: ",  ifelse(is.finite(InducedVertBreak), sprintf("%.1f", InducedVertBreak), "—"), "\n",
-              "HB: ",   ifelse(is.finite(HorzBreak), sprintf("%.1f", HorzBreak), "—")
+              "HB: ",   ifelse(is.finite(HorzBreak), sprintf("%.1f", HorzBreak), "—"), "\n",
+              "EV: ", ifelse(is.finite(ExitSpeed), sprintf("%.1f", ExitSpeed), "—"), "\n",
+              "LA: ", ifelse(is.finite(Angle), sprintf("%.1f", Angle), "—"), "\n",
+              "Distance: ", ifelse(is.finite(Distance), sprintf("%.0f", Distance), "—")
             )
           )
         
-        # now compute the PA result label from the last pitch of this PA
-        title_result <- .abp_pa_result_label(dat[nrow(dat), , drop = FALSE])
+        # Compute the PA result label from the terminal pitch when available.
+        result_row <- pa_for_batter[[i]]$result_row
+        if (is.null(result_row) || !nrow(result_row)) {
+          result_row <- dat[nrow(dat), , drop = FALSE]
+        }
+        title_result <- .abp_pa_result_label(result_row)
+        dbg <- pa_for_batter[[i]]$debug
+        debug_line <- if (isTRUE(input$abpDebug)) {
+          tags$div(
+            style = "font-size:11px; color:#6b7280; margin-bottom:4px;",
+            paste0(
+              "raw=", dbg$raw_n,
+              ", shown=", dbg$shown_n,
+              ", term=", ifelse(isTRUE(dbg$has_terminal), "Y", "N"),
+              ", term_idx=", ifelse(is.finite(dbg$first_term_idx), dbg$first_term_idx, "NA"),
+              ", PC=", ifelse(is.na(dbg$terminal_pitchcall) || dbg$terminal_pitchcall == "", "NA", dbg$terminal_pitchcall),
+              ", PR=", ifelse(is.na(dbg$terminal_playresult) || dbg$terminal_playresult == "", "NA", dbg$terminal_playresult),
+              ", KBB=", ifelse(is.na(dbg$terminal_korbb) || dbg$terminal_korbb == "", "NA", dbg$terminal_korbb)
+            )
+          )
+        } else NULL
+
+        tbl_df <- dat %>%
+          dplyr::transmute(
+            `#` = pitch_idx,
+            Pitch = dplyr::coalesce(as.character(TaggedPitchType), "—"),
+            Velo = ifelse(is.finite(RelSpeed), sprintf("%.1f", RelSpeed), "—"),
+            IVB = ifelse(is.finite(InducedVertBreak), sprintf("%.1f", InducedVertBreak), "—"),
+            HB = ifelse(is.finite(HorzBreak), sprintf("%.1f", HorzBreak), "—"),
+            EV = ifelse(is.finite(ExitSpeed), sprintf("%.1f", ExitSpeed), "—"),
+            LA = ifelse(is.finite(Angle), sprintf("%.1f", Angle), "—"),
+            Result = dplyr::case_when(
+              PitchCall == "InPlay" & !is.na(PlayResult) & PlayResult != "" & PlayResult != "Undefined" ~ as.character(PlayResult),
+              !is.na(KorBB) & KorBB %in% c("Strikeout", "Walk") ~ as.character(KorBB),
+              TRUE ~ dplyr::coalesce(as.character(PitchCall), "—")
+            )
+          )
+
+        table_ui <- tags$table(
+          style = "width:100%; border-collapse:collapse; font-size:10px; line-height:1.2;",
+          tags$thead(
+            tags$tr(
+              lapply(names(tbl_df), function(nm) {
+                tags$th(
+                  style = "padding:2px 4px; border-bottom:1px solid rgba(128,128,128,.35); text-align:center; white-space:nowrap;",
+                  nm
+                )
+              })
+            )
+          ),
+          tags$tbody(
+            lapply(seq_len(nrow(tbl_df)), function(r) {
+              tags$tr(
+                lapply(seq_len(ncol(tbl_df)), function(c) {
+                  tags$td(
+                    style = "padding:1px 4px; text-align:center; white-space:nowrap;",
+                    as.character(tbl_df[r, c, drop = TRUE])
+                  )
+                })
+              )
+            })
+          )
+        )
         
-        pid    <- paste0(bi, "_", names(pa_list)[i])
+        pa_name <- pa_for_batter[[i]]$pa_key
+        pid    <- paste0(bi, "_", gsub("[^A-Za-z0-9_]+", "_", pa_name))
         out_id <- ns(paste0("abpPlot_", pid))
+        sep_col <- if (isTRUE(input$dark_mode)) "rgba(229,231,235,0.28)" else "rgba(15,23,42,0.16)"
+        cell_sep <- if (i < n_pa) paste0("border-right:1px solid ", sep_col, "; padding-right:12px; margin-right:12px;") else ""
         
         local({
           dat_local    <- dat
@@ -33139,7 +33568,7 @@ deg_to_clock <- function(x) {
               scale_color_manual(values = cols[types], limits = types, name = NULL) +
               scale_fill_manual(values  = cols[types], limits = types, name = NULL) +
               scale_shape_manual(values = shape_map, drop = TRUE, name = NULL) +
-              coord_fixed(ratio = 1, xlim = c(-3, 3), ylim = c(0.5, 5)) +
+              coord_fixed(ratio = 1, xlim = c(-3.4, 3.4), ylim = c(0.2, 5.3)) +
               theme_void() + theme(legend.position = "none",
                                    plot.title = element_text(color = axis_col))
             
@@ -33156,10 +33585,18 @@ deg_to_clock <- function(x) {
         })
         
         div(
-          style = "display:inline-block; margin:0 8px 12px 0; vertical-align:top; text-align:center;",
-          tags$div(tags$strong(paste0("PA #", i))),
+          style = paste0("display:inline-block; margin:0 8px 12px 0; vertical-align:top; text-align:center;", cell_sep),
+          tags$div(tags$strong(paste0("PA #", i, " (", nrow(dat), " pitches)"))),
           tags$div(title_result, style = "margin-bottom:6px;"),
-          ggiraph::girafeOutput(out_id, height = "300px", width = "300px")
+          debug_line,
+          div(
+            style = "display:flex; align-items:center; gap:6px; justify-content:center;",
+            div(
+              style = "width:185px; max-width:185px; overflow-x:auto; text-align:left; height:300px; display:flex; align-items:center;",
+              table_ui
+            ),
+            ggiraph::girafeOutput(out_id, height = "300px", width = "300px")
+          )
         )
       })
       
