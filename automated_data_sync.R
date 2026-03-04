@@ -30,8 +30,9 @@ LOCAL_V3_DIR        <- file.path(LOCAL_DATA_DIR, "v3")
 SYNC_START_YEAR <- suppressWarnings(as.integer(Sys.getenv("TM_SYNC_START_YEAR", "2024")))
 if (is.na(SYNC_START_YEAR) || SYNC_START_YEAR < 2000) SYNC_START_YEAR <- 2024
 LAST_SYNC_FILE <- file.path(LOCAL_DATA_DIR, "last_sync.txt")
-TM_SYNC_LOOKBACK_DAYS <- suppressWarnings(as.integer(Sys.getenv("TM_SYNC_LOOKBACK_DAYS", "45")))
-if (is.na(TM_SYNC_LOOKBACK_DAYS) || TM_SYNC_LOOKBACK_DAYS < 1L) TM_SYNC_LOOKBACK_DAYS <- 45L
+TM_SYNC_LOOKBACK_DAYS <- suppressWarnings(as.integer(Sys.getenv("TM_SYNC_LOOKBACK_DAYS", "1")))
+if (is.na(TM_SYNC_LOOKBACK_DAYS) || TM_SYNC_LOOKBACK_DAYS < 1L) TM_SYNC_LOOKBACK_DAYS <- 1L
+TM_SYNC_INITIAL_FULL <- tolower(trimws(Sys.getenv("TM_SYNC_INITIAL_FULL", "0"))) %in% c("1", "true", "yes", "y")
 FTP_THROTTLE_SEC <- suppressWarnings(as.numeric(Sys.getenv("TM_FTP_THROTTLE_SEC", "0")))
 if (is.na(FTP_THROTTLE_SEC) || FTP_THROTTLE_SEC < 0) FTP_THROTTLE_SEC <- 0
 
@@ -101,12 +102,18 @@ download_csv <- function(remote_file, local_file) {
 }
 
 recent_sync_years <- function() {
-  if (!file.exists(LAST_SYNC_FILE)) {
+  if (!file.exists(LAST_SYNC_FILE) && isTRUE(TM_SYNC_INITIAL_FULL)) {
     return(as.character(SYNC_START_YEAR:year(Sys.Date())))
   }
   start_date <- Sys.Date() - TM_SYNC_LOOKBACK_DAYS
   start_year <- max(SYNC_START_YEAR, year(start_date))
   as.character(start_year:year(Sys.Date()))
+}
+
+sync_window_start_date <- function() {
+  hard_floor <- as.Date(sprintf("%04d-01-01", SYNC_START_YEAR))
+  lookback_start <- Sys.Date() - TM_SYNC_LOOKBACK_DAYS
+  max(hard_floor, lookback_start)
 }
 
 # Function to sync practice data (2025 folder with MM/DD structure)
@@ -130,7 +137,11 @@ sync_practice_data <- function() {
       
       for (day_dir in day_dirs) {
         day_path <- paste0(month_path, day_dir, "/")
-        cat("Processing practice date:", yr, "/", month_dir, "/", day_dir, "\n")
+        full_date_path <- paste0(yr, "/", month_dir, "/", day_dir)
+        if (!is_date_in_range(full_date_path)) {
+          next
+        }
+        cat("Processing practice date:", full_date_path, "\n")
         
         files_in_day <- list_ftp_files(day_path)
         csv_files <- files_in_day[grepl("\\.csv$", files_in_day, ignore.case = TRUE)]
@@ -169,8 +180,8 @@ is_date_in_range <- function(file_path) {
   
   file_date <- as.Date(paste(date_match[2], date_match[3], date_match[4], sep = "-"))
   
-  # Include all data from configured sync start year onward.
-  start_date <- as.Date(sprintf("%d-01-01", SYNC_START_YEAR))
+  # Enforce rolling incremental window with a hard lower bound by start year.
+  start_date <- sync_window_start_date()
   return(file_date >= start_date)
 }
 
