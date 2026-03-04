@@ -1043,12 +1043,16 @@ sync_csv_file_to_neon <- function(con, csv_path, school_code = "") {
     stringsAsFactors = FALSE
   )
 
-  app_cols <- setdiff(pitch_data_default_columns(), c("SourceFile", "PitchKey"))
+  # BackendRowID is read-only metadata and maps to serial PK `id`;
+  # never send it during inserts.
+  app_cols <- setdiff(pitch_data_default_columns(), c("SourceFile", "PitchKey", "BackendRowID"))
   for (nm in app_cols) {
     db_nm <- unname(name_map[[nm]])
     if (is.na(db_nm) || !nzchar(db_nm)) next
     db_df[[db_nm]] <- if (nm %in% names(df)) as.character(df[[nm]]) else NA_character_
   }
+  # Defensive guard in case aliases/config ever reintroduce `id` into payload.
+  if ("id" %in% names(db_df)) db_df$id <- NULL
 
   # Pooler-safe path: avoid temp tables; pre-filter duplicate pitch_key rows, then append.
   if (nrow(db_df) && "pitch_key" %in% names(db_df)) {
