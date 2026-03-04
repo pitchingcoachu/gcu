@@ -10,14 +10,23 @@ pitch_data_parse_bool <- function(x, default = FALSE) {
   tolower(trimws(as.character(x))) %in% c("1", "true", "t", "yes", "y", "on")
 }
 
+pitch_data_normalize_school_code <- function(x) {
+  if (is.null(x) || length(x) == 0L) return("")
+  val <- suppressWarnings(as.character(x[[1]]))
+  if (!length(val) || is.na(val) || !nzchar(trimws(val))) return("")
+  toupper(trimws(val))
+}
+
 pitch_data_default_columns <- function() {
   c(
+    "BackendRowID",
     "Date", "Pitcher", "Email", "PitcherThrows", "TaggedPitchType",
     "InducedVertBreak", "HorzBreak", "RelSpeed", "ReleaseTilt", "BreakTilt",
     "SpinEfficiency", "SpinRate", "RelHeight", "RelSide", "Extension",
     "VertApprAngle", "HorzApprAngle", "PlateLocSide", "PlateLocHeight",
     "PitchCall", "KorBB", "Balls", "Strikes", "SessionType", "PlayID",
     "ExitSpeed", "Angle", "Distance", "Direction", "BatterSide", "PlayResult", "TaggedHitType", "OutsOnPlay",
+    "BatSpeed", "VerticalAttackAngle", "HorizontalAttackAngle", "HitSpinRate",
     "ThrowSpeed", "ExchangeTime", "PopTime", "TimeToBase",
     "BasePositionX", "BasePositionY", "BasePositionZ", "TargetBase",
     "Batter", "Catcher", "VideoClip", "VideoClip2", "VideoClip3",
@@ -72,6 +81,7 @@ pitch_data_make_key <- function(df) {
 
 pitch_data_storage_name_map <- function() {
   c(
+    BackendRowID = "id",
     Date = "date",
     Pitcher = "pitcher",
     Email = "email",
@@ -101,6 +111,10 @@ pitch_data_storage_name_map <- function() {
     Angle = "angle",
     Distance = "distance",
     Direction = "direction",
+    BatSpeed = "batspeed",
+    VerticalAttackAngle = "verticalattackangle",
+    HorizontalAttackAngle = "horizontalattackangle",
+    HitSpinRate = "hitspinrate",
     ThrowSpeed = "throwspeed",
     ExchangeTime = "exchangetime",
     PopTime = "poptime",
@@ -362,7 +376,12 @@ pitch_data_db_get_query <- function(con, sql) {
     error = function(e1) {
       msg <- conditionMessage(e1)
       recoverable <- grepl(
-        "unnamed prepared statement does not exist|query needs to be bound before fetching",
+        paste(
+          "unnamed prepared statement does not exist",
+          "query needs to be bound before fetching",
+          "bind message supplies [0-9]+ parameters, but prepared statement .* requires [0-9]+",
+          sep = "|"
+        ),
         msg,
         ignore.case = TRUE
       )
@@ -385,7 +404,12 @@ pitch_data_db_execute <- function(con, sql) {
     error = function(e1) {
       msg <- conditionMessage(e1)
       recoverable <- grepl(
-        "unnamed prepared statement does not exist|query needs to be bound before fetching",
+        paste(
+          "unnamed prepared statement does not exist",
+          "query needs to be bound before fetching",
+          "bind message supplies [0-9]+ parameters, but prepared statement .* requires [0-9]+",
+          sep = "|"
+        ),
         msg,
         ignore.case = TRUE
       )
@@ -432,6 +456,7 @@ pitch_data_save_cache <- function(path, obj) {
 }
 
 pitch_data_build_select_sql <- function(con, cols_present, school_code, start_date = NULL, end_date = NULL, chunk_size = 100000L, key_state = NULL) {
+  school_code <- pitch_data_normalize_school_code(school_code)
   all_cols <- pitch_data_default_columns()
   name_map <- pitch_data_storage_name_map()
   if (!length(cols_present)) cols_present <- character(0)
@@ -634,6 +659,7 @@ pitch_data_monthly_ranges <- function(con, school_code = "") {
 }
 
 load_pitch_data_from_postgres <- function(school_code = "", startup_logger = NULL) {
+  school_code <- pitch_data_normalize_school_code(school_code)
   cfg_raw <- pitch_data_backend_config()
   if (!identical(cfg_raw$type, "postgres")) return(NULL)
 
@@ -653,12 +679,22 @@ load_pitch_data_from_postgres <- function(school_code = "", startup_logger = NUL
   ttl <- pitch_data_cache_ttl()
   cached <- pitch_data_load_cached(cache_file, ttl)
   if (!is.null(cached) && is.list(cached) && !is.null(cached$data)) {
-    required_cols <- c("Distance", "Direction", "ThrowSpeed", "ExchangeTime", "PopTime")
-    if (all(required_cols %in% names(cached$data))) {
+    required_cols <- c(
+      "BackendRowID", "Distance", "Direction", "ThrowSpeed", "ExchangeTime", "PopTime",
+      "BatSpeed", "VerticalAttackAngle", "HorizontalAttackAngle", "HitSpinRate"
+    )
+    min_cache_rows <- suppressWarnings(as.integer(Sys.getenv("PITCH_DATA_CACHE_MIN_ROWS", "100")))
+    if (is.na(min_cache_rows) || min_cache_rows < 0L) min_cache_rows <- 0L
+    cache_rows <- nrow(cached$data)
+    if (all(required_cols %in% names(cached$data)) && cache_rows >= min_cache_rows) {
       pitch_data_logger(startup_logger, sprintf("Loaded pitch_data from cache (%d rows)", nrow(cached$data)))
       return(cached)
     }
-    pitch_data_logger(startup_logger, "Ignoring stale cache snapshot missing required spray/catching columns")
+    if (!all(required_cols %in% names(cached$data))) {
+      pitch_data_logger(startup_logger, "Ignoring stale cache snapshot missing required spray/catching columns")
+    } else {
+      pitch_data_logger(startup_logger, sprintf("Ignoring undersized cache snapshot (%d rows < min %d); loading from Neon", cache_rows, min_cache_rows))
+    }
   }
 
   con <- do.call(DBI::dbConnect, c(list(RPostgres::Postgres()), cfg))
@@ -707,6 +743,7 @@ load_pitch_data_from_postgres <- function(school_code = "", startup_logger = NUL
 }
 
 load_pitch_data_with_backend <- function(local_data_dir = file.path(getwd(), "data"), school_code = "", startup_logger = NULL) {
+  school_code <- pitch_data_normalize_school_code(school_code)
   cfg <- pitch_data_backend_config()
   if (!identical(cfg$type, "postgres")) return(NULL)
   max_attempts <- suppressWarnings(as.integer(Sys.getenv("PITCH_DATA_DB_RETRIES", "3")))
