@@ -605,7 +605,7 @@ main_sync <- function() {
         changed_csvs <- unique(c(practice_downloaded, v3_downloaded))
         sync_csv_tree_to_neon(
           data_dir = LOCAL_DATA_DIR,
-          school_code = Sys.getenv("TEAM_CODE", "OSU"),
+          school_code = Sys.getenv("TEAM_CODE", "GCU"),
           workers = workers,
           csv_paths = if (incremental_only) changed_csvs else NULL
         )
