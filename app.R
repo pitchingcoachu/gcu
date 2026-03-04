@@ -9095,9 +9095,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
     output$hmNote <- renderUI({
       stat <- input$hmStat
       if (is.null(stat)) return(NULL)
-      if (identical(stat, "Exit Velocity")) {
-        HTML(sprintf("<small><em>Shows Live in-play balls with EV ≥ %d mph; lower-density areas are floored for readability.</em></small>", HEAT_EV_THRESHOLD))
-      } else if (identical(stat, "Whiff Rate")) {
+      if (identical(stat, "Whiff Rate")) {
         HTML("<small><em>Locations of swinging strikes.</em></small>")
       } else if (identical(stat, "GB Rate")) {
         HTML("<small><em>Locations of ground balls (Live only).</em></small>")
@@ -31032,8 +31030,11 @@ deg_to_clock <- function(x) {
       
       # ---------- BATTED BALL DATA TABLE ----------
       if (identical(mode, "Batted Ball Data")) {
-        # Helper function
-        fmt_avg <- function(x) sprintf("%.3f", x)
+        # Helper function: baseball-style rates (.230 / -.230)
+        fmt_avg <- function(x) {
+          s <- sprintf("%.3f", x)
+          sub("^(-?)0\\.", "\\1.", s)
+        }
         
         # Filter for completed PAs only (like Results table does)
         is_term <- (
@@ -31110,11 +31111,15 @@ deg_to_clock <- function(x) {
             xSLG <- safe_div(xTB, split_AB)
             xISO <- xSLG - xAVG
             
-            # xWOBA calculation
-            split_BB <- per_type$BB[per_type$SplitColumn == spl]
+            # xWOBA calculation (match pitching: live-only BB over live BF)
+            split_BB_live <- sum(
+              split_df$SessionType == "Live" &
+                (split_df$KorBB == "Walk" | split_df$PlayResult == "Walk"),
+              na.rm = TRUE
+            )
             BF_live <- sum(split_df$SessionType == "Live" & split_df$Balls == 0 & split_df$Strikes == 0, na.rm = TRUE)
             if (exists("W_BB") && exists("W_1B") && exists("W_2B") && exists("W_3B") && exists("W_HR")) {
-              xWOBA <- safe_div(W_BB*split_BB + W_1B*x1B + W_2B*x2B + W_3B*x3B + W_HR*xHR, BF_live)
+              xWOBA <- safe_div(W_BB*split_BB_live + W_1B*x1B + W_2B*x2B + W_3B*x3B + W_HR*xHR, BF_live)
             }
           }
           
@@ -31201,9 +31206,14 @@ deg_to_clock <- function(x) {
           xSLG_all <- safe_div(xTB_all, AB_all)
           xISO_all <- xSLG_all - xAVG_all
           
+          BB_live_all <- sum(
+            df$SessionType == "Live" &
+              (df$KorBB == "Walk" | df$PlayResult == "Walk"),
+            na.rm = TRUE
+          )
           BF_live_all <- sum(df$SessionType == "Live" & df$Balls == 0 & df$Strikes == 0, na.rm = TRUE)
           if (exists("W_BB") && exists("W_1B") && exists("W_2B") && exists("W_3B") && exists("W_HR")) {
-            xWOBA_all <- safe_div(W_BB*BB_all + W_1B*x1B_all + W_2B*x2B_all + W_3B*x3B_all + W_HR*xHR_all, BF_live_all)
+            xWOBA_all <- safe_div(W_BB*BB_live_all + W_1B*x1B_all + W_2B*x2B_all + W_3B*x3B_all + W_HR*xHR_all, BF_live_all)
           }
         }
         
@@ -32510,8 +32520,11 @@ deg_to_clock <- function(x) {
     
     # ---------- BATTED BALL DATA TABLE ----------
     if (identical(mode, "Batted Ball Data")) {
-      # Helper function
-      fmt_avg <- function(x) sprintf("%.3f", x)
+      # Helper function: baseball-style rates (.230 / -.230)
+      fmt_avg <- function(x) {
+        s <- sprintf("%.3f", x)
+        sub("^(-?)0\\.", "\\1.", s)
+      }
       
       # Filter for completed PAs only (like Results table does)
       is_term <- (
@@ -32588,11 +32601,15 @@ deg_to_clock <- function(x) {
           xSLG <- safe_div(xTB, split_AB)
           xISO <- xSLG - xAVG
           
-          # xWOBA calculation
-          split_BB <- per_type$BB[per_type$SplitColumn == spl]
+          # xWOBA calculation (match pitching: live-only BB over live BF)
+          split_BB_live <- sum(
+            split_df$SessionType == "Live" &
+              (split_df$KorBB == "Walk" | split_df$PlayResult == "Walk"),
+            na.rm = TRUE
+          )
           BF_live <- sum(split_df$SessionType == "Live" & split_df$Balls == 0 & split_df$Strikes == 0, na.rm = TRUE)
           if (exists("W_BB") && exists("W_1B") && exists("W_2B") && exists("W_3B") && exists("W_HR")) {
-            xWOBA <- safe_div(W_BB*split_BB + W_1B*x1B + W_2B*x2B + W_3B*x3B + W_HR*xHR, BF_live)
+            xWOBA <- safe_div(W_BB*split_BB_live + W_1B*x1B + W_2B*x2B + W_3B*x3B + W_HR*xHR, BF_live)
           }
         }
         
@@ -32679,9 +32696,14 @@ deg_to_clock <- function(x) {
         xSLG_all <- safe_div(xTB_all, AB_all)
         xISO_all <- xSLG_all - xAVG_all
         
-        PA_live_all <- sum(term$SessionType == "Live" & term$Balls == 0 & term$Strikes == 0, na.rm = TRUE)
+        BB_live_all <- sum(
+          term$SessionType == "Live" &
+            (term$KorBB == "Walk" | term$PlayResult == "Walk"),
+          na.rm = TRUE
+        )
+        BF_live_all <- sum(term$SessionType == "Live" & term$Balls == 0 & term$Strikes == 0, na.rm = TRUE)
         if (exists("W_BB") && exists("W_1B") && exists("W_2B") && exists("W_3B") && exists("W_HR")) {
-          xWOBA_all <- safe_div(W_BB*BB_all + W_1B*x1B_all + W_2B*x2B_all + W_3B*x3B_all + W_HR*xHR_all, PA_live_all)
+          xWOBA_all <- safe_div(W_BB*BB_live_all + W_1B*x1B_all + W_2B*x2B_all + W_3B*x3B_all + W_HR*xHR_all, BF_live_all)
         }
       }
       
