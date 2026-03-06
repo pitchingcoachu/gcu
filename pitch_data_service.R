@@ -26,6 +26,7 @@ pitch_data_default_columns <- function() {
     "VertApprAngle", "HorzApprAngle", "PlateLocSide", "PlateLocHeight",
     "PitchCall", "KorBB", "Balls", "Strikes", "SessionType", "PlayID",
     "ExitSpeed", "Angle", "Distance", "Direction", "BatterSide", "PlayResult", "TaggedHitType", "OutsOnPlay",
+    "ContactPositionX", "ContactPositionY", "ContactPositionZ",
     "BatSpeed", "VerticalAttackAngle", "HorizontalAttackAngle", "HitSpinRate",
     "ThrowSpeed", "ExchangeTime", "PopTime", "TimeToBase",
     "BasePositionX", "BasePositionY", "BasePositionZ", "TargetBase",
@@ -111,6 +112,9 @@ pitch_data_storage_name_map <- function() {
     Angle = "angle",
     Distance = "distance",
     Direction = "direction",
+    ContactPositionX = "contactpositionx",
+    ContactPositionY = "contactpositiony",
+    ContactPositionZ = "contactpositionz",
     BatSpeed = "batspeed",
     VerticalAttackAngle = "verticalattackangle",
     HorizontalAttackAngle = "horizontalattackangle",
@@ -681,6 +685,7 @@ load_pitch_data_from_postgres <- function(school_code = "", startup_logger = NUL
   if (!is.null(cached) && is.list(cached) && !is.null(cached$data)) {
     required_cols <- c(
       "BackendRowID", "Distance", "Direction", "ThrowSpeed", "ExchangeTime", "PopTime",
+      "ContactPositionX", "ContactPositionY", "ContactPositionZ",
       "BatSpeed", "VerticalAttackAngle", "HorizontalAttackAngle", "HitSpinRate"
     )
     min_cache_rows <- suppressWarnings(as.integer(Sys.getenv("PITCH_DATA_CACHE_MIN_ROWS", "100")))
