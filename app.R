@@ -159,6 +159,31 @@ zone_nine_square_layers <- function(color = "black", linewidth = 0.5, alpha = 1)
   )
 }
 
+comp_zone_connector_layers <- function(color = "black", linewidth = 0.6, alpha = 1) {
+  mid_x <- (ZONE_LEFT + ZONE_RIGHT) / 2
+  mid_y <- (ZONE_BOTTOM + ZONE_TOP) / 2
+  comp_left <- -1.5
+  comp_right <- 1.5
+  comp_bottom <- mid_y - 1.5
+  comp_top <- mid_y + 1.5
+  seg_df <- data.frame(
+    x = c(mid_x, mid_x, ZONE_LEFT, ZONE_RIGHT),
+    y = c(ZONE_BOTTOM, ZONE_TOP, mid_y, mid_y),
+    xend = c(mid_x, mid_x, comp_left, comp_right),
+    yend = c(comp_bottom, comp_top, mid_y, mid_y)
+  )
+  list(
+    geom_segment(
+      data = seg_df,
+      aes(x = x, y = y, xend = xend, yend = yend),
+      inherit.aes = FALSE,
+      color = color,
+      linewidth = linewidth,
+      alpha = alpha
+    )
+  )
+}
+
 # Frequency (keep multi-color)
 heat_pal_freq <- function(n = HEAT_BINS) colorRampPalette(
   c("white","pink","red")
@@ -269,7 +294,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
     scale_fill_manual(values = fill_vals, guide = "none") +
     geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
     geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-              fill = NA, color = line_col, inherit.aes = FALSE) +
+              fill = NA, color = line_col, linewidth = 1.15, inherit.aes = FALSE) +
     { if (!is.null(peak_df))
       geom_point(data = peak_df, aes(x = px, y = py), inherit.aes = FALSE,
                  size = 3.8, shape = 21, fill = "red", color = "black", stroke = 0.5)
@@ -368,7 +393,7 @@ draw_heat_binned <- function(grid, bin_size = 0.4, pal_fun = heat_pal_red,
     scale_fill_gradientn(colors = grad_vals, limits = scale_limits, na.value = "#00000000") +
     geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
     geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-              fill = NA, color = line_col, inherit.aes = FALSE) +
+              fill = NA, color = line_col, linewidth = 1.15, inherit.aes = FALSE) +
     coord_fixed(ratio = 1, xlim = c(-2.5, 2.5), ylim = c(0, 4.5)) +
     theme_void() + 
     theme(legend.position = "none",
@@ -5705,7 +5730,7 @@ draw_heat <- function(grid, bins = HEAT_BINS, pal_fun = heat_pal_red,
     scale_fill_manual(values = fill_vals, guide = "none") +
     geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
     geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-              fill = NA, color = line_col, inherit.aes = FALSE) +
+              fill = NA, color = line_col, linewidth = 1.15, inherit.aes = FALSE) +
     { if (!is.null(peak_df))
       geom_point(data = peak_df, aes(x = px, y = py), inherit.aes = FALSE,
                  size = 3.8, shape = 21, fill = "red", color = "black", stroke = 0.5)
@@ -8174,9 +8199,15 @@ mod_hit_ui <- function(id, show_header = FALSE) {
                       choices = c("Individual Pitches" = "individual", "Average by Pitch Type" = "average_pitch_type"),
                       selected = "individual"
                     ),
+                    selectInput(
+                      ns("contact2dColorBy"),
+                      "Color By:",
+                      choices = c("Pitch Type" = "pitch_type", "Exit Velocity" = "exit_velocity", "Result" = "result"),
+                      selected = "pitch_type"
+                    ),
                     tags$div(
                       style = "font-weight:bold; text-align:left; margin-bottom:6px;",
-                      "Pitch Type Key"
+                      "Color Key"
                     ),
                     plotOutput(ns("contact_pitch_type_key"), height = "560px")
                   ),
@@ -8196,6 +8227,12 @@ mod_hit_ui <- function(id, show_header = FALSE) {
                       "Display:",
                       choices = c("Individual Pitches" = "individual", "Average by Pitch Type" = "average_pitch_type"),
                       selected = "individual"
+                    ),
+                    selectInput(
+                      ns("contact3dColorBy"),
+                      "Color By:",
+                      choices = c("Pitch Type" = "pitch_type", "Exit Velocity" = "exit_velocity", "Result" = "result"),
+                      selected = "pitch_type"
                     )
                   ),
                   column(9)
@@ -8233,7 +8270,61 @@ mod_hit_ui <- function(id, show_header = FALSE) {
                   ),
                   column(
                     9,
+                    uiOutput(ns("attackAngleHeader")),
                     plotOutput(ns("attackAnglePlot"), height = "620px")
+                  )
+                )
+              ),
+              tabPanel(
+                "Bat Speed",
+                fluidRow(
+                  column(
+                    3,
+                    selectInput(
+                      ns("batSpeedDisplay"),
+                      "Display:",
+                      choices = c("Average" = "average", "Individual Pitches" = "individual"),
+                      selected = "average"
+                    ),
+                    selectInput(
+                      ns("batSpeedColorBy"),
+                      "Color By:",
+                      choices = c("Pitch Type" = "pitch_type", "Exit Velocity" = "exit_velocity", "Result" = "result"),
+                      selected = "pitch_type"
+                    ),
+                    uiOutput(ns("batSpeedSummary")),
+                    tags$div(
+                      style = "font-weight:bold; text-align:left; margin:8px 0 6px 0;",
+                      "Color Key"
+                    ),
+                    plotOutput(ns("batSpeedKey"), height = "250px")
+                  ),
+                  column(
+                    9,
+                    ggiraph::girafeOutput(ns("batSpeedGauge"), height = "620px")
+                  )
+                )
+              ),
+              tabPanel(
+                "EV and LA",
+                fluidRow(
+                  column(
+                    3,
+                    selectInput(
+                      ns("evlaColorBy"),
+                      "Color By:",
+                      choices = c("Result" = "result", "Pitch Type" = "pitch_type"),
+                      selected = "result"
+                    ),
+                    tags$div(
+                      style = "font-weight:bold; text-align:left; margin:8px 0 6px 0;",
+                      "Color Key"
+                    ),
+                    plotOutput(ns("evlaKey"), height = "300px")
+                  ),
+                  column(
+                    9,
+                    ggiraph::girafeOutput(ns("evlaPlot"), height = "620px")
                   )
                 )
               )
@@ -8621,10 +8712,10 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       c(list(
         geom_polygon(data = home, aes(x, y), fill = NA, color = line_col),
         geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                  fill = NA, color = line_col, linetype = "dashed"),
+                  fill = NA, color = line_col),
         geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                  fill = NA, color = line_col)
-      ), zone_nine_square_layers(color = line_col))
+                  fill = NA, color = line_col, linewidth = 1.15)
+      ), comp_zone_connector_layers(color = line_col), zone_nine_square_layers(color = line_col))
     }
     
     # ---------- AB Report: date choices + default ----------
@@ -9044,7 +9135,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       p <- ggplot() +
         geom_polygon(data = home, aes(x, y), inherit.aes = FALSE, fill = NA, color = line_col) +
         geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                  inherit.aes = FALSE, fill = NA, color = line_col) +
+                  inherit.aes = FALSE, fill = NA, color = line_col, linewidth = 1.15) +
         geom_rect(data = green_box,
                   aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   inherit.aes = FALSE,
@@ -9392,6 +9483,9 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
     output$heatmapsPitchPlot <- ggiraph::renderGirafe({
       req(input$hmChartType == "Pitch")
       df <- filtered_hit(); if (!nrow(df)) return(NULL)
+      dark_on <- is_dark_mode()
+      cols <- colors_for_mode(dark_on)
+      line_col <- if (dark_on) "#ffffff" else "black"
       
       types <- intersect(names(all_colors), as.character(unique(df$TaggedPitchType)))
       types_chr <- as.character(types)
@@ -9414,9 +9508,10 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       p <- ggplot() +
         geom_polygon(data = home, aes(x, y), fill = NA, color = line_col) +
         geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                  fill = NA, color = line_col, linetype = "dashed") +
-        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   fill = NA, color = line_col) +
+        comp_zone_connector_layers(color = line_col) +
+        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                  fill = NA, color = line_col, linewidth = 1.15) +
         zone_nine_square_layers(color = line_col) +
         ggiraph::geom_point_interactive(
           data = df_other,
@@ -9476,15 +9571,53 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       line_col <- if (dark_on) "#ffffff" else "black"
       text_col <- if (dark_on) "#e5e7eb" else "#111827"
       cols <- colors_for_mode(dark_on)
+      ev_palette <- c(
+        "<70" = "#1f4e79", "70-75" = "#2f6fa3", "75-80" = "#3f8fc6", "80-85" = "#59b4d8",
+        "85-90" = "#7ccf9b", "90-95" = "#f4d35e", "95-100" = "#f59e0b", ">100" = "#ef4444",
+        "Unknown" = if (dark_on) "#94a3b8" else "gray60"
+      )
+      result_palette <- c(
+        "Single" = "#22c55e", "Double" = "#3b82f6", "Triple" = "#a855f7", "HomeRun" = "#ef4444",
+        "Out" = if (dark_on) "#e5e7eb" else "#111827", "Error" = "#f59e0b", "FieldersChoice" = "#06b6d4",
+        "Sacrifice" = "#14b8a6", "Unknown" = if (dark_on) "#94a3b8" else "gray60"
+      )
+      ev_bin <- function(x) {
+        dplyr::case_when(
+          !is.finite(x) ~ "Unknown",
+          x < 70 ~ "<70",
+          x < 75 ~ "70-75",
+          x < 80 ~ "75-80",
+          x < 85 ~ "80-85",
+          x < 90 ~ "85-90",
+          x < 95 ~ "90-95",
+          x < 100 ~ "95-100",
+          TRUE ~ ">100"
+        )
+      }
+      result_label <- function(x) {
+        out <- trimws(as.character(x))
+        out[!is.na(out) & out == "Undefined"] <- "Foul Ball"
+        out[is.na(out) | !nzchar(out)] <- "Unknown"
+        out
+      }
+      mode_chr <- function(x) {
+        x <- result_label(x)
+        x <- x[x != "Unknown"]
+        if (!length(x)) return("Unknown")
+        names(sort(table(x), decreasing = TRUE))[1]
+      }
       
       mode_2d <- input$contact2dMode %||% "individual"
+      color_by_2d <- input$contact2dColorBy %||% "pitch_type"
       df_base <- df %>%
         dplyr::mutate(
           ContactPositionX = suppressWarnings(as.numeric(ContactPositionX)),
-          ContactPositionZ = suppressWarnings(as.numeric(ContactPositionZ))
+          ContactPositionZ = suppressWarnings(as.numeric(ContactPositionZ)),
+          ExitSpeed = suppressWarnings(as.numeric(ExitSpeed)),
+          TaggedPitchType = as.character(TaggedPitchType),
+          ResultLabel = result_label(PlayResult)
         ) %>%
-        dplyr::filter(is.finite(ContactPositionX), is.finite(ContactPositionZ)) %>%
-        dplyr::mutate(TaggedPitchType = as.character(TaggedPitchType))
+        dplyr::filter(is.finite(ContactPositionX), is.finite(ContactPositionZ))
       
       if (identical(mode_2d, "average_pitch_type")) {
         df_plot <- df_base %>%
@@ -9492,6 +9625,8 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           dplyr::summarise(
             ContactPositionX = mean(ContactPositionX, na.rm = TRUE),
             ContactPositionZ = mean(ContactPositionZ, na.rm = TRUE),
+            ExitSpeed = mean(ExitSpeed, na.rm = TRUE),
+            ResultLabel = mode_chr(ResultLabel),
             n = dplyr::n(),
             .groups = "drop"
           ) %>%
@@ -9509,14 +9644,11 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         df_plot <- df_base %>%
           dplyr::mutate(
             tooltip = {
-              pr <- as.character(PlayResult)
-              result_txt <- dplyr::if_else(!is.na(pr) & nzchar(pr) & pr != "Undefined", pr,
-                                           dplyr::coalesce(as.character(PitchCall), "—"))
               paste0(
                 "<b>", dplyr::coalesce(TaggedPitchType, "—"), "</b><br>",
-                "Result: ", result_txt, "<br>",
+                "Result: ", ResultLabel, "<br>",
                 "Velo: ", ifelse(is.finite(as.numeric(RelSpeed)), sprintf("%.1f mph", as.numeric(RelSpeed)), "—"), "<br>",
-                "EV: ", ifelse(is.finite(as.numeric(ExitSpeed)), sprintf("%.1f mph", as.numeric(ExitSpeed)), "—"), "<br>",
+                "EV: ", ifelse(is.finite(ExitSpeed), sprintf("%.1f mph", ExitSpeed), "—"), "<br>",
                 "LA: ", ifelse(is.finite(as.numeric(Angle)), sprintf("%.1f°", as.numeric(Angle)), "—"), "<br>",
                 "Forward: ", ifelse(is.finite(ContactPositionX), sprintf("%.1f ft", round(ContactPositionX, 1)), "—"), "<br>",
                 "Side: ", ifelse(is.finite(ContactPositionZ), sprintf("%.1f ft", round(ContactPositionZ, 1)), "—")
@@ -9533,9 +9665,27 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         return(girafe_transparent(ggobj = p_empty))
       }
       
-      types_chr <- intersect(names(cols), unique(df_plot$TaggedPitchType))
-      if (!length(types_chr)) types_chr <- unique(df_plot$TaggedPitchType)
-      col_vals <- cols[types_chr]
+      df_plot <- df_plot %>%
+        dplyr::mutate(
+          ColorGroup = dplyr::case_when(
+            color_by_2d == "exit_velocity" ~ ev_bin(ExitSpeed),
+            color_by_2d == "result" ~ ResultLabel,
+            TRUE ~ dplyr::coalesce(TaggedPitchType, "Unknown")
+          )
+        )
+      groups <- unique(as.character(df_plot$ColorGroup))
+      if (color_by_2d == "exit_velocity") {
+        groups <- names(ev_palette)[names(ev_palette) %in% groups]
+        col_vals <- ev_palette[groups]
+      } else if (color_by_2d == "result") {
+        known <- names(result_palette)[names(result_palette) %in% groups]
+        unknown <- setdiff(groups, names(result_palette))
+        col_vals <- c(result_palette[known], setNames(rep(if (dark_on) "#94a3b8" else "gray60", length(unknown)), unknown))
+      } else {
+        groups <- intersect(names(cols), groups)
+        extra <- setdiff(unique(as.character(df_plot$ColorGroup)), names(cols))
+        col_vals <- c(cols[groups], setNames(rep(if (dark_on) "#94a3b8" else "gray60", length(extra)), extra))
+      }
       col_vals[is.na(col_vals)] <- "gray70"
       y_min <- floor(min(c(df_base$ContactPositionX, -0.6), na.rm = TRUE))
       y_max <- ceiling(max(c(df_base$ContactPositionX, 1.0), na.rm = TRUE))
@@ -9562,12 +9712,12 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         ggiraph::geom_point_interactive(
           data = df_plot,
           aes(ContactPositionZ, ContactPositionX,
-              color = TaggedPitchType, fill = TaggedPitchType,
+              color = ColorGroup, fill = ColorGroup,
               tooltip = tooltip, data_id = rid),
           size = 2.4, alpha = 0.9, shape = 21, stroke = 0.45
         ) +
-        scale_color_manual(values = col_vals, limits = types_chr, drop = FALSE, name = NULL) +
-        scale_fill_manual(values = col_vals, limits = types_chr, drop = FALSE, name = NULL) +
+        scale_color_manual(values = col_vals, limits = names(col_vals), drop = FALSE, name = NULL) +
+        scale_fill_manual(values = col_vals, limits = names(col_vals), drop = FALSE, name = NULL) +
         scale_y_continuous(breaks = y_breaks, limits = c(y_min, y_max), minor_breaks = NULL) +
         coord_fixed(ratio = 1, xlim = c(-2.5, 2.5), ylim = c(y_min, y_max)) +
         labs(x = "Side (ft)", y = "Forward (ft)") +
@@ -9607,16 +9757,54 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       cols <- colors_for_mode(dark_on)
       line_col <- if (dark_on) "#e5e7eb" else "#111827"
       axis_col <- if (dark_on) "#e5e7eb" else "#111827"
+      ev_palette <- c(
+        "<70" = "#1f4e79", "70-75" = "#2f6fa3", "75-80" = "#3f8fc6", "80-85" = "#59b4d8",
+        "85-90" = "#7ccf9b", "90-95" = "#f4d35e", "95-100" = "#f59e0b", ">100" = "#ef4444",
+        "Unknown" = if (dark_on) "#94a3b8" else "gray60"
+      )
+      result_palette <- c(
+        "Single" = "#22c55e", "Double" = "#3b82f6", "Triple" = "#a855f7", "HomeRun" = "#ef4444",
+        "Out" = if (dark_on) "#e5e7eb" else "#111827", "Error" = "#f59e0b", "FieldersChoice" = "#06b6d4",
+        "Sacrifice" = "#14b8a6", "Unknown" = if (dark_on) "#94a3b8" else "gray60"
+      )
+      ev_bin <- function(x) {
+        dplyr::case_when(
+          !is.finite(x) ~ "Unknown",
+          x < 70 ~ "<70",
+          x < 75 ~ "70-75",
+          x < 80 ~ "75-80",
+          x < 85 ~ "80-85",
+          x < 90 ~ "85-90",
+          x < 95 ~ "90-95",
+          x < 100 ~ "95-100",
+          TRUE ~ ">100"
+        )
+      }
+      result_label <- function(x) {
+        out <- trimws(as.character(x))
+        out[!is.na(out) & out == "Undefined"] <- "Foul Ball"
+        out[is.na(out) | !nzchar(out)] <- "Unknown"
+        out
+      }
+      mode_chr <- function(x) {
+        x <- result_label(x)
+        x <- x[x != "Unknown"]
+        if (!length(x)) return("Unknown")
+        names(sort(table(x), decreasing = TRUE))[1]
+      }
       
       mode_3d <- input$contact3dMode %||% "individual"
+      color_by_3d <- input$contact3dColorBy %||% "pitch_type"
       df_base <- df %>%
         dplyr::mutate(
           ContactPositionX = suppressWarnings(as.numeric(ContactPositionX)),
           ContactPositionY = suppressWarnings(as.numeric(ContactPositionY)),
-          ContactPositionZ = suppressWarnings(as.numeric(ContactPositionZ))
+          ContactPositionZ = suppressWarnings(as.numeric(ContactPositionZ)),
+          ExitSpeed = suppressWarnings(as.numeric(ExitSpeed)),
+          TaggedPitchType = as.character(TaggedPitchType),
+          ResultLabel = result_label(PlayResult)
         ) %>%
-        dplyr::filter(is.finite(ContactPositionX), is.finite(ContactPositionY), is.finite(ContactPositionZ)) %>%
-        dplyr::mutate(TaggedPitchType = as.character(TaggedPitchType))
+        dplyr::filter(is.finite(ContactPositionX), is.finite(ContactPositionY), is.finite(ContactPositionZ))
       
       if (identical(mode_3d, "average_pitch_type")) {
         df_plot <- df_base %>%
@@ -9625,6 +9813,8 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
             ContactPositionX = mean(ContactPositionX, na.rm = TRUE),
             ContactPositionY = mean(ContactPositionY, na.rm = TRUE),
             ContactPositionZ = mean(ContactPositionZ, na.rm = TRUE),
+            ExitSpeed = mean(ExitSpeed, na.rm = TRUE),
+            ResultLabel = mode_chr(ResultLabel),
             n = dplyr::n(),
             .groups = "drop"
           ) %>%
@@ -9642,14 +9832,11 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         df_plot <- df_base %>%
           dplyr::mutate(
             tooltip = {
-              pr <- as.character(PlayResult)
-              result_txt <- dplyr::if_else(!is.na(pr) & nzchar(pr) & pr != "Undefined", pr,
-                                           dplyr::coalesce(as.character(PitchCall), "—"))
               paste0(
                 "<b>", dplyr::coalesce(TaggedPitchType, "—"), "</b><br>",
-                "Result: ", result_txt, "<br>",
+                "Result: ", ResultLabel, "<br>",
                 "Velo: ", ifelse(is.finite(as.numeric(RelSpeed)), sprintf("%.1f mph", as.numeric(RelSpeed)), "—"), "<br>",
-                "EV: ", ifelse(is.finite(as.numeric(ExitSpeed)), sprintf("%.1f mph", as.numeric(ExitSpeed)), "—"), "<br>",
+                "EV: ", ifelse(is.finite(ExitSpeed), sprintf("%.1f mph", ExitSpeed), "—"), "<br>",
                 "LA: ", ifelse(is.finite(as.numeric(Angle)), sprintf("%.1f°", as.numeric(Angle)), "—"), "<br>",
                 "Forward: ", ifelse(is.finite(ContactPositionX), sprintf("%.1f ft", round(ContactPositionX, 1)), "—"), "<br>",
                 "Height: ", ifelse(is.finite(ContactPositionY), sprintf("%.1f ft", round(ContactPositionY, 1)), "—"), "<br>",
@@ -9665,9 +9852,27 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         ))
       }
       
-      types_chr <- intersect(names(cols), unique(df_plot$TaggedPitchType))
-      if (!length(types_chr)) types_chr <- unique(df_plot$TaggedPitchType)
-      col_vals <- cols[types_chr]
+      df_plot <- df_plot %>%
+        dplyr::mutate(
+          ColorGroup = dplyr::case_when(
+            color_by_3d == "exit_velocity" ~ ev_bin(ExitSpeed),
+            color_by_3d == "result" ~ ResultLabel,
+            TRUE ~ dplyr::coalesce(TaggedPitchType, "Unknown")
+          )
+        )
+      groups <- unique(as.character(df_plot$ColorGroup))
+      if (color_by_3d == "exit_velocity") {
+        groups <- names(ev_palette)[names(ev_palette) %in% groups]
+        col_vals <- ev_palette[groups]
+      } else if (color_by_3d == "result") {
+        known <- names(result_palette)[names(result_palette) %in% groups]
+        unknown <- setdiff(groups, names(result_palette))
+        col_vals <- c(result_palette[known], setNames(rep(if (dark_on) "#94a3b8" else "gray60", length(unknown)), unknown))
+      } else {
+        groups <- intersect(names(cols), groups)
+        extra <- setdiff(unique(as.character(df_plot$ColorGroup)), names(cols))
+        col_vals <- c(cols[groups], setNames(rep(if (dark_on) "#94a3b8" else "gray60", length(extra)), extra))
+      }
       col_vals[is.na(col_vals)] <- "gray70"
       
       plate <- data.frame(
@@ -9695,15 +9900,15 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       zone_h2 <- data.frame(x = zone_x, y = c(zone_left, zone_right), z = zone_bottom + 2 * zone_dy)
       
       p <- plotly::plot_ly()
-      for (pt in types_chr) {
-        dpt <- df_plot[df_plot$TaggedPitchType == pt, , drop = FALSE]
+      for (grp in names(col_vals)) {
+        dpt <- df_plot[df_plot$ColorGroup == grp, , drop = FALSE]
         p <- p %>%
           plotly::add_markers(
             data = dpt,
             x = ~ContactPositionX, y = ~ContactPositionZ, z = ~ContactPositionY,
             type = "scatter3d", mode = "markers",
-            name = pt,
-            marker = list(size = 4.5, color = unname(col_vals[[pt]]), opacity = 0.88),
+            name = grp,
+            marker = list(size = 4.5, color = unname(col_vals[[grp]]), opacity = 0.88),
             text = ~tooltip,
             hoverinfo = "text"
           )
@@ -9781,6 +9986,9 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           ContactPositionX = suppressWarnings(as.numeric(ContactPositionX)),
           ContactPositionY = suppressWarnings(as.numeric(ContactPositionY)),
           ContactPositionZ = suppressWarnings(as.numeric(ContactPositionZ)),
+          ExitSpeed = suppressWarnings(as.numeric(ExitSpeed)),
+          Angle = suppressWarnings(as.numeric(Angle)),
+          PlayResult = as.character(PlayResult),
           BatterSide = as.character(BatterSide),
           .attack_row_id = dplyr::row_number()
         )
@@ -9805,6 +10013,7 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         df <- df %>%
           dplyr::filter(
             is.finite(VerticalAttackAngle),
+            is.finite(ContactPositionX),
             is.finite(ContactPositionY),
             is.finite(ContactPositionZ)
           )
@@ -9857,20 +10066,25 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           dplyr::filter(is.finite(HorizontalAttackAngle), is.finite(ContactPositionX), is.finite(ContactPositionZ))
       } else {
         contact_pool <- base %>%
-          dplyr::filter(is.finite(ContactPositionY), is.finite(ContactPositionZ))
+          dplyr::filter(is.finite(ContactPositionX), is.finite(ContactPositionY))
         angle_pool <- base %>%
-          dplyr::filter(is.finite(VerticalAttackAngle), is.finite(ContactPositionY), is.finite(ContactPositionZ))
+          dplyr::filter(is.finite(VerticalAttackAngle), is.finite(ContactPositionX), is.finite(ContactPositionY))
       }
       if (!nrow(contact_pool) || !nrow(angle_pool)) return(NULL)
 
       side_tab <- table(contact_pool$BatterSide)
       side_mode <- if (length(side_tab)) names(which.max(side_tab)) else "Right"
+      avg_ev <- if ("ExitSpeed" %in% names(contact_pool)) mean(contact_pool$ExitSpeed, na.rm = TRUE) else NA_real_
+      avg_la <- if ("Angle" %in% names(contact_pool)) mean(contact_pool$Angle, na.rm = TRUE) else NA_real_
       tibble::tibble(
         VerticalAttackAngle = mean(angle_pool$VerticalAttackAngle, na.rm = TRUE),
         HorizontalAttackAngle = mean(angle_pool$HorizontalAttackAngle, na.rm = TRUE),
         ContactPositionX = mean(contact_pool$ContactPositionX, na.rm = TRUE),
         ContactPositionY = mean(contact_pool$ContactPositionY, na.rm = TRUE),
         ContactPositionZ = mean(contact_pool$ContactPositionZ, na.rm = TRUE),
+        ExitSpeed = avg_ev,
+        Angle = avg_la,
+        PlayResult = NA_character_,
         BatterSide = side_mode,
         .attack_pitch_label = "Average"
       )
@@ -9894,6 +10108,41 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         tags$div(paste0("Height (Y): ", sprintf("%.1f", row$ContactPositionY[[1]]), " ft")),
         tags$div(paste0("Side (Z): ", sprintf("%.1f", row$ContactPositionZ[[1]]), " ft")),
         tags$div(paste0("Batter Side: ", row$BatterSide[[1]] %||% "Unknown"))
+      )
+    })
+    
+    output$attackAngleHeader <- renderUI({
+      if (!attack_hand_selected()) return(NULL)
+      row <- selected_attack_row()
+      if (is.null(row) || !nrow(row)) return(NULL)
+      view_type <- input$attackAngleType %||% "Horizontal Attack"
+      scope <- input$attackScope %||% "average"
+      angle_val <- if (identical(view_type, "Horizontal Attack")) {
+        suppressWarnings(as.numeric(row$HorizontalAttackAngle[[1]]))
+      } else {
+        suppressWarnings(as.numeric(row$VerticalAttackAngle[[1]]))
+      }
+      ev_val <- suppressWarnings(as.numeric(row$ExitSpeed[[1]]))
+      la_val <- suppressWarnings(as.numeric(row$Angle[[1]]))
+      result_val <- trimws(as.character(row$PlayResult[[1]] %||% ""))
+      if (!nzchar(result_val) || identical(result_val, "Undefined")) result_val <- "Foul Ball"
+      stats_line <- if (identical(scope, "pitch")) {
+        paste0(
+          "EV ", ifelse(is.finite(ev_val), sprintf("%.1f", ev_val), "—"),
+          " | LA ", ifelse(is.finite(la_val), sprintf("%.1f", la_val), "—"),
+          " | Result ", result_val
+        )
+      } else {
+        paste0(
+          "EV ", ifelse(is.finite(ev_val), sprintf("%.1f", ev_val), "—"),
+          " | LA ", ifelse(is.finite(la_val), sprintf("%.1f", la_val), "—")
+        )
+      }
+      tags$div(
+        style = "text-align:center; margin-bottom:8px;",
+        tags$div(style = "font-size:52px; font-weight:800; line-height:1;", paste0(ifelse(is.finite(angle_val), sprintf("%.1f", angle_val), "—"), "°")),
+        tags$div(style = "font-size:18px; margin-top:4px;", view_type),
+        tags$div(style = "font-size:15px; margin-top:3px;", stats_line)
       )
     })
     
@@ -10048,8 +10297,6 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           ) +
           annotate("text", x = -2.05, y = y_max - 0.35, label = pull_left, color = "#22c55e", hjust = 0, size = 4) +
           annotate("text", x = 2.05, y = y_max - 0.35, label = pull_right, color = "#22c55e", hjust = 1, size = 4) +
-          annotate("text", x = 0, y = y_max - 0.10, label = paste0(sprintf("%.1f", haa), "°"), color = text_col, size = 8, fontface = "bold") +
-          annotate("text", x = 0, y = y_max - 0.42, label = "Horizontal Attack", color = text_col, size = 5) +
           scale_y_continuous(breaks = y_breaks, limits = c(y_min, y_max), minor_breaks = NULL) +
           scale_linewidth_identity() +
           coord_fixed(xlim = c(-2.5, 2.5), ylim = c(y_min, y_max)) +
@@ -10065,8 +10312,8 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
             panel.background = element_rect(fill = "transparent", color = NA)
           )
       } else {
-        # Side view from batter-box perspective: x = side (Z), y = height (Y)
-        cx <- as.numeric(row$ContactPositionZ[[1]])
+        # Side view from batter-box perspective: x = forward (X), y = height (Y)
+        cx <- as.numeric(row$ContactPositionX[[1]])
         cy <- as.numeric(row$ContactPositionY[[1]])
         vaa <- as.numeric(row$VerticalAttackAngle[[1]])
         x_plot <- if (is_lefty) -cx else cx
@@ -10076,26 +10323,35 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
         # End-cap only in true side view.
         cap_x <- x_plot
         cap_y <- cy
-        zero_len <- 0.95
+        zero_len <- vec_len
         zero_xend <- cap_x + face_dir * zero_len
         zero_yend <- cap_y
         arrow_xend <- cap_x + face_dir * cos(rad) * vec_len
         arrow_yend <- cap_y + sin(rad) * vec_len
 
+        # Side-view scaffold: plate tip points toward pitcher-side by handedness.
+        tip_dir <- ifelse(is_lefty, 1, -1)
+        plate_x_template <- c(-0.36, -0.08, 0.00, -0.08, -0.36, -0.36)
         home_plate <- data.frame(
-          x = c(-0.708, 0.708, 0.708, 0.000, -0.708, -0.708),
-          y = c(0.28, 0.28, 0.15, 0.00, 0.15, 0.28)
+          x = plate_x_template * tip_dir,
+          y = c(0.22, 0.22, 0.26, 0.30, 0.30, 0.22)
         )
-        box_left <- data.frame(xmin = -1.90, xmax = -0.90, ymin = 0.00, ymax = 0.90)
-        box_right <- data.frame(xmin = 0.90, xmax = 1.90, ymin = 0.00, ymax = 0.90)
+        # Batter boxes stacked vertically to reinforce side perspective.
+        box_lower <- data.frame(
+          x = c(-1.45, 1.45, 1.18, -1.18, -1.45),
+          y = c(0.02, 0.02, 0.18, 0.18, 0.02)
+        )
+        box_upper <- data.frame(
+          x = c(-1.18, 1.18, 0.98, -0.98, -1.18),
+          y = c(0.36, 0.36, 0.50, 0.50, 0.36)
+        )
         y_max_v <- 4.4
 
         ggplot() +
-          geom_rect(data = box_left, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                    fill = NA, color = line_col, linewidth = 0.7, alpha = 0.7) +
-          geom_rect(data = box_right, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                    fill = NA, color = line_col, linewidth = 0.7, alpha = 0.7) +
-          geom_polygon(data = home_plate, aes(x, y), inherit.aes = FALSE, fill = NA, color = line_col, linewidth = 0.7) +
+          geom_polygon(data = box_upper, aes(x, y), fill = NA, color = line_col, linewidth = 0.6, alpha = 0.40) +
+          geom_polygon(data = box_lower, aes(x, y), fill = NA, color = line_col, linewidth = 0.95, alpha = 0.80) +
+          geom_polygon(data = home_plate, aes(x, y), inherit.aes = FALSE,
+                       fill = plate_col, alpha = 0.22, color = line_col, linewidth = 0.7) +
           geom_segment(aes(x = cap_x, y = cap_y, xend = zero_xend, yend = zero_yend),
                        linewidth = 1.2, color = zero_col, linetype = "dashed") +
           geom_point(aes(x = cap_x, y = cap_y), size = 8.2, color = "#a16207") +
@@ -10105,10 +10361,16 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
             linewidth = 1.9, color = angle_col,
             arrow = grid::arrow(length = grid::unit(0.18, "inches"), type = "closed")
           ) +
-          annotate("text", x = 0, y = y_max_v - 0.25, label = paste0(sprintf("%.1f", vaa), "°"), color = text_col, size = 8, fontface = "bold") +
-          annotate("text", x = 0, y = y_max_v - 0.55, label = "Vertical Attack", color = text_col, size = 5) +
-          coord_fixed(xlim = c(-2.5, 2.5), ylim = c(0, y_max_v)) +
-          labs(x = "Side (ft)", y = "Height (ft)") +
+          scale_x_continuous(
+            breaks = seq(if (is_lefty) -4.0 else -2.0, if (is_lefty) 2.0 else 4.0, by = 0.5),
+            labels = function(v) {
+              out <- if (is_lefty) -v else v
+              ifelse(abs(out) < 1e-9, "0", sprintf("%.1f", out))
+            }
+          ) +
+          scale_y_continuous(breaks = seq(0, 4, by = 0.5)) +
+          coord_fixed(xlim = if (is_lefty) c(-4.0, 2.1) else c(-2.1, 4.0), ylim = c(0, y_max_v)) +
+          labs(x = "Forward (ft)", y = "Height (ft)") +
           theme_minimal(base_size = 12) +
           theme(
             panel.grid.major = element_blank(),
@@ -10121,6 +10383,434 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
           )
       }
     }, bg = "transparent")
+    
+    bat_speed_base <- reactive({
+      df <- filtered_hit()
+      req(is.data.frame(df))
+      result_label <- function(x) {
+        out <- trimws(as.character(x))
+        out[!is.na(out) & out == "Undefined"] <- "Foul Ball"
+        out[is.na(out) | !nzchar(out)] <- "Unknown"
+        out
+      }
+      df %>%
+        dplyr::mutate(
+          BatSpeed = suppressWarnings(as.numeric(BatSpeed)),
+          ExitSpeed = suppressWarnings(as.numeric(ExitSpeed)),
+          Angle = suppressWarnings(as.numeric(Angle)),
+          TaggedPitchType = as.character(TaggedPitchType),
+          ResultLabel = result_label(PlayResult)
+        ) %>%
+        dplyr::filter(is.finite(BatSpeed))
+    })
+    
+    bat_speed_colored <- reactive({
+      dark_on <- is_dark_mode()
+      cols <- colors_for_mode(dark_on)
+      ev_palette <- c(
+        "<70" = "#1f4e79", "70-75" = "#2f6fa3", "75-80" = "#3f8fc6", "80-85" = "#59b4d8",
+        "85-90" = "#7ccf9b", "90-95" = "#f4d35e", "95-100" = "#f59e0b", ">100" = "#ef4444",
+        "Unknown" = if (dark_on) "#94a3b8" else "gray60"
+      )
+      result_palette <- c(
+        "Single" = "#22c55e", "Double" = "#3b82f6", "Triple" = "#a855f7", "HomeRun" = "#ef4444",
+        "Out" = if (dark_on) "#e5e7eb" else "#111827", "Error" = "#f59e0b", "FieldersChoice" = "#06b6d4",
+        "Sacrifice" = "#14b8a6", "Unknown" = if (dark_on) "#94a3b8" else "gray60"
+      )
+      ev_bin <- function(x) {
+        dplyr::case_when(
+          !is.finite(x) ~ "Unknown",
+          x < 70 ~ "<70",
+          x < 75 ~ "70-75",
+          x < 80 ~ "75-80",
+          x < 85 ~ "80-85",
+          x < 90 ~ "85-90",
+          x < 95 ~ "90-95",
+          x < 100 ~ "95-100",
+          TRUE ~ ">100"
+        )
+      }
+      
+      df <- bat_speed_base()
+      if (!nrow(df)) return(list(df = df, palette = c()))
+      mode <- input$batSpeedDisplay %||% "average"
+      color_by <- input$batSpeedColorBy %||% "pitch_type"
+      if (identical(mode, "average")) {
+        mode_chr <- function(x) {
+          x <- x[x != "Unknown"]
+          if (!length(x)) return("Unknown")
+          names(sort(table(x), decreasing = TRUE))[1]
+        }
+        df <- dplyr::summarise(
+          df,
+          BatSpeed = mean(BatSpeed, na.rm = TRUE),
+          ExitSpeed = mean(ExitSpeed, na.rm = TRUE),
+          Angle = mean(Angle, na.rm = TRUE),
+          TaggedPitchType = mode_chr(TaggedPitchType),
+          ResultLabel = mode_chr(ResultLabel),
+          n = dplyr::n()
+        )
+      } else {
+        df <- df %>%
+          dplyr::mutate(
+            tooltip = paste0(
+              "<b>", dplyr::coalesce(TaggedPitchType, "—"), "</b><br>",
+              "Bat Speed: ", ifelse(is.finite(BatSpeed), sprintf("%.1f mph", BatSpeed), "—"), "<br>",
+              "EV: ", ifelse(is.finite(ExitSpeed), sprintf("%.1f mph", ExitSpeed), "—"), "<br>",
+              "LA: ", ifelse(is.finite(Angle), sprintf("%.1f°", Angle), "—"), "<br>",
+              "Result: ", ResultLabel
+            ),
+            rid = dplyr::row_number()
+          )
+      }
+      df <- df %>%
+        dplyr::mutate(
+          ColorGroup = dplyr::case_when(
+            color_by == "exit_velocity" ~ ev_bin(ExitSpeed),
+            color_by == "result" ~ ResultLabel,
+            TRUE ~ dplyr::coalesce(TaggedPitchType, "Unknown")
+          )
+        )
+      groups <- unique(as.character(df$ColorGroup))
+      if (color_by == "exit_velocity") {
+        groups <- names(ev_palette)[names(ev_palette) %in% groups]
+        palette <- ev_palette[groups]
+      } else if (color_by == "result") {
+        known <- names(result_palette)[names(result_palette) %in% groups]
+        unknown <- setdiff(groups, names(result_palette))
+        palette <- c(result_palette[known], setNames(rep(if (dark_on) "#94a3b8" else "gray60", length(unknown)), unknown))
+      } else {
+        known <- names(cols)[names(cols) %in% groups]
+        unknown <- setdiff(groups, names(cols))
+        palette <- c(cols[known], setNames(rep(if (dark_on) "#94a3b8" else "gray60", length(unknown)), unknown))
+      }
+      list(df = df, palette = palette)
+    })
+    
+    output$batSpeedSummary <- renderUI({
+      base <- bat_speed_base()
+      if (!nrow(base)) {
+        return(tags$div(style = "margin-top:8px; color:#9ca3af;", "No bat-speed data for current filters."))
+      }
+      mode <- input$batSpeedDisplay %||% "average"
+      avg_bs <- mean(base$BatSpeed, na.rm = TRUE)
+      avg_ev <- mean(base$ExitSpeed, na.rm = TRUE)
+      avg_la <- mean(base$Angle, na.rm = TRUE)
+      if (identical(mode, "average")) {
+        tags$div(
+          style = "margin-top:8px; padding:10px; border:1px solid rgba(148,163,184,.35); border-radius:8px;",
+          tags$div(style = "font-weight:700; margin-bottom:4px;", "Average"),
+          tags$div(paste0("Bat Speed: ", ifelse(is.finite(avg_bs), sprintf("%.1f mph", avg_bs), "—"))),
+          tags$div(paste0("EV: ", ifelse(is.finite(avg_ev), sprintf("%.1f mph", avg_ev), "—"))),
+          tags$div(paste0("LA: ", ifelse(is.finite(avg_la), sprintf("%.1f°", avg_la), "—")))
+        )
+      } else {
+        tags$div(
+          style = "margin-top:8px; padding:10px; border:1px solid rgba(148,163,184,.35); border-radius:8px;",
+          tags$div(style = "font-weight:700; margin-bottom:4px;", "Individual Pitches"),
+          tags$div(paste0("Pitches: ", nrow(base))),
+          tags$div(paste0("Avg Bat Speed: ", ifelse(is.finite(avg_bs), sprintf("%.1f mph", avg_bs), "—"))),
+          tags$div("Dashed line is fixed at 68 mph")
+        )
+      }
+    })
+    
+    output$batSpeedKey <- renderPlot({
+      dark_on <- is_dark_mode()
+      text_col <- if (dark_on) "#e5e7eb" else "#333333"
+      stroke_col <- text_col
+      out <- bat_speed_colored()
+      df <- out$df
+      pal <- out$palette
+      if (!nrow(df) || !length(pal)) return(NULL)
+      groups <- names(pal)
+      leg_df <- data.frame(KeyGroup = factor(groups, levels = rev(groups)), y = seq_along(groups), stringsAsFactors = FALSE)
+      ggplot(leg_df, aes(x = 0, y = y)) +
+        geom_point(aes(fill = KeyGroup), shape = 21, size = 5.5, color = stroke_col, stroke = 1.1) +
+        geom_text(aes(x = 0.30, label = KeyGroup), hjust = 0, size = 4, fontface = "bold", color = text_col) +
+        scale_fill_manual(values = pal, limits = names(pal), drop = FALSE, guide = "none") +
+        coord_cartesian(xlim = c(-0.2, 2.8), ylim = c(0.3, length(groups) + 0.7), clip = "off") +
+        theme_void() +
+        theme(
+          plot.background = element_rect(fill = "transparent", color = NA),
+          panel.background = element_rect(fill = "transparent", color = NA),
+          plot.margin = margin(5, 35, 5, 5)
+        )
+    }, bg = "transparent")
+    
+    output$batSpeedGauge <- ggiraph::renderGirafe({
+      out <- bat_speed_colored()
+      df <- out$df
+      pal <- out$palette
+      dark_on <- is_dark_mode()
+      text_col <- if (dark_on) "#e5e7eb" else "#0f172a"
+      ref_col <- if (dark_on) "#94a3b8" else "#64748b"
+      needle_col <- "#ef4444"
+      mode <- input$batSpeedDisplay %||% "average"
+      if (!nrow(df)) {
+        p_empty <- ggplot() +
+          annotate("text", x = 0, y = 0.5, label = "No bat-speed data for current filters", size = 5, color = text_col) +
+          theme_void()
+        return(girafe_transparent(ggobj = p_empty))
+      }
+      
+      speed_min <- 40
+      speed_max <- 80
+      to_theta <- function(s) {
+        s <- pmax(speed_min, pmin(speed_max, s))
+        pi * (1 - (s - speed_min) / (speed_max - speed_min))
+      }
+      arc <- data.frame(s = seq(speed_min, speed_max, length.out = 280))
+      arc$t <- to_theta(arc$s)
+      arc$x <- cos(arc$t)
+      arc$y <- sin(arc$t)
+      blend_cols <- grDevices::colorRampPalette(c("#1d4ed8", "#ffffff", "#dc2626"))(nrow(arc) - 1)
+      arc_seg <- data.frame(
+        x = arc$x[-nrow(arc)],
+        y = arc$y[-nrow(arc)],
+        xend = arc$x[-1],
+        yend = arc$y[-1],
+        col = blend_cols,
+        stringsAsFactors = FALSE
+      )
+      ticks <- seq(speed_min, speed_max, by = 5)
+      tick_df <- data.frame(
+        s = ticks,
+        t = to_theta(ticks)
+      )
+      tick_df$x1 <- 0.88 * cos(tick_df$t); tick_df$y1 <- 0.88 * sin(tick_df$t)
+      tick_df$x2 <- 1.00 * cos(tick_df$t); tick_df$y2 <- 1.00 * sin(tick_df$t)
+      tick_df$xl <- 1.10 * cos(tick_df$t); tick_df$yl <- 1.10 * sin(tick_df$t)
+      
+      ref_speed <- 68
+      ref_t <- to_theta(ref_speed)
+      ref_x <- 0.85 * cos(ref_t)
+      ref_y <- 0.85 * sin(ref_t)
+      
+      avg_bs <- mean(suppressWarnings(as.numeric(df$BatSpeed)), na.rm = TRUE)
+      avg_ev <- mean(suppressWarnings(as.numeric(df$ExitSpeed)), na.rm = TRUE)
+      avg_la <- mean(suppressWarnings(as.numeric(df$Angle)), na.rm = TRUE)
+      title_line <- if (identical(mode, "average")) {
+        paste0(
+          ifelse(is.finite(avg_bs), sprintf("%.1f", avg_bs), "—"), " mph",
+          "  |  EV ", ifelse(is.finite(avg_ev), sprintf("%.1f", avg_ev), "—"),
+          "  |  LA ", ifelse(is.finite(avg_la), sprintf("%.1f", avg_la), "—")
+        )
+      } else {
+        ""
+      }
+      
+      p <- ggplot() +
+        annotate("segment", x = arc_seg$x, y = arc_seg$y, xend = arc_seg$xend, yend = arc_seg$yend,
+                 color = arc_seg$col, linewidth = 15, lineend = "round") +
+        geom_path(data = arc, aes(x, y), linewidth = 2.2, color = if (dark_on) "#475569" else "#9ca3af") +
+        geom_segment(data = tick_df, aes(x = x1, y = y1, xend = x2, yend = y2), linewidth = 0.8, color = text_col, alpha = 0.6) +
+        geom_text(data = tick_df, aes(x = xl, y = yl, label = s), color = text_col, size = 3.8, fontface = "bold") +
+        geom_segment(aes(x = 0, y = 0, xend = ref_x, yend = ref_y),
+                     linewidth = 1.3, color = ref_col, linetype = "dashed") +
+        geom_point(aes(x = 0, y = 0), size = 4.5, color = if (dark_on) "#e5e7eb" else "#111827") +
+        annotate("text", x = 0, y = 1.44, label = title_line, color = text_col, size = 6, fontface = "bold")
+      
+      avg_t <- to_theta(avg_bs)
+      p <- p +
+        geom_segment(
+          aes(x = 0, y = 0, xend = 0.86 * cos(avg_t), yend = 0.86 * sin(avg_t)),
+          linewidth = 2.3, color = needle_col,
+          arrow = grid::arrow(length = grid::unit(0.16, "inches"), type = "closed")
+        )
+      
+      if (!identical(mode, "average")) {
+        df <- df %>%
+          dplyr::mutate(
+            t = to_theta(BatSpeed),
+            gx = 0.90 * cos(t),
+            gy = 0.90 * sin(t)
+          )
+        p <- p +
+          ggiraph::geom_point_interactive(
+            data = df,
+            aes(gx, gy, color = ColorGroup, fill = ColorGroup, tooltip = tooltip, data_id = rid),
+            shape = 21, size = 3.0, stroke = 0.45, alpha = 0.95
+          ) +
+          scale_color_manual(values = pal, limits = names(pal), drop = FALSE, guide = "none") +
+          scale_fill_manual(values = pal, limits = names(pal), drop = FALSE, guide = "none")
+      }
+      
+      p <- p +
+        coord_fixed(xlim = c(-1.25, 1.25), ylim = c(-0.05, 1.55)) +
+        theme_void() +
+        theme(
+          plot.background = element_rect(fill = "transparent", color = NA),
+          panel.background = element_rect(fill = "transparent", color = NA)
+        )
+      
+      girafe_transparent(
+        ggobj = p,
+        options = list(
+          ggiraph::opts_sizing(rescale = TRUE),
+          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE,
+                                css = "color:#fff !important;font-weight:600;padding:6px;border-radius:8px;text-shadow:0 1px 1px rgba(0,0,0,.35);"),
+          ggiraph::opts_hover(css = "stroke-width:1.4px;"),
+          ggiraph::opts_hover_inv(css = "opacity:0.18;")
+        )
+      )
+    })
+    
+    evla_base <- reactive({
+      df <- filtered_hit()
+      req(is.data.frame(df))
+      df %>%
+        dplyr::mutate(
+          ExitSpeed = suppressWarnings(as.numeric(ExitSpeed)),
+          Angle = suppressWarnings(as.numeric(Angle)),
+          TaggedPitchType = as.character(TaggedPitchType),
+          PlayResult = as.character(PlayResult)
+        ) %>%
+        dplyr::filter(
+          is.finite(ExitSpeed),
+          is.finite(Angle),
+          Angle >= -90, Angle <= 90,
+          !is.na(PlayResult),
+          nzchar(trimws(PlayResult)),
+          trimws(PlayResult) != "Undefined"
+        )
+    })
+    
+    evla_colored <- reactive({
+      dark_on <- is_dark_mode()
+      cols <- colors_for_mode(dark_on)
+      result_palette <- c(
+        "Single" = "#f97316", "Double" = "#6366f1", "Triple" = "#eab308", "HomeRun" = "#db2777",
+        "Out" = "#06b6d4", "Field Out" = "#8b5cf6", "Sacrifice" = "#d97706", "Foul Ball" = "#14b8a6",
+        "Error" = "#22d3ee", "FieldersChoice" = "#84cc16", "Unknown" = if (dark_on) "#fbbf24" else "#a16207"
+      )
+      color_by <- input$evlaColorBy %||% "result"
+      df <- evla_base()
+      if (!nrow(df)) return(list(df = df, palette = c()))
+      
+      df <- df %>%
+        dplyr::mutate(
+          ColorGroup = if (identical(color_by, "pitch_type")) dplyr::coalesce(TaggedPitchType, "Unknown")
+          else dplyr::coalesce(PlayResult, "Unknown"),
+          theta = Angle * pi / 180,
+          r = pmax(0, pmin(120, ExitSpeed)) / 120,
+          x = r * cos(theta),
+          y = r * sin(theta),
+          rid = dplyr::row_number(),
+          tooltip = paste0(
+            "<b>", dplyr::coalesce(TaggedPitchType, "—"), "</b><br>",
+            "Result: ", dplyr::coalesce(PlayResult, "—"), "<br>",
+            "EV: ", sprintf("%.1f mph", ExitSpeed), "<br>",
+            "LA: ", sprintf("%.1f°", Angle)
+          )
+        )
+      
+      groups <- unique(as.character(df$ColorGroup))
+      if (identical(color_by, "pitch_type")) {
+        known <- names(cols)[names(cols) %in% groups]
+        unknown <- setdiff(groups, names(cols))
+        pal <- c(cols[known], setNames(rep(if (dark_on) "#94a3b8" else "gray60", length(unknown)), unknown))
+      } else {
+        known <- names(result_palette)[names(result_palette) %in% groups]
+        unknown <- setdiff(groups, names(result_palette))
+        pal <- c(result_palette[known], setNames(rep(if (dark_on) "#fbbf24" else "#a16207", length(unknown)), unknown))
+      }
+      list(df = df, palette = pal)
+    })
+    
+    output$evlaKey <- renderPlot({
+      dark_on <- is_dark_mode()
+      text_col <- if (dark_on) "#e5e7eb" else "#333333"
+      stroke_col <- text_col
+      out <- evla_colored()
+      df <- out$df
+      pal <- out$palette
+      if (!nrow(df) || !length(pal)) return(NULL)
+      groups <- names(pal)
+      leg_df <- data.frame(KeyGroup = factor(groups, levels = rev(groups)), y = seq_along(groups), stringsAsFactors = FALSE)
+      ggplot(leg_df, aes(x = 0, y = y)) +
+        geom_point(aes(fill = KeyGroup), shape = 21, size = 5.8, color = stroke_col, stroke = 1.1) +
+        geom_text(aes(x = 0.30, label = KeyGroup), hjust = 0, size = 4, fontface = "bold", color = text_col) +
+        scale_fill_manual(values = pal, limits = names(pal), drop = FALSE, guide = "none") +
+        coord_cartesian(xlim = c(-0.2, 2.8), ylim = c(0.3, length(groups) + 0.7), clip = "off") +
+        theme_void() +
+        theme(
+          plot.background = element_rect(fill = "transparent", color = NA),
+          panel.background = element_rect(fill = "transparent", color = NA),
+          plot.margin = margin(5, 35, 5, 5)
+        )
+    }, bg = "transparent")
+    
+    output$evlaPlot <- ggiraph::renderGirafe({
+      out <- evla_colored()
+      df <- out$df
+      pal <- out$palette
+      dark_on <- is_dark_mode()
+      text_col <- if (dark_on) "#e5e7eb" else "#0f172a"
+      guide_col <- if (dark_on) "#94a3b8" else "#9ca3af"
+      fill_col <- if (dark_on) "#1f2937" else "#d1ecf1"
+      if (!nrow(df)) {
+        p_empty <- ggplot() +
+          annotate("text", x = 0.5, y = 0.5, label = "No EV/LA data for current filters", size = 5, color = text_col) +
+          theme_void()
+        return(girafe_transparent(ggobj = p_empty))
+      }
+      
+      semi <- data.frame(t = seq(-pi/2, pi/2, length.out = 320))
+      semi$x <- cos(semi$t)
+      semi$y <- sin(semi$t)
+      guide_angles <- c(90, 45, 0, -45, -90)
+      guide_df <- data.frame(
+        ang = guide_angles,
+        t = guide_angles * pi / 180
+      )
+      guide_df$x <- cos(guide_df$t)
+      guide_df$y <- sin(guide_df$t)
+      guide_df$lx <- 0.88 * guide_df$x
+      guide_df$ly <- 0.88 * guide_df$y
+      guide_df$lab <- paste0(guide_df$ang, "°")
+      mph_df <- data.frame(
+        x = c(0.03, 1.20, 0.03),
+        y = c(1.13, 0, -1.13),
+        lab = rep("120 MPH", 3),
+        hjust = c(0, 0, 0),
+        stringsAsFactors = FALSE
+      )
+      
+      p <- ggplot() +
+        geom_polygon(data = rbind(data.frame(x = 0, y = -1), semi[, c("x", "y")], data.frame(x = 0, y = 1)),
+                     aes(x, y), fill = fill_col, alpha = 0.35, color = NA) +
+        geom_path(data = semi, aes(x, y), linewidth = 1.2, color = guide_col, alpha = 0.75) +
+        geom_segment(data = guide_df, aes(x = 0, y = 0, xend = x, yend = y),
+                     linewidth = 0.9, color = guide_col, alpha = 0.45) +
+        geom_text(data = guide_df, aes(x = lx, y = ly, label = lab),
+                  color = text_col, size = 4, alpha = 0.85) +
+        geom_text(data = mph_df, aes(x = x, y = y, label = lab, hjust = hjust), color = text_col, size = 4.2, fontface = "bold") +
+        ggiraph::geom_point_interactive(
+          data = df,
+          aes(x, y, color = ColorGroup, fill = ColorGroup, tooltip = tooltip, data_id = rid),
+          shape = 21, size = 4.2, stroke = 0.6, alpha = 0.92
+        ) +
+        scale_color_manual(values = pal, limits = names(pal), drop = FALSE, guide = "none") +
+        scale_fill_manual(values = pal, limits = names(pal), drop = FALSE, guide = "none") +
+        coord_fixed(xlim = c(-0.02, 1.28), ylim = c(-1.2, 1.2)) +
+        theme_void() +
+        theme(
+          plot.background = element_rect(fill = "transparent", color = NA),
+          panel.background = element_rect(fill = "transparent", color = NA)
+        )
+      
+      girafe_transparent(
+        ggobj = p,
+        options = list(
+          ggiraph::opts_sizing(rescale = TRUE),
+          ggiraph::opts_tooltip(use_fill = TRUE, use_stroke = TRUE,
+                                css = "color:#fff !important;font-weight:600;padding:6px;border-radius:8px;text-shadow:0 1px 1px rgba(0,0,0,.35);"),
+          ggiraph::opts_hover(css = "stroke-width:1.5px;"),
+          ggiraph::opts_hover_inv(css = "opacity:0.15;")
+        )
+      )
+    })
     
     # ---- Result key (legend for pitch results) ----
     output$result_key <- renderPlot({
@@ -10209,45 +10899,100 @@ mod_hit_server <- function(id, is_active = shiny::reactive(TRUE), global_date_ra
       dark_on <- is_dark_mode()
       text_col <- if (dark_on) "#e5e7eb" else "#333333"
       stroke_col <- text_col
+      cols <- colors_for_mode(dark_on)
+      ev_palette <- c(
+        "<70" = "#1f4e79", "70-75" = "#2f6fa3", "75-80" = "#3f8fc6", "80-85" = "#59b4d8",
+        "85-90" = "#7ccf9b", "90-95" = "#f4d35e", "95-100" = "#f59e0b", ">100" = "#ef4444",
+        "Unknown" = if (dark_on) "#94a3b8" else "gray60"
+      )
+      result_palette <- c(
+        "Single" = "#22c55e", "Double" = "#3b82f6", "Triple" = "#a855f7", "HomeRun" = "#ef4444",
+        "Out" = if (dark_on) "#e5e7eb" else "#111827", "Error" = "#f59e0b", "FieldersChoice" = "#06b6d4",
+        "Sacrifice" = "#14b8a6", "Unknown" = if (dark_on) "#94a3b8" else "gray60"
+      )
+      ev_bin <- function(x) {
+        dplyr::case_when(
+          !is.finite(x) ~ "Unknown",
+          x < 70 ~ "<70",
+          x < 75 ~ "70-75",
+          x < 80 ~ "75-80",
+          x < 85 ~ "80-85",
+          x < 90 ~ "85-90",
+          x < 95 ~ "90-95",
+          x < 100 ~ "95-100",
+          TRUE ~ ">100"
+        )
+      }
+      result_label <- function(x) {
+        out <- trimws(as.character(x))
+        out[!is.na(out) & out == "Undefined"] <- "Foul Ball"
+        out[is.na(out) | !nzchar(out)] <- "Unknown"
+        out
+      }
+      mode_2d <- input$contact2dMode %||% "individual"
+      color_by_2d <- input$contact2dColorBy %||% "pitch_type"
+      
       df <- filtered_hit() %>%
         dplyr::mutate(
           ContactPositionX = suppressWarnings(as.numeric(ContactPositionX)),
-          ContactPositionZ = suppressWarnings(as.numeric(ContactPositionZ))
+          ContactPositionZ = suppressWarnings(as.numeric(ContactPositionZ)),
+          ExitSpeed = suppressWarnings(as.numeric(ExitSpeed)),
+          TaggedPitchType = as.character(TaggedPitchType),
+          ResultLabel = result_label(PlayResult)
         ) %>%
         dplyr::filter(is.finite(ContactPositionX), is.finite(ContactPositionZ))
       if (is.null(df) || !nrow(df)) return(NULL)
-      
-      types <- tryCatch({
-        unique_types <- unique(df$TaggedPitchType)
-        unique_types[!is.na(unique_types) & nzchar(as.character(unique_types))]
-      }, error = function(e) {
-        character(0)
-      })
-      
-      if (!length(types)) return(NULL)
-      types <- as.character(types)
-      canonical_order <- names(all_colors)
-      known_types <- canonical_order[canonical_order %in% types]
-      unknown_types <- setdiff(types, canonical_order)
-      types <- c(known_types, sort(unknown_types))
-      
-      cols <- colors_for_mode(dark_on)
-      type_colors <- sapply(types, function(t) {
-        if (t %in% names(cols)) cols[t] else if (dark_on) "#e5e7eb" else "gray50"
-      })
-      names(type_colors) <- types
-      
+
+      if (identical(mode_2d, "average_pitch_type")) {
+        mode_chr <- function(x) {
+          x <- x[x != "Unknown"]
+          if (!length(x)) return("Unknown")
+          names(sort(table(x), decreasing = TRUE))[1]
+        }
+        df <- df %>%
+          dplyr::group_by(TaggedPitchType) %>%
+          dplyr::summarise(
+            ExitSpeed = mean(ExitSpeed, na.rm = TRUE),
+            ResultLabel = mode_chr(ResultLabel),
+            .groups = "drop"
+          )
+      }
+
+      groups <- if (color_by_2d == "exit_velocity") {
+        unique(ev_bin(df$ExitSpeed))
+      } else if (color_by_2d == "result") {
+        unique(df$ResultLabel)
+      } else {
+        unique(df$TaggedPitchType)
+      }
+      groups <- as.character(groups)
+      groups <- groups[!is.na(groups) & nzchar(groups)]
+      if (!length(groups)) return(NULL)
+
+      if (color_by_2d == "exit_velocity") {
+        groups <- names(ev_palette)[names(ev_palette) %in% groups]
+        key_colors <- ev_palette[groups]
+      } else if (color_by_2d == "result") {
+        known <- names(result_palette)[names(result_palette) %in% groups]
+        unknown <- setdiff(groups, names(result_palette))
+        key_colors <- c(result_palette[known], setNames(rep(if (dark_on) "#94a3b8" else "gray60", length(unknown)), unknown))
+      } else {
+        known <- names(cols)[names(cols) %in% groups]
+        unknown <- setdiff(groups, names(cols))
+        key_colors <- c(cols[known], setNames(rep(if (dark_on) "#94a3b8" else "gray60", length(unknown)), unknown))
+      }
+
       leg_df <- data.frame(
-        TaggedPitchType = factor(types, levels = types),
-        y = rev(seq_along(types)),
+        KeyGroup = factor(names(key_colors), levels = rev(names(key_colors))),
+        y = seq_along(key_colors),
         stringsAsFactors = FALSE
       )
       
       ggplot(leg_df, aes(x = 0, y = y)) +
-        geom_point(aes(fill = TaggedPitchType), shape = 21, size = 5.5, color = stroke_col, stroke = 1.1) +
-        geom_text(aes(x = 0.30, label = TaggedPitchType), hjust = 0, size = 4, fontface = "bold", color = text_col) +
-        scale_fill_manual(values = type_colors, limits = types, drop = FALSE, guide = "none") +
-        coord_cartesian(xlim = c(-0.2, 2.8), ylim = c(0.3, length(types) + 0.7), clip = "off") +
+        geom_point(aes(fill = KeyGroup), shape = 21, size = 5.5, color = stroke_col, stroke = 1.1) +
+        geom_text(aes(x = 0.30, label = KeyGroup), hjust = 0, size = 4, fontface = "bold", color = text_col) +
+        scale_fill_manual(values = key_colors, limits = names(key_colors), drop = FALSE, guide = "none") +
+        coord_cartesian(xlim = c(-0.2, 2.8), ylim = c(0.3, length(key_colors) + 0.7), clip = "off") +
         theme_void() +
         theme(
           plot.background = element_rect(fill = "transparent", color = NA),
@@ -12609,7 +13354,8 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
         scale_alpha(range = c(0.25, 1), guide = "none") +
         geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, linewidth = 0.6) +
         geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                  fill = NA, color = line_col, linetype = "dashed", linewidth = 0.6) +
+                  fill = NA, color = line_col, linewidth = 0.6) +
+        comp_zone_connector_layers(color = line_col, linewidth = 0.6) +
         geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   fill = NA, color = line_col, linewidth = 0.8) +
         zone_nine_square_layers(color = line_col, linewidth = 0.45) +
@@ -12648,8 +13394,9 @@ mod_catch_server <- function(id, is_active = shiny::reactive(TRUE), global_date_
       
       p <- ggplot() +
         geom_polygon(data = home, aes(x, y), fill = NA, color = line_col) +
-        geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = NA, color = line_col, linetype = "dashed") +
-        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = NA, color = line_col) +
+        geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = NA, color = line_col) +
+        comp_zone_connector_layers(color = line_col) +
+        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax), fill = NA, color = line_col, linewidth = 1.15) +
         zone_nine_square_layers(color = line_col) +
         ggiraph::geom_point_interactive(
           data = df_other,
@@ -13239,9 +13986,10 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
         scale_color_manual(values = all_colors[types], limits = types, name = NULL) +
         scale_shape_manual(values = shape_map, name = NULL) +
         geom_rect(aes(xmin = ZONE_LEFT, xmax = ZONE_RIGHT, ymin = ZONE_BOTTOM, ymax = ZONE_TOP),
-                  fill = NA, color = line_col, linewidth = 1) +
+                  fill = NA, color = line_col, linewidth = 1.15) +
         geom_rect(aes(xmin = -1.5, xmax = 1.5, ymin = 2.65-1.5, ymax = 2.65+1.5),
-                  fill = NA, color = line_col, linetype = "dashed", linewidth = 0.8) +
+                  fill = NA, color = line_col, linewidth = 0.8) +
+        comp_zone_connector_layers(color = line_col, linewidth = 0.8) +
         coord_fixed(ratio = 1) +
         labs(x = "Plate Side (ft)", y = "Plate Height (ft)") +
         theme_minimal() + axis_theme + grid_theme(dark_on) +
@@ -13549,9 +14297,10 @@ mod_camps_server <- function(id, is_active = shiny::reactive(TRUE)) {
       p <- ggplot() +
         geom_polygon(data = home, aes(x, y), fill = NA, color = line_col) +
         geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                  fill = NA, color = line_col, linetype = "dashed") +
-        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   fill = NA, color = line_col) +
+        comp_zone_connector_layers(color = line_col) +
+        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                  fill = NA, color = line_col, linewidth = 1.15) +
         zone_nine_square_layers(color = line_col) +
         ggiraph::geom_point_interactive(
           data = df,
@@ -16110,7 +16859,7 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
           p <- ggplot() +
             geom_polygon(data = home, aes(x, y), inherit.aes = FALSE, fill = NA, color = line_col) +
             geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                      inherit.aes = FALSE, fill = NA, color = line_col) +
+                      inherit.aes = FALSE, fill = NA, color = line_col, linewidth = 1.15) +
             geom_rect(data = green_box,
                       aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                       inherit.aes = FALSE,
@@ -16172,9 +16921,10 @@ mod_comp_server <- function(id, is_active = shiny::reactive(TRUE), global_date_r
       p <- ggplot() +
         geom_polygon(data = home, aes(x, y), inherit.aes = FALSE, fill = NA, color = line_col) +
         geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                  inherit.aes = FALSE, fill = NA, color = line_col, linetype = "dashed") +
-        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                   inherit.aes = FALSE, fill = NA, color = line_col) +
+        comp_zone_connector_layers(color = line_col) +
+        geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                  inherit.aes = FALSE, fill = NA, color = line_col, linewidth = 1.15) +
         zone_nine_square_layers(color = line_col) +
         ggiraph::geom_point_interactive(
           data = df_other,
@@ -19947,7 +20697,7 @@ custom_reports_server <- function(id) {
             p <- ggplot() +
               geom_polygon(data = home, aes(x, y), inherit.aes = FALSE, fill = NA, color = line_col) +
               geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                        inherit.aes = FALSE, fill = NA, color = line_col) +
+                        inherit.aes = FALSE, fill = NA, color = line_col, linewidth = 1.15) +
               geom_rect(data = green_box,
                         aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                         inherit.aes = FALSE,
@@ -20006,9 +20756,10 @@ custom_reports_server <- function(id) {
             p <- ggplot() +
               geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
               geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                        fill = NA, color = line_col, linetype = "dashed", inherit.aes = FALSE) +
-              geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                         fill = NA, color = line_col, inherit.aes = FALSE) +
+              comp_zone_connector_layers(color = line_col) +
+              geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                        fill = NA, color = line_col, linewidth = 1.15, inherit.aes = FALSE) +
               zone_nine_square_layers(color = line_col) +
               ggiraph::geom_point_interactive(
                 data = df_other,
@@ -26129,9 +26880,10 @@ deg_to_clock <- function(x) {
     p <- ggplot() +
       geom_polygon(data = home, aes(x, y), inherit.aes = FALSE, fill = NA, color = line_col) +
       geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                inherit.aes = FALSE, fill = NA, linetype = "dashed", color = line_col) +
-      geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 inherit.aes = FALSE, fill = NA, color = line_col) +
+      comp_zone_connector_layers(color = line_col) +
+      geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                inherit.aes = FALSE, fill = NA, color = line_col, linewidth = 1.15) +
       zone_nine_square_layers(color = line_col) +
       coord_fixed(ratio = 1, xlim = c(-2.5, 2.5), ylim = c(0, 4.5)) +
       theme_void() +
@@ -30976,9 +31728,10 @@ deg_to_clock <- function(x) {
     p <- ggplot() +
       geom_polygon(data = home, aes(x, y), inherit.aes = FALSE, fill = NA, color = line_col) +
       geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                inherit.aes = FALSE, fill = NA, linetype = "dashed", color = line_col) +
-      geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 inherit.aes = FALSE, fill = NA, color = line_col) +
+      comp_zone_connector_layers(color = line_col) +
+      geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                inherit.aes = FALSE, fill = NA, color = line_col, linewidth = 1.15) +
       zone_nine_square_layers(color = line_col) +
       
       # filled circles for "no result" rows
@@ -34045,10 +34798,10 @@ deg_to_clock <- function(x) {
     c(list(
       geom_polygon(data = home, aes(x, y), fill = NA, color = color),
       geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                fill = NA, color = color, linetype = "dashed"),
+                fill = NA, color = color),
       geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                fill = NA, color = color)
-    ), zone_nine_square_layers(color = color))
+                fill = NA, color = color, linewidth = 1.15)
+    ), comp_zone_connector_layers(color = color), zone_nine_square_layers(color = color))
   }
   
   # All game dates where the selected pitcher has ≥1 completed PA (across any batters)
@@ -36062,9 +36815,10 @@ deg_to_clock <- function(x) {
     p <- ggplot() +
       geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
       geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                fill = NA, color = line_col, linetype = "dashed", inherit.aes = FALSE) +
-      geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 fill = NA, color = line_col, inherit.aes = FALSE) +
+      comp_zone_connector_layers(color = line_col) +
+      geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                fill = NA, color = line_col, linewidth = 1.15, inherit.aes = FALSE) +
       zone_nine_square_layers(color = line_col) +
       
       ggiraph::geom_point_interactive(
@@ -36247,9 +37001,10 @@ deg_to_clock <- function(x) {
     p <- ggplot() +
       geom_polygon(data = home, aes(x, y), fill = NA, color = line_col) +
       geom_rect(data = cz, aes(xmin=xmin,xmax=xmax,ymin=ymin,ymax=ymax),
-                fill = NA, color = line_col, linetype = "dashed") +
-      geom_rect(data = sz, aes(xmin=xmin,xmax=xmax,ymin=ymin,ymax=ymax),
                 fill = NA, color = line_col) +
+      comp_zone_connector_layers(color = line_col) +
+      geom_rect(data = sz, aes(xmin=xmin,xmax=xmax,ymin=ymin,ymax=ymax),
+                fill = NA, color = line_col, linewidth = 1.15) +
       zone_nine_square_layers(color = line_col) +
       
       # visible points (unknown result as solid circle)
@@ -38897,9 +39652,10 @@ deg_to_clock <- function(x) {
     p <- ggplot() +
       geom_polygon(data = home, aes(x, y), fill = NA, color = line_col, inherit.aes = FALSE) +
       geom_rect(data = cz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
-                fill = NA, color = line_col, linetype = "dashed", inherit.aes = FALSE) +
-      geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
                 fill = NA, color = line_col, inherit.aes = FALSE) +
+      comp_zone_connector_layers(color = line_col) +
+      geom_rect(data = sz, aes(xmin = xmin, xmax = xmax, ymin = ymin, ymax = ymax),
+                fill = NA, color = line_col, linewidth = 1.15, inherit.aes = FALSE) +
       zone_nine_square_layers(color = line_col) +
       
       ggiraph::geom_point_interactive(
