@@ -30,7 +30,7 @@ pitch_data_default_columns <- function() {
     "BatSpeed", "VerticalAttackAngle", "HorizontalAttackAngle", "HitSpinRate",
     "ThrowSpeed", "ExchangeTime", "PopTime", "TimeToBase",
     "BasePositionX", "BasePositionY", "BasePositionZ", "TargetBase",
-    "Batter", "Catcher", "VideoClip", "VideoClip2", "VideoClip3",
+    "Batter", "Catcher", "PitcherTeam", "BatterTeam", "HomeTeam", "AwayTeam", "VideoClip", "VideoClip2", "VideoClip3",
     "PitchUID", "PitchID", "PitchGuid", "SourceFile", "PitchKey"
   )
 }
@@ -133,6 +133,10 @@ pitch_data_storage_name_map <- function() {
     OutsOnPlay = "outsonplay",
     Batter = "batter",
     Catcher = "catcher",
+    PitcherTeam = "pitcherteam",
+    BatterTeam = "batterteam",
+    HomeTeam = "hometeam",
+    AwayTeam = "awayteam",
     VideoClip = "videoclip",
     VideoClip2 = "videoclip2",
     VideoClip3 = "videoclip3",
